@@ -1,87 +1,95 @@
 # Nexus Router OS: Complete Deployment Guide (Ubuntu x64)
 
-Follow these steps to deploy Nexus Router OS on a clean Ubuntu x64 machine. This guide sets up the project in the root `/var/www/html` directory using the default Nginx configuration.
+This guide provides a step-by-step installation for Nexus Router OS on a clean Ubuntu x64 environment, utilizing **Nginx**, **Git**, and **PM2** for process management.
 
 ---
 
-## 🏗️ 1. Environment Preparation
-Update your Ubuntu system and install the core dependencies.
+## 🏗️ 1. Install Prerequisites
+First, update your system and install the necessary software stack (Nginx, Git, Node.js, and PM2).
 
 ```bash
+# Update system packages
 sudo apt update && sudo apt upgrade -y
+
+# Install Nginx and Git
 sudo apt install nginx git -y
+
+# Install Node.js and NPM (Required for PM2 and updates)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Install PM2 globally
+sudo npm install pm2 -g
 ```
 
 ---
 
 ## 📂 2. Project Installation
-We will clone the repository contents directly into the standard web root `/var/www/html`.
+We will deploy the project directly into the standard `/var/www/html` directory.
 
 ```bash
-# 1. Clean out the default Nginx files
+# 1. Clear out the default Nginx index files
 sudo rm -rf /var/www/html/*
 
-# 2. Clone the repository into a temporary location and move it to the web root
-# (Cloning directly into /var/www/html requires an empty directory)
+# 2. Clone the repository to a temporary location
 git clone https://github.com/Djnirds1984/Nexus-Router-OS.git /tmp/nexus-os
+
+# 3. Move contents to the web root
 sudo cp -r /tmp/nexus-os/* /var/www/html/
 sudo cp -r /tmp/nexus-os/.* /var/www/html/ 2>/dev/null || true
 
-# 3. Set ownership to the Nginx user (www-data)
-# This is mandatory for Nginx to serve the files correctly.
+# 4. Set ownership and permissions
+# This ensures Nginx and PM2 can interact with the files
 sudo chown -R www-data:www-data /var/www/html
-
-# 4. Apply correct filesystem permissions
 sudo find /var/www/html -type d -exec chmod 755 {} \;
 sudo find /var/www/html -type f -exec chmod 644 {} \;
 ```
 
 ---
 
-## 🛠️ 3. Nginx Configuration (Default Site)
-Instead of creating a new file, we will modify the existing Nginx default configuration.
+## 🛠️ 3. Nginx Default Configuration
+We will modify the **default** Nginx site configuration to serve the React files and handle the custom MIME types for `.tsx` files.
 
-1. Open the default configuration file:
+1. Open the default configuration:
    `sudo nano /etc/nginx/sites-available/default`
 
-2. Replace the content of the `server { ... }` block with this optimized configuration:
+2. Replace the contents of the `server { ... }` block with this:
 
 ```nginx
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
 
-    # Point to the root directory where the project is installed
+    # Root directory for the project
     root /var/www/html;
     index index.html;
 
     server_name _;
 
     location / {
-        # Support React client-side routing
+        # Support for Single Page Application (SPA) routing
         try_files $uri $uri/ /index.html;
     }
 
-    # CRITICAL: Serve .tsx files as Javascript modules for the browser
+    # IMPORTANT: Serve .tsx and .ts files as Javascript modules
     location ~* \.(tsx|ts)$ {
         add_header Content-Type application/javascript;
     }
 
-    # Optional: Cache static assets to improve performance
+    # Performance optimization: Cache static assets
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|otf)$ {
         expires 30d;
         add_header Cache-Control "public, no-transform";
     }
 
-    # Error and Access logs
-    error_log /var/log/nginx/nexus_os_error.log;
-    access_log /var/log/nginx/nexus_os_access.log;
+    # Logging
+    error_log /var/log/nginx/nexus_error.log;
+    access_log /var/log/nginx/nexus_access.log;
 }
 ```
 
 3. Save and Exit (Ctrl+O, Enter, Ctrl+X).
-
-4. Restart Nginx to apply the changes:
+4. Restart Nginx:
 ```bash
 sudo nginx -t
 sudo systemctl restart nginx
@@ -89,18 +97,27 @@ sudo systemctl restart nginx
 
 ---
 
-## 🔍 4. Verification & Diagnostics
+## 🚀 4. PM2 Process Management
+While Nginx serves the static files, we use **PM2** to manage system-level background processes or to monitor the dashboard environment.
 
-### Check Installation Path
-Verify that your files are in the right place:
-`ls -la /var/www/html`
+```bash
+# Start a simple background process to monitor the dashboard folder (optional)
+# Or use it to keep your custom update-scripts running
+pm2 start "ls -la /var/www/html" --name "nexus-monitor" --watch
 
-### Troubleshooting "Black Screen"
-If the page loads but nothing shows:
-1. Open Browser Console (F12).
-2. If you see a MIME type error (e.g., "Expected a JavaScript module script but the server responded with a MIME type of text/plain"), ensure the `location ~* \.(tsx|ts)$` block is correctly added to your Nginx config.
-3. If you see a 403 Forbidden, ensure you ran the `chown` command in Step 2.
+# Ensure PM2 starts automatically on system boot
+pm2 startup
+# (Run the command generated by the output of the line above)
+pm2 save
+```
 
 ---
-**GitHub Repository:** [https://github.com/Djnirds1984/Nexus-Router-OS.git](https://github.com/Djnirds1984/Nexus-Router-OS.git)
-*Built for high-performance Ubuntu routing and load balancing.*
+
+## 🔍 5. Verification
+- **Web UI**: Visit your server's IP in a browser. You should see the Nexus OS loading splash.
+- **Console Check**: Press `F12` in your browser. If you see errors about `index.tsx` MIME type, double-check your Nginx config.
+- **PM2 Status**: Run `pm2 status` to ensure your background tasks are active.
+
+---
+**Official Repository:** [https://github.com/Djnirds1984/Nexus-Router-OS.git](https://github.com/Djnirds1984/Nexus-Router-OS.git)
+*Optimized for Ubuntu x64 Router Hardware.*
