@@ -1,60 +1,37 @@
-# Nexus Router OS: Ubuntu Deployment Guide
 
-This guide ensures a 100% working install by serving the application through Nginx with the correct permissions.
+# Nexus Router OS: Pro Hardware Deployment
 
----
+To enable real-world router functionality on your Ubuntu x64 machine, you must run the **Nexus Core Agent**.
 
-## 🏗️ 1. Install Basics
+## 🚀 1. Prerequisites
+Ensure you have Node.js and Npm installed on your Ubuntu host:
 ```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install git nginx -y
+sudo apt update
+sudo apt install nodejs npm -y
 ```
 
----
-
-## 📂 2. Clone & Setup Permissions
+## 🛠️ 2. Install the Core Agent
+Save the provided `server.js` to your project folder (e.g., `/opt/nexus/server.js`) and install dependencies:
 ```bash
-# Clean the default folder
-sudo rm -rf /var/www/html/*
-
-# Clone project
-git clone https://github.com/Djnirds1984/Nexus-Router-OS.git /tmp/nexus
-sudo cp -r /tmp/nexus/* /var/www/html/
-
-# CRITICAL: Permissions (Prevents 403 Errors)
-sudo chown -R www-data:www-data /var/www/html
-sudo chmod -R 755 /var/www/html
+mkdir -p /opt/nexus
+cd /opt/nexus
+npm init -y
+npm install express cors
 ```
 
----
+## ⚡ 3. Start the Agent (Background)
+Run the agent as root (required for executing network commands):
+```bash
+sudo node server.js
+```
+*Note: For production, use `pm2` to keep the agent alive: `sudo npm install -g pm2 && sudo pm2 start server.js`*
 
-## 🛠️ 3. Nginx Config
-Edit the default config: `sudo nano /etc/nginx/sites-available/default`
-Ensure it looks like this:
-
-```nginx
-server {
-    listen 80;
-    root /var/www/html;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # MANDATORY: Fix for TSX MIME type
-    location ~* \.tsx$ {
-        default_type application/javascript;
-        add_header Content-Type application/javascript;
-    }
-}
+## 🌐 4. Enable Kernel Features
+Ensure your Ubuntu machine allows packet forwarding:
+```bash
+echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
 ```
 
-Restart Nginx: `sudo systemctl restart nginx`
-
----
-
-## 🔍 Why This Works Now
-- **No Complex Imports**: All code is in `index.tsx`. The browser doesn't have to hunt for files.
-- **Babel Standalone**: The browser compiles the JSX on the fly. This fixes the `Unexpected token '<'` error.
-- **Incognito Mode**: If you still see errors, please use **Incognito Mode** to bypass your browser extensions (like Grammarly) which cause the `contentScript.js` errors.
+## 🔍 5. Verify
+Refresh the Nexus OS dashboard. The bottom-left status indicator should change to **"Hardware Native"** in green. You will now see your real Ethernet ports (e.g., `eth0`, `enp1s0`) listed in the dashboard.
