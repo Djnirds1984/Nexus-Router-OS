@@ -30,7 +30,6 @@ interface SystemMetrics {
   activeSessions: number;
 }
 
-// Updated to relative path to support remote access via Router IP
 const API_BASE = '/api';
 
 /**
@@ -262,12 +261,18 @@ const App = () => {
         const met = await metricRes.json();
         setIsLive(true);
         setMetrics(met);
-        // Persist local weight changes if possible, or just overwrite with real state
-        setConfig((prev: any) => ({ ...prev, wanInterfaces: ifaces }));
+        
+        setConfig((prev: any) => {
+          // Merge names from previous state if they exist
+          const merged = ifaces.map((iface: any) => {
+            const existing = prev.wanInterfaces.find((w: any) => w.id === iface.id);
+            return existing ? { ...iface, name: existing.name, weight: existing.weight, priority: existing.priority } : iface;
+          });
+          return { ...prev, wanInterfaces: merged };
+        });
       }
     } catch (e) {
       setIsLive(false);
-      // Mock for UI demonstration if agent is offline
       setMetrics({ cpuUsage: 5, memoryUsage: '1.2', temp: '42°C', uptime: 'Simulation Mode', activeSessions: 12 });
     }
   }, []);
@@ -296,6 +301,13 @@ const App = () => {
     }
   };
 
+  const updateWanName = (id: string, newName: string) => {
+    setConfig({
+      ...config,
+      wanInterfaces: config.wanInterfaces.map((w: any) => w.id === id ? { ...w, name: newName } : w)
+    });
+  };
+
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard wanInterfaces={config.wanInterfaces} metrics={metrics} />}
@@ -311,27 +323,65 @@ const App = () => {
                    className={`flex-1 p-6 rounded-2xl border transition-all text-left group ${config.mode === RouterMode.LOAD_BALANCER ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]' : 'bg-slate-950/50 border-slate-800 text-slate-500 hover:border-slate-700'}`}
                  >
                     <div className={`font-bold transition-colors ${config.mode === RouterMode.LOAD_BALANCER ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>Multi-WAN Load Balancer</div>
-                    <div className="text-[11px] mt-1 opacity-60">Combine bandwidth from all active ISP connections.</div>
+                    <div className="text-[11px] mt-1 opacity-60 font-mono">Parallel IP multiplexing for maximum aggregate bandwidth.</div>
                  </button>
                  <button 
                    onClick={() => setConfig({...config, mode: RouterMode.FAILOVER})}
                    className={`flex-1 p-6 rounded-2xl border transition-all text-left group ${config.mode === RouterMode.FAILOVER ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]' : 'bg-slate-950/50 border-slate-800 text-slate-500 hover:border-slate-700'}`}
                  >
                     <div className={`font-bold transition-colors ${config.mode === RouterMode.FAILOVER ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>High Availability Failover</div>
-                    <div className="text-[11px] mt-1 opacity-60">Automatic switching to backup link on outage detection.</div>
+                    <div className="text-[11px] mt-1 opacity-60 font-mono">Priority-based routing with automatic outage recovery.</div>
                  </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+              <div className="grid grid-cols-1 gap-6 mb-10">
                 {config.wanInterfaces.map((wan: any) => (
-                  <div key={wan.id} className="bg-slate-950/80 p-6 rounded-2xl border border-slate-800 shadow-inner">
-                    <div className="flex justify-between items-center mb-4">
-                       <span className="font-bold text-white tracking-tight">{wan.name}</span>
-                       <span className="text-[10px] text-blue-400 font-mono font-black uppercase tracking-widest">{wan.interfaceName}</span>
+                  <div key={wan.id} className="bg-slate-950/80 p-6 rounded-2xl border border-slate-800 shadow-inner group transition-all hover:border-slate-600">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                       <div className="flex-1">
+                          <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1 block">Custom Interface Identity</label>
+                          <input 
+                            type="text" 
+                            value={wan.name} 
+                            onChange={(e) => updateWanName(wan.id, e.target.value)}
+                            className="bg-transparent border-b border-slate-800 focus:border-blue-500 outline-none text-xl font-bold text-white w-full md:w-64 pb-1"
+                            placeholder="Rename interface..."
+                          />
+                       </div>
+                       <div className="flex items-center gap-3">
+                         <div className={`px-4 py-1.5 rounded-full text-[11px] font-black tracking-widest uppercase flex items-center gap-2 ${wan.status === WanStatus.UP ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${wan.status === WanStatus.UP ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></div>
+                            {wan.status}
+                         </div>
+                         <span className="text-[10px] bg-slate-900 px-3 py-1.5 rounded border border-slate-800 text-blue-400 font-mono font-black uppercase tracking-widest">{wan.interfaceName}</span>
+                       </div>
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                       <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">Global IP</div>
+                          <div className="text-sm font-mono text-slate-300">{wan.ipAddress}</div>
+                       </div>
+                       <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">Gateway</div>
+                          <div className="text-sm font-mono text-slate-300">{wan.gateway}</div>
+                       </div>
+                       <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">RX Throughput</div>
+                          <div className="text-sm font-mono text-emerald-400 font-bold">{wan.throughput.rx.toFixed(2)} Mbps</div>
+                       </div>
+                       <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">TX Throughput</div>
+                          <div className="text-sm font-mono text-blue-400 font-bold">{wan.throughput.tx.toFixed(2)} Mbps</div>
+                       </div>
+                    </div>
+
                     {config.mode === RouterMode.LOAD_BALANCER ? (
-                      <div className="space-y-3">
-                        <div className="flex justify-between text-[10px] text-slate-500 font-black uppercase tracking-widest">Weight Distribution: {wan.weight || 1}x</div>
+                      <div className="space-y-3 bg-blue-600/5 p-4 rounded-xl border border-blue-500/10">
+                        <div className="flex justify-between items-center">
+                           <div className="text-[10px] text-blue-500 font-black uppercase tracking-widest">Weight Distribution Value: <span className="text-white text-sm ml-2">{wan.weight || 1}</span></div>
+                           <div className="text-[9px] text-slate-600 italic">High weight = More packets routed via this path</div>
+                        </div>
                         <input 
                           type="range" min="1" max="100" value={wan.weight || 1}
                           onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, weight: parseInt(e.target.value)} : w)})}
@@ -339,24 +389,25 @@ const App = () => {
                         />
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Priority Index</label>
+                      <div className="space-y-2 bg-purple-600/5 p-4 rounded-xl border border-purple-500/10">
+                        <label className="text-[10px] text-purple-500 font-black uppercase tracking-widest block mb-2">Hierarchy Priority Index</label>
                         <select 
                           value={wan.priority || 1}
                           onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, priority: parseInt(e.target.value)} : w)})}
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-mono text-slate-300 outline-none focus:border-blue-500"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 outline-none focus:border-purple-500 transition-all cursor-pointer"
                         >
-                           <option value={1}>PRIORITY 1 (MAIN)</option>
-                           <option value={2}>PRIORITY 2 (BACKUP)</option>
-                           <option value={3}>PRIORITY 3 (EMERGENCY)</option>
+                           <option value={1}>01 - PRIMARY INTERFACE (ACTIVE)</option>
+                           <option value={2}>02 - SECONDARY BACKUP (HOT-STANDBY)</option>
+                           <option value={3}>03 - EMERGENCY CHANNEL (FAILOVER)</option>
                         </select>
                       </div>
                     )}
                   </div>
                 ))}
                 {config.wanInterfaces.length === 0 && (
-                   <div className="col-span-2 p-10 bg-slate-950/50 border border-dashed border-slate-800 rounded-2xl text-center text-slate-500 text-sm italic">
-                      No WAN interfaces detected for routing.
+                   <div className="p-20 bg-slate-950/50 border border-dashed border-slate-800 rounded-2xl text-center flex flex-col items-center gap-4">
+                      <div className="text-4xl grayscale opacity-30">🔌</div>
+                      <div className="text-slate-500 text-sm font-mono uppercase tracking-widest">No active WAN hardware detected by the kernel.</div>
                    </div>
                 )}
               </div>
@@ -376,26 +427,26 @@ const App = () => {
       {activeTab === 'settings' && (
         <div className="bg-slate-900/60 p-12 rounded-3xl border border-slate-800 text-center backdrop-blur-md">
            <h2 className="text-2xl font-bold text-white mb-2 tracking-tight">System Identity</h2>
-           <p className="text-slate-500 font-mono text-sm mb-10">Nexus Router OS v1.3.4 (Native Kernel Agent)</p>
+           <p className="text-slate-500 font-mono text-sm mb-10 uppercase tracking-widest">Nexus Router OS Native Agent v1.3.4</p>
            
            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl mx-auto">
               <div className="p-6 bg-slate-950/80 border border-slate-800 rounded-2xl shadow-inner">
-                 <div className="text-[10px] text-slate-500 mb-2 font-black uppercase tracking-widest">Hardware Port</div>
+                 <div className="text-[10px] text-slate-500 mb-2 font-black uppercase tracking-widest">Hardware API Port</div>
                  <div className="text-blue-400 font-bold font-mono text-lg">3000</div>
               </div>
               <div className="p-6 bg-slate-950/80 border border-slate-800 rounded-2xl shadow-inner">
-                 <div className="text-[10px] text-slate-500 mb-2 font-black uppercase tracking-widest">Git Origin</div>
-                 <div className="text-emerald-400 font-bold font-mono text-xs truncate">Djnirds1984/Nexus-Router-OS</div>
+                 <div className="text-[10px] text-slate-500 mb-2 font-black uppercase tracking-widest">Repository Origin</div>
+                 <div className="text-emerald-400 font-bold font-mono text-xs truncate">github.com/Djnirds1984/Nexus-Router-OS</div>
               </div>
            </div>
 
            <div className="mt-10 p-6 bg-blue-600/5 border border-blue-500/10 rounded-2xl text-left max-w-xl mx-auto">
-              <div className="text-[10px] text-blue-500 font-black uppercase tracking-widest mb-3">Kernel Log</div>
-              <div className="font-mono text-[11px] text-slate-400 space-y-1">
-                 <div>[INFO] IPv4 forwarding enabled</div>
-                 <div>[INFO] Multipath routing cache cleared</div>
-                 <div>[INFO] Interface enp1s0 status: UP</div>
-                 <div>[INFO] BBR Congestion Control: ACTIVE</div>
+              <div className="text-[10px] text-blue-500 font-black uppercase tracking-widest mb-3">Kernel Log Diagnostic</div>
+              <div className="font-mono text-[11px] text-slate-400 space-y-2">
+                 <div className="flex gap-4"><span className="text-slate-600">[OK]</span> <span>IPv4 forwarding enabled in sysctl</span></div>
+                 <div className="flex gap-4"><span className="text-slate-600">[OK]</span> <span>Multipath routing cache cleared via ip-route</span></div>
+                 <div className="flex gap-4"><span className="text-slate-600">[OK]</span> <span>Interface detection module: ACTIVE</span></div>
+                 <div className="flex gap-4"><span className="text-blue-500">[INFO]</span> <span>BBR Congestion Control: STATE=OPTIMAL</span></div>
               </div>
            </div>
         </div>

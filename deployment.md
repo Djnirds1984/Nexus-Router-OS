@@ -1,49 +1,49 @@
-# 🌐 Nexus Router OS: Definitive Ubuntu x64 Deployment Guide
+# 🌐 Nexus Router OS: The Definitive Deployment Guide
 
-This document provides the mandatory steps to deploy Nexus Router OS on an Ubuntu x64 machine. Following these steps exactly will resolve the "502 Bad Gateway" and "nexus-agent.service" failures.
+This guide provides the mandatory, end-to-end instructions to deploy Nexus Router OS on an Ubuntu x64 machine. **This project MUST be installed in `/var/www/html/Nexus-Router-Os`.**
 
 ---
 
-## 🛠️ 1. Prerequisites & Clean Slate
-Ensure you are logged in as `root` or have full `sudo` access.
+## 🛠️ 1. Environment Preparation
+Run these commands as `root` or with `sudo`.
 
 ```bash
-# Update system and install core requirements
+# Update Ubuntu and install critical dependencies
 sudo apt update && sudo apt upgrade -y
 sudo apt install git nodejs npm nginx iproute2 net-tools fuser -y
 ```
 
 ---
 
-## 📂 2. Mandatory Installation Path
-The project **MUST** reside in `/var/www/html/Nexus-Router-Os`. If it is anywhere else, the service will fail.
+## 📂 2. Installation (Mandatory Path)
+You must use the specific directory `/var/www/html/Nexus-Router-Os`.
 
 ```bash
-# 1. Clean existing attempts and create directory
+# 1. Clean existing attempts and create the core directory
 sudo rm -rf /var/www/html/Nexus-Router-Os
 sudo mkdir -p /var/www/html/Nexus-Router-Os
 sudo chown -R $USER:$USER /var/www/html/Nexus-Router-Os
 
-# 2. Clone the Repository
+# 2. Clone the Official Repository
 cd /var/www/html/Nexus-Router-Os
 git clone https://github.com/Djnirds1984/Nexus-Router-OS.git .
 
-# 3. CRITICAL: Install Backend Dependencies
-# This step fixes the "1/FAILURE" exit code.
+# 3. CRITICAL: Backend Dependency Setup
+# This resolves "502 Bad Gateway" and service failures.
 sudo npm install express cors --save
 ```
 
 ---
 
-## ⚡ 3. Hardware Agent (Systemd Service)
-The Hardware Agent manages your Linux Kernel. It must run as `root`.
+## ⚡ 3. Nexus Agent Service Configuration
+The Hardware Agent manages the Linux Kernel and needs to run as a persistent service.
 
-1.  **Create/Edit Service File**:
+1.  **Create the Service File**:
     ```bash
     sudo nano /etc/systemd/system/nexus-agent.service
     ```
 
-2.  **Paste this EXACT configuration**:
+2.  **Paste this exact content**:
     ```ini
     [Unit]
     Description=Nexus Router Core Agent
@@ -53,7 +53,6 @@ The Hardware Agent manages your Linux Kernel. It must run as `root`.
     Type=simple
     User=root
     WorkingDirectory=/var/www/html/Nexus-Router-Os
-    # Use 'which node' to verify path if this fails. Default is /usr/bin/node
     ExecStart=/usr/bin/node /var/www/html/Nexus-Router-Os/server.js
     Restart=always
     RestartSec=5
@@ -64,9 +63,9 @@ The Hardware Agent manages your Linux Kernel. It must run as `root`.
     WantedBy=multi-user.target
     ```
 
-3.  **Activate Agent**:
+3.  **Enable and Start the Service**:
     ```bash
-    # Kill any process accidentally using the port
+    # Kill any process using port 3000 to avoid EADDRINUSE
     sudo fuser -k 3000/tcp || true
     
     sudo systemctl daemon-reload
@@ -76,8 +75,8 @@ The Hardware Agent manages your Linux Kernel. It must run as `root`.
 
 ---
 
-## 🌐 4. Kernel Routing Optimization
-Enable the Ubuntu PC to actually forward packets between WAN interfaces.
+## 🌐 4. Kernel Routing Configuration
+Ensure the Ubuntu kernel is optimized for high-performance routing.
 
 ```bash
 sudo tee /etc/sysctl.d/99-nexus-router.conf <<EOF
@@ -89,15 +88,16 @@ net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
 EOF
 
+# Apply kernel changes immediately
 sudo sysctl -p /etc/sysctl.d/99-nexus-router.conf
 ```
 
 ---
 
-## 🎨 5. Nginx Reverse Proxy Config
-Connect the frontend dashboard to the hardware agent.
+## 🎨 5. Nginx Web Server (Proxy) Setup
+Configure Nginx to serve the dashboard and route API requests to the Agent.
 
-1.  **Create Config**:
+1.  **Create the Nginx Configuration**:
     ```bash
     sudo nano /etc/nginx/sites-available/nexus
     ```
@@ -106,7 +106,7 @@ Connect the frontend dashboard to the hardware agent.
     ```nginx
     server {
         listen 80;
-        server_name _; # Or your IP address
+        server_name _;
         root /var/www/html/Nexus-Router-Os;
         index index.html;
 
@@ -114,7 +114,6 @@ Connect the frontend dashboard to the hardware agent.
             try_files $uri $uri/ /index.html;
         }
 
-        # Proxy API requests to the Hardware Agent on port 3000
         location /api/ {
             proxy_pass http://127.0.0.1:3000/api/;
             proxy_http_version 1.1;
@@ -123,7 +122,6 @@ Connect the frontend dashboard to the hardware agent.
             proxy_set_header Host $host;
             proxy_cache_bypass $http_upgrade;
             
-            # Timeout settings for long-running kernel apply operations
             proxy_connect_timeout 60s;
             proxy_send_timeout 60s;
             proxy_read_timeout 60s;
@@ -131,7 +129,7 @@ Connect the frontend dashboard to the hardware agent.
     }
     ```
 
-3.  **Enable Site**:
+3.  **Activate the Site**:
     ```bash
     sudo ln -s /etc/nginx/sites-available/nexus /etc/nginx/sites-enabled/
     sudo rm -f /etc/nginx/sites-enabled/default
@@ -140,11 +138,17 @@ Connect the frontend dashboard to the hardware agent.
 
 ---
 
-## 🆘 Troubleshooting Agent Failures
-If `systemctl status nexus-agent` still shows `failed`:
+## ✅ 6. Final Launch
+Navigate to your Ubuntu machine's IP in a web browser.
+1. Go to the **Multi-WAN** tab.
+2. You will see your real hardware interfaces (e.g., `eth0`, `enp1s0`).
+3. **Rename** them as desired (e.g., "Starlink", "Fiber").
+4. Adjust Weights or Priorities.
+5. Click **"Sync Configuration to Ubuntu Kernel"**.
 
-1.  **Check logs**: `cat /var/log/nexus-agent.log`
-2.  **Test manually**: `cd /var/www/html/Nexus-Router-Os && sudo node server.js`
-    - If it says `Cannot find module 'express'`, run `npm install express` again.
-    - If it says `EADDRINUSE`, run `sudo fuser -k 3000/tcp`.
-3.  **Verify Node Path**: Run `which node`. If it returns `/usr/local/bin/node`, update the `ExecStart` path in your `.service` file.
+---
+
+## 🆘 Troubleshooting
+- **Bad Gateway (502)**: Ensure `nexus-agent` service is running: `sudo systemctl status nexus-agent`.
+- **Interface Not Found**: Ensure you have multiple network interfaces connected and recognized by Ubuntu (`ip link show`).
+- **Logs**: View detailed agent logs at `cat /var/log/nexus-agent.log`.
