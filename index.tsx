@@ -497,29 +497,106 @@ const App = () => {
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard wanInterfaces={config.wanInterfaces} metrics={metrics} />}
       {activeTab === 'wan' && (
-        <div className="space-y-6">
-           <div className="bg-slate-900/60 p-10 rounded-3xl border border-slate-800">
-              <h2 className="text-2xl font-bold text-white mb-6">Multi-WAN Orchestration</h2>
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+           <div className="bg-slate-900/60 p-10 rounded-3xl border border-slate-800 backdrop-blur-md">
+              <h2 className="text-2xl font-bold text-white mb-6 tracking-tight">Multi-WAN Orchestration</h2>
+              
+              {/* Mode Selection Grid */}
+              <div className="flex gap-4 mb-10">
+                 <button 
+                   onClick={() => setConfig({...config, mode: RouterMode.LOAD_BALANCER})}
+                   className={`flex-1 p-6 rounded-2xl border transition-all text-left group ${config.mode === RouterMode.LOAD_BALANCER ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]' : 'bg-slate-950/50 border-slate-800 text-slate-500 hover:border-slate-700'}`}
+                 >
+                    <div className={`font-bold transition-colors ${config.mode === RouterMode.LOAD_BALANCER ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>Load Balancer (Active-Active)</div>
+                    <div className="text-[11px] mt-1 opacity-60 font-mono">Parallel IP multiplexing for maximum aggregate bandwidth.</div>
+                 </button>
+                 <button 
+                   onClick={() => setConfig({...config, mode: RouterMode.FAILOVER})}
+                   className={`flex-1 p-6 rounded-2xl border transition-all text-left group ${config.mode === RouterMode.FAILOVER ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]' : 'bg-slate-950/50 border-slate-800 text-slate-500 hover:border-slate-700'}`}
+                 >
+                    <div className={`font-bold transition-colors ${config.mode === RouterMode.FAILOVER ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>Auto Failover (High Availability)</div>
+                    <div className="text-[11px] mt-1 opacity-60 font-mono">Priority-based routing with automatic outage recovery.</div>
+                 </button>
+              </div>
+
               <div className="grid grid-cols-1 gap-6 mb-10">
                 {eligibleWanInterfaces.map((wan: any) => (
-                  <div key={wan.id} className="bg-slate-950/80 p-6 rounded-2xl border border-slate-800">
-                    <div className="flex justify-between items-center mb-6">
-                      <input type="text" value={wan.name} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, name: e.target.value} : w)})} className="bg-transparent border-b border-slate-800 text-white font-bold" />
-                      <span className="text-xs bg-slate-900 px-3 py-1 rounded border border-slate-800 text-blue-400 font-mono">{wan.interfaceName}</span>
+                  <div key={wan.id} className="bg-slate-950/80 p-6 rounded-2xl border border-slate-800 shadow-inner group transition-all hover:border-slate-600">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                       <div className="flex-1">
+                          <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1 block">Custom Interface Identity</label>
+                          <input 
+                            type="text" 
+                            value={wan.name} 
+                            onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, name: e.target.value} : w)})}
+                            className="bg-transparent border-b border-slate-800 focus:border-blue-500 outline-none text-xl font-bold text-white w-full md:w-64 pb-1"
+                            placeholder="Rename interface..."
+                          />
+                       </div>
+                       <div className="flex items-center gap-3">
+                         <div className={`px-4 py-1.5 rounded-full text-[11px] font-black tracking-widest uppercase flex items-center gap-2 ${wan.status === WanStatus.UP ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${wan.status === WanStatus.UP ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></div>
+                            {wan.status}
+                         </div>
+                         <span className="text-[10px] bg-slate-900 px-3 py-1.5 rounded border border-slate-800 text-blue-400 font-mono font-black uppercase tracking-widest">{wan.interfaceName}</span>
+                       </div>
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                       <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">Global IP</div>
+                          <div className="text-sm font-mono text-slate-300">{wan.ipAddress}</div>
+                       </div>
+                       <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">Gateway</div>
+                          <div className="text-sm font-mono text-slate-300">{wan.gateway}</div>
+                       </div>
+                       <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">RX Throughput</div>
+                          <div className="text-sm font-mono text-emerald-400 font-bold">{wan.throughput?.rx.toFixed(2) || '0.00'} Mbps</div>
+                       </div>
+                       <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">TX Throughput</div>
+                          <div className="text-sm font-mono text-blue-400 font-bold">{wan.throughput?.tx.toFixed(2) || '0.00'} Mbps</div>
+                       </div>
+                    </div>
+
                     {config.mode === RouterMode.LOAD_BALANCER ? (
-                      <input type="range" min="1" max="100" value={wan.weight || 1} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, weight: parseInt(e.target.value)} : w)})} className="w-full accent-blue-500" />
+                      <div className="space-y-3 bg-blue-600/5 p-4 rounded-xl border border-blue-500/10">
+                        <div className="flex justify-between items-center">
+                           <div className="text-[10px] text-blue-500 font-black uppercase tracking-widest">Weight Distribution Value: <span className="text-white text-sm ml-2">{wan.weight || 1}</span></div>
+                           <div className="text-[9px] text-slate-600 italic">High weight = More packets routed via this path</div>
+                        </div>
+                        <input 
+                          type="range" min="1" max="100" value={wan.weight || 1}
+                          onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, weight: parseInt(e.target.value)} : w)})}
+                          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 transition-all hover:accent-blue-400"
+                        />
+                      </div>
                     ) : (
-                      <select value={wan.priority || 1} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, priority: parseInt(e.target.value)} : w)})} className="bg-slate-900 border border-slate-800 text-white p-2 rounded">
-                        <option value={1}>P1 - Primary</option>
-                        <option value={2}>P2 - Secondary</option>
-                        <option value={3}>P3 - Backup</option>
-                      </select>
+                      <div className="space-y-2 bg-purple-600/5 p-4 rounded-xl border border-purple-500/10">
+                        <label className="text-[10px] text-purple-500 font-black uppercase tracking-widest block mb-2">Hierarchy Priority Index</label>
+                        <select 
+                          value={wan.priority || 1}
+                          onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, priority: parseInt(e.target.value)} : w)})}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 outline-none focus:border-purple-500 transition-all cursor-pointer"
+                        >
+                           <option value={1}>01 - PRIMARY INTERFACE (ACTIVE)</option>
+                           <option value={2}>02 - SECONDARY BACKUP (HOT-STANDBY)</option>
+                           <option value={3}>03 - EMERGENCY CHANNEL (FAILOVER)</option>
+                        </select>
+                      </div>
                     )}
                   </div>
                 ))}
+                {eligibleWanInterfaces.length === 0 && (
+                   <div className="p-20 bg-slate-950/50 border border-dashed border-slate-800 rounded-2xl text-center flex flex-col items-center gap-4">
+                      <div className="text-4xl grayscale opacity-30">🔌</div>
+                      <div className="text-slate-500 text-sm font-mono uppercase tracking-widest">No available WAN hardware. (All ports are currently bridged)</div>
+                   </div>
+                )}
               </div>
-              <button onClick={commitConfig} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold">APPLY & SAVE WAN CONFIG</button>
+              <button onClick={commitConfig} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/20 active:scale-[0.98] transition-all uppercase tracking-widest">APPLY & SAVE WAN CONFIG TO KERNEL</button>
            </div>
         </div>
       )}
