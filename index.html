@@ -10,10 +10,60 @@
   <style>
     body {
       font-family: 'Inter', sans-serif;
-      background-color: #0f172a;
+      background-color: #0B0F1A;
       color: #f8fafc;
+      margin: 0;
+      overflow: hidden;
     }
     .mono { font-family: 'JetBrains+Mono', monospace; }
+    
+    /* Loading Splash */
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: #0B0F1A;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.5s ease-out;
+    }
+    .loader {
+      width: 48px;
+      height: 48px;
+      border: 3px solid #1e293b;
+      border-radius: 50%;
+      display: inline-block;
+      position: relative;
+      box-sizing: border-box;
+      animation: rotation 1s linear infinite;
+    }
+    .loader::after {
+      content: '';  
+      box-sizing: border-box;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 3px solid transparent;
+      border-bottom-color: #3b82f6;
+    }
+    @keyframes rotation {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .loading-text {
+      margin-top: 24px;
+      font-family: 'JetBrains+Mono', monospace;
+      color: #475569;
+      font-size: 12px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
   </style>
 <script type="importmap">
 {
@@ -28,6 +78,20 @@
 </script>
 </head>
 <body>
+  <div id="loading-overlay">
+    <span class="loader"></span>
+    <div class="loading-text">Initializing Nexus Kernel...</div>
+  </div>
   <div id="root"></div>
+  <script>
+    // Hide loader once React has had a chance to mount
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const loader = document.getElementById('loading-overlay');
+        if (loader) loader.style.opacity = '0';
+        setTimeout(() => loader?.remove(), 500);
+      }, 800);
+    });
+  </script>
 </body>
 </html>

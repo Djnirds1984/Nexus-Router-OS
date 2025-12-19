@@ -1,31 +1,27 @@
 
 # Nexus Router OS: Deployment Guide (Ubuntu x64)
 
-This guide provides the necessary steps to deploy the **Nexus Router OS** management dashboard and configure your Ubuntu x64 PC as a professional Multi-WAN router with Load Balancing and Auto-Failover capabilities.
+Follow these steps to turn your Ubuntu PC into a professional Multi-WAN Router.
+
+## 🚀 Quick Start Checklist
+1. [ ] Enable IPv4 Forwarding
+2. [ ] Clone Repository
+3. [ ] Build the Dashboard (`npm run build`)
+4. [ ] Configure Nginx to serve the `dist` folder
+5. [ ] Reboot & Login
 
 ---
 
-## 1. Hardware Requirements
+## 1. Host OS Preparation (Ubuntu 24.04 LTS)
 
-To use this system as a router, your Ubuntu PC requires:
-*   **Architecture:** x86_64 (Intel/AMD).
-*   **NICs:** At least 3 Ethernet ports (1 for LAN, 2 for WAN interfaces).
-*   **Storage:** 16GB+ (Dashboard + Linux OS).
-*   **RAM:** 2GB minimum (8GB+ recommended).
-
----
-
-## 2. Host OS Preparation (Ubuntu 24.04 LTS)
-
-### Enable IPv4 Forwarding
-Run the following commands to enable routing:
+### Enable Routing
 ```bash
 sudo sysctl -w net.ipv4.ip_forward=1
 echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
 
-### Install Essential Networking Tools
+### Install Network Stack
 ```bash
 sudo apt update
 sudo apt install -y iproute2 nftables curl nodejs npm nginx
@@ -33,87 +29,50 @@ sudo apt install -y iproute2 nftables curl nodejs npm nginx
 
 ---
 
-## 3. Dashboard Installation
+## 2. Dashboard Installation
 
-### Step 1: Clone and Install
+### Build the Project
 ```bash
 git clone https://github.com/Djnirds1984/Nexus-Router-OS.git
 cd Nexus-Router-OS
 npm install
-```
-
-### Step 2: Environment Configuration
-Ensure your Gemini API Key is available to power the **AI Advisor**:
-```bash
-export API_KEY='your_google_gemini_api_key'
-```
-
-### Step 3: Production Service
-It is recommended to use `pm2` to keep the dashboard running:
-```bash
-sudo npm install -g pm2
-pm2 start npm --name "nexus-os" -- run dev
+npm run build  # This creates the /dist folder
 ```
 
 ---
 
-## 4. Nginx Configuration (Full Default Replacement)
+## 3. Nginx Configuration (The "Real" Fix)
 
-To avoid configuration errors, **replace the entire contents** of `/etc/nginx/sites-available/default` with the following block.
+The error you saw earlier happened because Nginx couldn't find a running server. We will now configure Nginx to serve the files directly from the `/dist` folder you just created.
 
-### Step 1: Clear and Edit
-```bash
-sudo truncate -s 0 /etc/nginx/sites-available/default
-sudo nano /etc/nginx/sites-available/default
-```
-
-### Step 2: Paste this content
+### Replace `/etc/nginx/sites-available/default`
 ```nginx
-##
-# Nexus Router OS Default Nginx Proxy Configuration
-# Optimized for Ubuntu x64 Dashboard
-##
-
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
 
     server_name _;
 
-    # Root for fallback (not used as we proxy everything)
-    root /var/www/html;
-    index index.html index.htm;
+    # Update this path to the EXACT location of your cloned repo's dist folder
+    root /home/YOUR_USERNAME/Nexus-Router-OS/dist;
+    index index.html;
 
     location / {
-        # Proxy traffic to the Vite/React dashboard
-        proxy_pass http://localhost:5173;
-        
-        # Standard proxy headers
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # WebSocket support (Crucial for Terminal & HMR)
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        
-        # Timeout settings for live terminal sessions
-        proxy_read_timeout 86400;
-        proxy_send_timeout 86400;
+        try_files $uri $uri/ /index.html;
     }
 
-    # Custom error pages for router management
-    error_page 502 /502.html;
-    location = /502.html {
-        return 502 "Nexus OS: Dashboard service is starting or offline. Please wait...";
-        add_header Content-Type text/plain;
+    # Optimization for assets
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, no-transform";
     }
+
+    # Error handling
+    error_page 404 /index.html;
 }
 ```
 
-### Step 3: Verify and Restart
+### Apply Changes
 ```bash
 sudo nginx -t
 sudo systemctl restart nginx
@@ -121,19 +80,18 @@ sudo systemctl restart nginx
 
 ---
 
-## 5. Configuring Multi-WAN
+## 4. Troubleshooting: "Dashboard service is starting..."
 
-1.  **Orchestrate:** Go to the **Multi-WAN** tab in the dashboard.
-2.  **Select Mode:** Choose between `LOAD BALANCER` or `AUTO FAILOVER`.
-3.  **Generate Advice:** Navigate to the **AI Advisor** tab.
-4.  **Execute:** Copy the generated commands and execute them in your terminal with `sudo`.
+If you see this message, it means you are using the old **Proxy** configuration. Please follow **Step 3** above to switch to the **Static** configuration. 
 
----
-
-## 6. Security Hardening
-
-*   **UFW:** `sudo ufw allow 80/tcp` (Nginx) and `sudo ufw allow 22/tcp` (SSH).
-*   **Kernel:** Use the AI Advisor's suggested `sysctl` hardening commands.
+**Common Fixes:**
+1. **Check Permissions**: Ensure Nginx can read your home directory: `chmod o+x /home/YOUR_USERNAME`.
+2. **Missing Dist**: Ensure you ran `npm run build`. If the `/dist` folder doesn't exist, the page will fail.
+3. **Check Logs**: Run `sudo tail -f /var/log/nginx/error.log` to see why it's failing.
 
 ---
+
+## 5. Kernel Orchestration
+Once the dashboard is visible, use the **AI Advisor** to get the `nftables` rules for your specific hardware. Execute those rules via `sudo` to enable the actual routing logic.
+
 *Repository: https://github.com/Djnirds1984/Nexus-Router-OS.git*

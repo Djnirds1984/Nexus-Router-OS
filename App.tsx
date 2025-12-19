@@ -41,14 +41,14 @@ const App: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const addLog = (type: TerminalLog['type'], message: string) => {
+  const addLog = useCallback((type: TerminalLog['type'], message: string) => {
     setLogs(prev => [...prev, {
       id: Math.random().toString(36).substr(2, 9),
       type,
       message,
       timestamp: new Date()
     }].slice(-50));
-  };
+  }, []);
 
   const handleApply = async () => {
     setIsApplying(true);
@@ -120,21 +120,45 @@ const App: React.FC = () => {
         return <UpdateManager onApplyUpdate={handleApplyUpdate} isUpdating={isUpdating} />;
       case 'settings':
         return (
-          <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center animate-in fade-in zoom-in-95 shadow-2xl">
-            <h1 className="text-2xl font-bold text-white mb-4">Kernel & System Runtime</h1>
-            <p className="text-slate-400 max-w-md mx-auto mb-8">Low-level optimization for Ubuntu x86_64 host system.</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
-              {[
-                { label: 'Sysctl Hardening', desc: 'IPv4/IPv6 forwarding & hardening' },
-                { label: 'SSH Hardening', desc: 'Key-based auth & port change' },
-                { label: 'Hardware Offload', desc: 'SR-IOV & DPDK settings' },
-                { label: 'Firmware Updates', desc: 'Check for microcode updates' }
-              ].map(item => (
-                <div key={item.label} className="p-6 bg-slate-950 rounded-xl border border-slate-800 text-left hover:border-blue-500/50 transition-all cursor-pointer group active:scale-95 shadow-lg shadow-black/20">
-                  <div className="font-bold text-white group-hover:text-blue-400 transition-colors">{item.label}</div>
-                  <div className="text-xs text-slate-500 mt-1 uppercase tracking-tight opacity-70">{item.desc}</div>
-                </div>
-              ))}
+          <div className="space-y-8 animate-in fade-in duration-700">
+             <header>
+                <h1 className="text-3xl font-bold text-white tracking-tight">System Runtime</h1>
+                <p className="text-slate-400 mt-1">Ubuntu x86_64 host environment optimization.</p>
+             </header>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 opacity-50"></div>
+                  <h3 className="text-lg font-bold text-white mb-2">Kernel Forwarding</h3>
+                  <p className="text-sm text-slate-500 mb-6">Status of IPv4/IPv6 packet traversal.</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                    <span className="text-xs font-mono text-emerald-400 font-bold">ENABLED</span>
+                  </div>
+               </div>
+
+               <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-purple-500 opacity-50"></div>
+                  <h3 className="text-lg font-bold text-white mb-2">Security Hardening</h3>
+                  <p className="text-sm text-slate-500 mb-6">Sysctl parameters for network protection.</p>
+                  <button className="text-xs font-bold text-purple-400 hover:text-purple-300 transition-colors">OPTIMIZE NOW →</button>
+               </div>
+
+               <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-amber-500 opacity-50"></div>
+                  <h3 className="text-lg font-bold text-white mb-2">Process Control</h3>
+                  <p className="text-sm text-slate-500 mb-6">PM2 / Systemd service management.</p>
+                  <div className="flex gap-2">
+                    <span className="px-2 py-1 bg-slate-800 rounded text-[10px] text-slate-400 font-mono">nginx:up</span>
+                    <span className="px-2 py-1 bg-slate-800 rounded text-[10px] text-slate-400 font-mono">pm2:active</span>
+                  </div>
+               </div>
+            </div>
+
+            <div className="bg-slate-900/50 p-12 rounded-3xl border border-slate-800/50 text-center border-dashed">
+              <div className="text-4xl mb-4">🛠️</div>
+              <h2 className="text-xl font-bold text-white mb-2">Advanced Config</h2>
+              <p className="text-slate-500 text-sm max-w-sm mx-auto">Access low-level hardware offload settings and PCIe interface diagnostic tools.</p>
             </div>
           </div>
         );
@@ -145,7 +169,9 @@ const App: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {renderContent()}
+      <div className="relative pb-20">
+        {renderContent()}
+      </div>
       <Terminal logs={logs} isOpen={isTerminalOpen} onClose={() => setIsTerminalOpen(false)} />
     </Layout>
   );
