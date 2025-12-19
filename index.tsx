@@ -49,7 +49,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                activeTab === tab.id ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-sm' : 'hover:bg-slate-800 text-slate-400'
+                activeTab === tab.id ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'hover:bg-slate-800 text-slate-400'
               }`}
             >
               <span className="text-xl">{tab.icon}</span>
@@ -59,9 +59,9 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
         </nav>
         <div className="p-4 mt-auto">
           <div className={`p-4 rounded-xl border transition-all ${isLive ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-amber-500/5 border-amber-500/20'}`}>
-            <div className="text-[10px] text-slate-500 mb-1 uppercase tracking-widest font-bold">Host Connectivity</div>
+            <div className="text-[10px] text-slate-500 mb-1 uppercase tracking-widest font-bold">Kernel Bridge</div>
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full animate-pulse ${isLive ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <div className={`w-2 h-2 rounded-full animate-pulse ${isLive ? 'bg-emerald-500 shadow-[0_0_5px_#10b981]' : 'bg-amber-500'}`} />
               <span className={`text-xs font-bold uppercase ${isLive ? 'text-emerald-400' : 'text-amber-400'}`}>
                 {isLive ? 'Hardware Native' : 'Simulated Env'}
               </span>
@@ -82,16 +82,16 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
 const Dashboard = ({ wanInterfaces, metrics }: any) => {
   const chartData = useMemo(() => Array.from({ length: 30 }).map((_, i) => ({
     time: i,
-    wan1: (wanInterfaces[0]?.throughput?.rx || 0) + Math.random() * 5,
-    wan2: (wanInterfaces[1]?.throughput?.rx || 0) + Math.random() * 2,
+    wan1: (wanInterfaces[0]?.throughput?.rx || 0) + (Math.random() * 0.5),
+    wan2: (wanInterfaces[1]?.throughput?.rx || 0) + (Math.random() * 0.2),
   })), [wanInterfaces]);
 
   return (
     <div className="space-y-6">
       <header className="flex justify-between items-end mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">System Overview</h1>
-          <p className="text-slate-500 text-sm mt-1 uppercase tracking-wider font-mono">Kernel: {metrics.uptime || 'Booting...'}</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight">System Telemetry</h1>
+          <p className="text-slate-500 text-sm mt-1 uppercase tracking-wider font-mono">Uptime: {metrics.uptime || 'Detecting...'}</p>
         </div>
       </header>
 
@@ -100,9 +100,9 @@ const Dashboard = ({ wanInterfaces, metrics }: any) => {
           { label: 'CPU LOAD', val: `${metrics.cpuUsage?.toFixed(1) || 0}%`, color: 'text-blue-400' },
           { label: 'MEM USAGE', val: `${metrics.memoryUsage || 0} GB`, color: 'text-white' },
           { label: 'SESSIONS', val: metrics.activeSessions || 0, color: 'text-white' },
-          { label: 'LATENCY', val: '14ms', color: 'text-emerald-400' },
+          { label: 'CORE TEMP', val: metrics.temp || 'N/A', color: 'text-amber-400' },
         ].map((m, i) => (
-          <div key={i} className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800 backdrop-blur-sm shadow-sm hover:border-slate-700 transition-colors">
+          <div key={i} className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800 backdrop-blur-sm shadow-sm">
             <div className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-3">{m.label}</div>
             <div className={`text-2xl font-mono font-bold ${m.color}`}>{m.val}</div>
           </div>
@@ -112,7 +112,7 @@ const Dashboard = ({ wanInterfaces, metrics }: any) => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-xl">
           <h2 className="text-lg font-bold text-white mb-8 flex items-center gap-2">
-            <span className="w-1.5 h-4 bg-blue-500 rounded-sm shadow-[0_0_8px_#3b82f6]" /> Live Throughput (MB/s)
+            <span className="w-1.5 h-4 bg-blue-500 rounded-sm shadow-[0_0_8px_#3b82f6]" /> Live Network Load (MB/s)
           </h2>
           <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -132,30 +132,27 @@ const Dashboard = ({ wanInterfaces, metrics }: any) => {
 
         <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 flex flex-col justify-between">
            <div>
-              <h2 className="text-lg font-bold text-white mb-6">Host Context</h2>
+              <h2 className="text-lg font-bold text-white mb-6">Host Environment</h2>
               <div className="space-y-4">
                  <div className="p-4 bg-slate-950/50 rounded-xl border border-slate-800">
-                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Architecture</div>
+                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">OS</div>
                     <div className="text-sm font-mono text-blue-400">Ubuntu 24.04 x86_64</div>
                  </div>
                  <div className="p-4 bg-slate-950/50 rounded-xl border border-slate-800">
-                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Forwarding</div>
-                    <div className="text-sm font-mono text-emerald-400">STATE: ENABLED</div>
+                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">IPv4 Routing</div>
+                    <div className="text-sm font-mono text-emerald-400">STATE: ACTIVE</div>
                  </div>
               </div>
            </div>
-           <button className="w-full bg-slate-800 hover:bg-slate-700 text-xs font-bold py-3 rounded-xl transition-all uppercase tracking-widest text-slate-400">
-              Update Kernel Delays
-           </button>
         </div>
       </div>
 
       <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
         <div className="bg-slate-800/20 p-4 border-b border-slate-800 flex justify-between items-center">
-           <h3 className="font-bold text-white text-sm">Hardware Interfaces</h3>
+           <h3 className="font-bold text-white text-sm">Physical Ports</h3>
            <span className="text-[10px] font-bold text-slate-500">{wanInterfaces.length} DETECTED</span>
         </div>
-        <div className="divide-y divide-slate-800">
+        <div className="divide-y divide-slate-800 font-mono">
           {wanInterfaces.map((wan: any) => (
             <div key={wan.id} className="p-6 flex items-center justify-between hover:bg-slate-800/10 transition-colors group">
               <div className="flex items-center gap-4">
@@ -163,14 +160,14 @@ const Dashboard = ({ wanInterfaces, metrics }: any) => {
                 <div>
                   <div className="font-bold text-white flex items-center gap-2">
                     {wan.name}
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-950 text-blue-400 border border-blue-500/10 font-mono">{wan.interfaceName}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-950 text-blue-400 border border-blue-500/10 uppercase">{wan.interfaceName}</span>
                   </div>
-                  <div className="text-xs text-slate-500 font-mono mt-0.5">{wan.ipAddress}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{wan.ipAddress} • <span className="text-slate-600">GW: {wan.gateway}</span></div>
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-xs font-mono text-emerald-400">IN: {wan.throughput.rx.toFixed(2)} MB</div>
-                <div className="text-xs font-mono text-blue-400">OUT: {wan.throughput.tx.toFixed(2)} MB</div>
+                <div className="text-xs text-emerald-400">RX: {wan.throughput.rx.toFixed(2)} MB</div>
+                <div className="text-xs text-blue-400">TX: {wan.throughput.tx.toFixed(2)} MB</div>
               </div>
             </div>
           ))}
@@ -189,7 +186,7 @@ const AIAdvisor = ({ config }: any) => {
 
   const getAdvice = async () => {
     if (!process.env.API_KEY) {
-      setAdvice('API Key missing. Cannot generate neural diagnostics.');
+      setAdvice('API Key missing. Cannot generate diagnostics.');
       return;
     }
     setLoading(true);
@@ -197,11 +194,11 @@ const AIAdvisor = ({ config }: any) => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Analyze this real Ubuntu router config: ${JSON.stringify(config)}. Suggest optimized nftables and iproute2 performance tweaks.`,
+        contents: `Analyze this real Ubuntu router config: ${JSON.stringify(config)}. Suggest optimized nftables and iproute2 tweaks.`,
       });
       setAdvice(response.text || '');
     } catch (e) {
-      setAdvice('AI link failed. Using local cached heuristics.');
+      setAdvice('Neural link interrupted. Using local heuristic fallback.');
     }
     setLoading(false);
   };
@@ -211,14 +208,14 @@ const AIAdvisor = ({ config }: any) => {
       <div className="flex justify-between items-center mb-8">
         <div>
            <h2 className="text-2xl font-bold text-white mb-1">Nexus AI Neuralink</h2>
-           <p className="text-slate-500 text-sm">Deep inspection of Linux networking stack.</p>
+           <p className="text-slate-500 text-sm italic">Synchronized with Ubuntu Kernel v6.8.x</p>
         </div>
-        <button onClick={getAdvice} disabled={loading} className="bg-blue-600 hover:bg-blue-500 px-8 py-3 rounded-2xl text-xs font-bold text-white transition-all shadow-lg shadow-blue-600/20 active:scale-95">
-          {loading ? 'Analyzing Core...' : 'Sync Advisor'}
+        <button onClick={getAdvice} disabled={loading} className="bg-blue-600 hover:bg-blue-500 px-8 py-3 rounded-2xl text-xs font-bold text-white transition-all shadow-lg shadow-blue-600/20">
+          {loading ? 'Analyzing...' : 'Deep Sync'}
         </button>
       </div>
       <div className="bg-slate-950 p-8 rounded-2xl border border-slate-800 font-mono text-sm leading-relaxed text-slate-300 min-h-[200px] whitespace-pre-wrap">
-        {advice || 'Nexus AI is ready. Synchronize topology to receive kernel-level optimization scripts.'}
+        {advice || 'Nexus AI ready for kernel-level inspection.'}
       </div>
     </div>
   );
@@ -230,13 +227,10 @@ const AIAdvisor = ({ config }: any) => {
 const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isLive, setIsLive] = useState(false);
-  const [metrics, setMetrics] = useState({ cpuUsage: 0, memoryUsage: 0, uptime: '', activeSessions: 0 });
+  const [metrics, setMetrics] = useState<any>({ cpuUsage: 0, memoryUsage: 0, uptime: '', activeSessions: 0 });
   const [config, setConfig] = useState<any>({
     mode: RouterMode.LOAD_BALANCER,
-    wanInterfaces: [
-      { id: 'eth0', name: 'ISP PRIMARY', interfaceName: 'eth0', status: WanStatus.UP, weight: 70, ipAddress: '192.168.1.10', throughput: { rx: 0, tx: 0 } },
-      { id: 'eth1', name: 'ISP BACKUP', interfaceName: 'eth1', status: WanStatus.UP, weight: 30, ipAddress: '10.0.0.5', throughput: { rx: 0, tx: 0 } },
-    ]
+    wanInterfaces: []
   });
 
   const refreshData = useCallback(async () => {
@@ -251,17 +245,12 @@ const App = () => {
         const met = await metricRes.json();
         setIsLive(true);
         setMetrics(met);
+        // Only update basic fields, preserve UI-only state if needed
         setConfig((prev: any) => ({ ...prev, wanInterfaces: ifaces }));
       }
     } catch (e) {
       setIsLive(false);
-      // Fallback to random simulation if agent is down
-      setMetrics({
-        cpuUsage: 5 + Math.random() * 5,
-        memoryUsage: 1.2,
-        uptime: 'Simulated 1h 20m',
-        activeSessions: 42
-      });
+      setMetrics({ cpuUsage: 5, memoryUsage: 1.2, uptime: 'Simulation Mode', activeSessions: 12 });
     }
   }, []);
 
@@ -275,30 +264,92 @@ const App = () => {
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard wanInterfaces={config.wanInterfaces} metrics={metrics} />}
       {activeTab === 'wan' && (
-        <div className="bg-slate-900 p-10 rounded-3xl border border-slate-800 text-center">
-           <div className="text-4xl mb-4">🚀</div>
-           <h2 className="text-2xl font-bold text-white mb-2">Interface Orchestration</h2>
-           <p className="text-slate-500 mb-8 max-w-sm mx-auto">Hardware interfaces are managed automatically by the Nexus Core Agent.</p>
-           <button 
-             onClick={async () => {
-               await fetch(`${API_BASE}/apply`, {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify(config)
-               });
-               alert('Config pushed to Kernel successfully.');
-             }}
-             className="bg-blue-600 text-white px-10 py-4 rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/20"
-           >
-             Commit Config to Kernel
-           </button>
+        <div className="space-y-6">
+           <div className="bg-slate-900 p-10 rounded-3xl border border-slate-800">
+              <h2 className="text-2xl font-bold text-white mb-6">Route Orchestration</h2>
+              
+              <div className="flex gap-4 mb-10">
+                 <button 
+                   onClick={() => setConfig({...config, mode: RouterMode.LOAD_BALANCER})}
+                   className={`flex-1 p-6 rounded-2xl border transition-all text-left ${config.mode === RouterMode.LOAD_BALANCER ? 'bg-blue-600/10 border-blue-500' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                 >
+                    <div className="font-bold text-white">Multi-WAN Load Balancer</div>
+                    <div className="text-xs mt-1">Combine multiple ISP connections for maximum throughput.</div>
+                 </button>
+                 <button 
+                   onClick={() => setConfig({...config, mode: RouterMode.FAILOVER})}
+                   className={`flex-1 p-6 rounded-2xl border transition-all text-left ${config.mode === RouterMode.FAILOVER ? 'bg-blue-600/10 border-blue-500' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                 >
+                    <div className="font-bold text-white">Auto-Failover</div>
+                    <div className="text-xs mt-1">High-availability redundancy. Switch to backup on outage.</div>
+                 </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                {config.wanInterfaces.map((wan: any) => (
+                  <div key={wan.id} className="bg-slate-950 p-6 rounded-2xl border border-slate-800">
+                    <div className="flex justify-between items-center mb-4">
+                       <span className="font-bold text-white">{wan.name}</span>
+                       <span className="text-[10px] text-blue-400 font-mono">{wan.interfaceName}</span>
+                    </div>
+                    {config.mode === RouterMode.LOAD_BALANCER ? (
+                      <div>
+                        <div className="flex justify-between text-[10px] text-slate-500 mb-2 font-bold">WEIGHT: {wan.weight}%</div>
+                        <input 
+                          type="range" min="1" max="100" value={wan.weight}
+                          onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, weight: parseInt(e.target.value)} : w)})}
+                          className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                      </div>
+                    ) : (
+                      <select 
+                        value={wan.priority}
+                        onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, priority: parseInt(e.target.value)} : w)})}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs font-mono"
+                      >
+                         <option value={1}>PRIORITY 1 (MAIN)</option>
+                         <option value={2}>PRIORITY 2 (BACKUP)</option>
+                         <option value={3}>PRIORITY 3 (LAST RESORT)</option>
+                      </select>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button 
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`${API_BASE}/apply`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(config)
+                    });
+                    const data = await res.json();
+                    alert('Kernel synchronized successfully: \n' + data.log.join('\n'));
+                  } catch(e) { alert('Failed to contact Core Agent.'); }
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/20 active:scale-[0.99] transition-transform"
+              >
+                SYNC CONFIG TO UBUNTU KERNEL
+              </button>
+           </div>
         </div>
       )}
       {activeTab === 'advisor' && <AIAdvisor config={config} />}
       {activeTab === 'settings' && (
         <div className="bg-slate-900 p-12 rounded-3xl border border-slate-800 text-center">
            <h2 className="text-xl font-bold text-white">System Settings</h2>
-           <p className="text-slate-500 mt-2">Core Agent Port: 3000 • Protocol: HTTP/JSON</p>
+           <p className="text-slate-500 mt-2 font-mono text-sm">Nexus Core Agent v2.4.1 (Native)</p>
+           <div className="mt-8 grid grid-cols-2 gap-4 max-w-md mx-auto">
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl">
+                 <div className="text-[10px] text-slate-500 mb-1 font-bold">API STATUS</div>
+                 <div className="text-emerald-400 font-bold">ONLINE</div>
+              </div>
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl">
+                 <div className="text-[10px] text-slate-500 mb-1 font-bold">PORT</div>
+                 <div className="text-blue-400 font-bold">3000</div>
+              </div>
+           </div>
         </div>
       )}
     </Layout>

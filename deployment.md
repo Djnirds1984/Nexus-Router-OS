@@ -1,37 +1,86 @@
+# Nexus OS: Ubuntu x64 Router Deployment Guide
 
-# Nexus Router OS: Pro Hardware Deployment
+Follow these steps to turn your PC into a high-performance Multi-WAN Load Balancer.
 
-To enable real-world router functionality on your Ubuntu x64 machine, you must run the **Nexus Core Agent**.
+## 🏗️ 1. Hardware Preparation
+1.  **Network Interface Cards (NICs)**: Ensure your PC has at least 3 Ethernet ports (1 for LAN, 2 for WAN/ISPs).
+2.  **Cabling**: Connect your Primary ISP to the first port (e.g., `enp1s0`) and your Backup ISP to the second port (e.g., `enp2s0`).
+3.  **OS**: Install **Ubuntu 24.04 LTS x64**.
 
-## 🚀 1. Prerequisites
-Ensure you have Node.js and Npm installed on your Ubuntu host:
+## 🛠️ 2. Core Agent Installation
+The Core Agent bridges the web UI to the Linux Kernel.
+
 ```bash
-sudo apt update
-sudo apt install nodejs npm -y
-```
+# 1. Update system and install Node.js
+sudo apt update && sudo apt install nodejs npm -y
 
-## 🛠️ 2. Install the Core Agent
-Save the provided `server.js` to your project folder (e.g., `/opt/nexus/server.js`) and install dependencies:
-```bash
-mkdir -p /opt/nexus
+# 2. Create project directory
+sudo mkdir -p /opt/nexus
+sudo chown $USER:$USER /opt/nexus
 cd /opt/nexus
+
+# 3. Initialize and install dependencies
 npm init -y
 npm install express cors
+
+# 4. Copy server.js to this directory
+# (Save the server.js code from this project into /opt/nexus/server.js)
 ```
 
-## ⚡ 3. Start the Agent (Background)
-Run the agent as root (required for executing network commands):
-```bash
-sudo node server.js
-```
-*Note: For production, use `pm2` to keep the agent alive: `sudo npm install -g pm2 && sudo pm2 start server.js`*
+## ⚡ 3. Setting up Nexus as a System Service
+Ensure the router agent starts automatically on boot.
 
-## 🌐 4. Enable Kernel Features
-Ensure your Ubuntu machine allows packet forwarding:
+1. Create a service file: `sudo nano /etc/systemd/system/nexus-agent.service`
+2. Paste the following:
+```ini
+[Unit]
+Description=Nexus Router Core Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nexus
+ExecStart=/usr/bin/node /opt/nexus/server.js
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+3. Enable and start:
 ```bash
-echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
+sudo systemctl daemon-reload
+sudo systemctl enable nexus-agent
+sudo systemctl start nexus-agent
+```
+
+## 🌐 4. Kernel Network Configuration
+Enable packet forwarding and BBR (Bottleneck Bandwidth and RTT) for better performance.
+
+```bash
+# Append to sysctl.conf
+sudo tee -a /etc/sysctl.conf <<EOF
+net.ipv4.ip_forward=1
+net.ipv4.tcp_congestion_control=bbr
+net.core.default_qdisc=fq
+net.ipv4.conf.all.rp_filter=1
+net.ipv4.conf.all.accept_redirects=0
+net.ipv4.conf.all.send_redirects=0
+EOF
+
+# Apply changes
 sudo sysctl -p
 ```
 
-## 🔍 5. Verify
-Refresh the Nexus OS dashboard. The bottom-left status indicator should change to **"Hardware Native"** in green. You will now see your real Ethernet ports (e.g., `eth0`, `enp1s0`) listed in the dashboard.
+## 🎨 5. Serve the Dashboard
+You can serve the `index.html` and `index.tsx` using Nginx:
+```bash
+sudo apt install nginx -y
+sudo cp -r /your/project/files/* /var/www/html/
+sudo systemctl restart nginx
+```
+
+## 🔍 6. Final Validation
+- Access the dashboard at `http://your-ip-address`.
+- Check bottom-left status: **Hardware Native (Green)** means successful kernel connection.
+- Click **Analyze Topology** in the AI Advisor to get custom `nftables` rules for your specific hardware.
