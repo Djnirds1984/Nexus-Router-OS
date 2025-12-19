@@ -2,8 +2,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { NetworkConfig } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export interface AdviceResult {
   text: string;
   commands: string[];
@@ -11,6 +9,9 @@ export interface AdviceResult {
 }
 
 export async function getNetworkAdvice(config: NetworkConfig): Promise<AdviceResult> {
+  // Fix: Move GoogleGenAI initialization inside the function to use up-to-date API_KEY
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
   const prompt = `
     You are a Linux Networking Expert specialized in Ubuntu 24.04 x64 routers, Multi-WAN, and High Availability.
     Current Router State:
@@ -43,6 +44,7 @@ export async function getNetworkAdvice(config: NetworkConfig): Promise<AdviceRes
       : ["# No specific commands generated"];
 
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
+      ?.filter((chunk: any) => chunk.web)
       ?.map((chunk: any) => ({
         title: chunk.web?.title || "Reference",
         uri: chunk.web?.uri || "#"
