@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 /**
  * TYPES & ENUMS
@@ -99,14 +99,39 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
 /**
  * COMPONENT: DASHBOARD
  */
-const Dashboard = ({ wanInterfaces, metrics }: { wanInterfaces: WanInterface[], metrics: SystemMetrics }) => {
-  const chartData = useMemo(() => {
-    return Array.from({ length: 30 }).map((_, i) => ({
-      time: i,
-      wan1: (wanInterfaces[0]?.throughput?.rx || 0) + (Math.random() * 0.5),
-      wan2: (wanInterfaces[1]?.throughput?.rx || 0) + (Math.random() * 0.2),
-    }));
-  }, [wanInterfaces]);
+const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metrics: SystemMetrics }) => {
+  const [selectedIface, setSelectedIface] = useState<string>('');
+  const [history, setHistory] = useState<any[]>([]);
+  const historyLimit = 60;
+
+  // Initialize selected interface if not set
+  useEffect(() => {
+    if (!selectedIface && interfaces.length > 0) {
+      setSelectedIface(interfaces[0].interfaceName);
+    }
+  }, [interfaces, selectedIface]);
+
+  // Update history when interfaces data changes
+  useEffect(() => {
+    if (!selectedIface) return;
+    const currentData = interfaces.find(i => i.interfaceName === selectedIface);
+    if (!currentData) return;
+
+    setHistory(prev => {
+      const newEntry = {
+        time: new Date().toLocaleTimeString(),
+        rx: currentData.throughput.rx,
+        tx: currentData.throughput.tx
+      };
+      const updated = [...prev, newEntry];
+      if (updated.length > historyLimit) return updated.slice(updated.length - historyLimit);
+      return updated;
+    });
+  }, [interfaces, selectedIface]);
+
+  const activeIfaceData = useMemo(() => {
+    return interfaces.find(i => i.interfaceName === selectedIface);
+  }, [interfaces, selectedIface]);
 
   return (
     <div className="space-y-6">
@@ -132,69 +157,112 @@ const Dashboard = ({ wanInterfaces, metrics }: { wanInterfaces: WanInterface[], 
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-slate-900/60 p-8 rounded-2xl border border-slate-800 shadow-xl backdrop-blur-md">
-          <h2 className="text-lg font-bold text-white mb-8 flex items-center gap-2">
-            <span className="w-1.5 h-4 bg-blue-500 rounded-sm shadow-[0_0_8px_#3b82f6]" /> Live Network Load (MB/s)
-          </h2>
+        <div className="lg:col-span-2 bg-slate-900/60 p-8 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-md relative overflow-hidden">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 relative z-10">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <span className="w-1.5 h-4 bg-blue-500 rounded-sm shadow-[0_0_8px_#3b82f6]" /> Live Port Monitor
+              </h2>
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Real-time throughput analysis</div>
+            </div>
+            
+            <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 p-1.5 rounded-2xl shadow-inner">
+               <span className="text-[10px] text-slate-600 font-black uppercase ml-2 mr-1">Port:</span>
+               <select 
+                 value={selectedIface}
+                 onChange={(e) => {
+                   setSelectedIface(e.target.value);
+                   setHistory([]); // Reset history on switch
+                 }}
+                 className="bg-slate-900 text-blue-400 border border-slate-800 rounded-xl px-4 py-2 text-xs font-bold font-mono outline-none focus:border-blue-500 transition-all cursor-pointer"
+               >
+                 {interfaces.map(iface => (
+                   <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName.toUpperCase()}</option>
+                 ))}
+               </select>
+            </div>
+          </div>
+
           <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
+              <AreaChart data={history}>
                 <defs>
-                  <linearGradient id="colorWan1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
+                  <linearGradient id="colorRx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
+                  <linearGradient id="colorTx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                 <XAxis dataKey="time" hide />
                 <YAxis stroke="#475569" fontSize={10} tickFormatter={(val) => `${val}M`} />
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', fontSize: '10px' }} />
-                <Area type="monotone" dataKey="wan1" stroke="#3b82f6" strokeWidth={3} fill="url(#colorWan1)" />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '11px' }} 
+                  itemStyle={{ fontWeight: 'bold' }}
+                />
+                <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '20px', textTransform: 'uppercase', letterSpacing: '1px' }} />
+                <Area name="Downlink (RX)" type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorRx)" isAnimationActive={false} />
+                <Area name="Uplink (TX)" type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorTx)" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
+
+          <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-800">
+             <div className="text-center">
+                <div className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mb-1">Current RX</div>
+                <div className="text-xl font-mono text-emerald-400 font-bold">{activeIfaceData?.throughput.rx.toFixed(2) || '0.00'} <span className="text-[10px]">MB/s</span></div>
+             </div>
+             <div className="text-center">
+                <div className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mb-1">Current TX</div>
+                <div className="text-xl font-mono text-blue-400 font-bold">{activeIfaceData?.throughput.tx.toFixed(2) || '0.00'} <span className="text-[10px]">MB/s</span></div>
+             </div>
+          </div>
         </div>
 
-        <div className="bg-slate-900/60 p-8 rounded-2xl border border-slate-800 flex flex-col justify-between backdrop-blur-md">
+        <div className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 flex flex-col justify-between backdrop-blur-md">
            <div>
               <h2 className="text-lg font-bold text-white mb-6">Host Environment</h2>
               <div className="space-y-4">
-                 <div className="p-4 bg-slate-950/50 rounded-xl border border-slate-800">
+                 <div className="p-4 bg-slate-950/50 rounded-2xl border border-slate-800 group hover:border-blue-500/30 transition-all">
                     <div className="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">OS Runtime</div>
                     <div className="text-sm font-mono text-blue-400">Ubuntu 24.04 x86_64</div>
                  </div>
-                 <div className="p-4 bg-slate-950/50 rounded-xl border border-slate-800">
+                 <div className="p-4 bg-slate-950/50 rounded-2xl border border-slate-800 group hover:border-emerald-500/30 transition-all">
                     <div className="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">IPv4 Forwarding</div>
-                    <div className="text-sm font-mono text-emerald-400">STATE: ACTIVE</div>
+                    <div className="text-sm font-mono text-emerald-400">STATE: ACTIVE (Kernel NAT)</div>
+                 </div>
+                 <div className="p-4 bg-slate-950/50 rounded-2xl border border-slate-800 group hover:border-amber-500/30 transition-all">
+                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">Network Stack</div>
+                    <div className="text-sm font-mono text-amber-400">TCP BBR Accelerated</div>
                  </div>
               </div>
            </div>
         </div>
       </div>
 
-      <div className="bg-slate-900/60 rounded-2xl border border-slate-800 overflow-hidden shadow-xl backdrop-blur-md">
-        <div className="bg-slate-800/20 p-4 border-b border-slate-800 flex justify-between items-center">
-           <h3 className="font-bold text-white text-sm">Hardware Interfaces</h3>
-           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{wanInterfaces.length} DETECTED</span>
+      <div className="bg-slate-900/60 rounded-3xl border border-slate-800 overflow-hidden shadow-xl backdrop-blur-md">
+        <div className="bg-slate-800/20 p-6 border-b border-slate-800 flex justify-between items-center">
+           <h3 className="font-bold text-white text-sm tracking-tight uppercase tracking-widest">Hardware Port Inventory</h3>
+           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{interfaces.length} ACTIVE INTERFACES</span>
         </div>
         <div className="divide-y divide-slate-800 font-mono">
-          {wanInterfaces.map((wan: any) => (
+          {interfaces.map((wan: any) => (
             <div key={wan.id} className="p-6 flex items-center justify-between hover:bg-slate-800/10 transition-colors group">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6">
                 <div className={`w-3 h-3 rounded-full ${wan.status === WanStatus.UP ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-rose-500'}`} />
                 <div>
-                  <div className="font-bold text-white flex items-center gap-2">
+                  <div className="font-bold text-white flex items-center gap-2 text-lg">
                     {wan.name}
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-950 text-blue-400 border border-blue-500/20 uppercase font-mono">{wan.interfaceName}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-950 text-blue-400 border border-blue-500/20 uppercase font-mono font-black">{wan.interfaceName}</span>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">{wan.ipAddress} • <span className="text-slate-600">GW: {wan.gateway}</span></div>
+                  <div className="text-[11px] text-slate-500 mt-1 uppercase tracking-tight">{wan.ipAddress} • <span className="text-slate-600">GW: {wan.gateway}</span></div>
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-xs text-emerald-400 font-bold">RX: {wan.throughput.rx.toFixed(2)} MB</div>
-                <div className="text-xs text-blue-400 font-bold">TX: {wan.throughput.tx.toFixed(2)} MB</div>
+                <div className="text-sm text-emerald-400 font-bold tracking-tighter">RX: {wan.throughput.rx.toFixed(2)} MB/s</div>
+                <div className="text-sm text-blue-400 font-bold tracking-tighter">TX: {wan.throughput.tx.toFixed(2)} MB/s</div>
               </div>
             </div>
           ))}
-          {wanInterfaces.length === 0 && (
-            <div className="p-10 text-center text-slate-600 italic text-sm">Waiting for hardware probe...</div>
+          {interfaces.length === 0 && (
+            <div className="p-10 text-center text-slate-600 italic text-sm">Probing kernel for network descriptors...</div>
           )}
         </div>
       </div>
@@ -460,7 +528,8 @@ const App = () => {
 
   useEffect(() => {
     refreshData();
-    const interval = setInterval(refreshData, 10000);
+    // Increased refresh rate for smoother dashboard telemetry
+    const interval = setInterval(refreshData, 3000); 
     return () => clearInterval(interval);
   }, [refreshData]);
 
@@ -491,27 +560,24 @@ const App = () => {
 
   const activeWanNames = useMemo(() => config.wanInterfaces.filter((wan: any) => wan.gateway && wan.gateway !== 'None').map((wan: any) => wan.interfaceName), [config.wanInterfaces]);
   
-  // 1. Get all interface names associated with LAN (Bridges and their members)
   const lanInterfaceNames = useMemo(() => {
     const bridgeDevices = bridges.map(b => b.name);
     const bridgeMembers = bridges.flatMap(b => b.interfaces);
     return [...bridgeDevices, ...bridgeMembers];
   }, [bridges]);
 
-  // 2. Filter Multi-WAN interfaces: Exclude any interface that is part of LAN
   const eligibleWanInterfaces = useMemo(() => {
     return config.wanInterfaces.filter((wan: any) => !lanInterfaceNames.includes(wan.interfaceName));
   }, [config.wanInterfaces, lanInterfaceNames]);
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
-      {activeTab === 'dashboard' && <Dashboard wanInterfaces={config.wanInterfaces} metrics={metrics} />}
+      {activeTab === 'dashboard' && <Dashboard interfaces={config.wanInterfaces} metrics={metrics} />}
       {activeTab === 'wan' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
            <div className="bg-slate-900/60 p-10 rounded-3xl border border-slate-800 backdrop-blur-md">
               <h2 className="text-2xl font-bold text-white mb-6 tracking-tight">Multi-WAN Orchestration</h2>
               
-              {/* Mode Selection Grid */}
               <div className="flex gap-4 mb-10">
                  <button 
                    onClick={() => setConfig({...config, mode: RouterMode.LOAD_BALANCER})}
@@ -599,12 +665,6 @@ const App = () => {
                     )}
                   </div>
                 ))}
-                {eligibleWanInterfaces.length === 0 && (
-                   <div className="p-20 bg-slate-950/50 border border-dashed border-slate-800 rounded-2xl text-center flex flex-col items-center gap-4">
-                      <div className="text-4xl grayscale opacity-30">🔌</div>
-                      <div className="text-slate-500 text-sm font-mono uppercase tracking-widest">No available WAN hardware. (Interfaces are currently Lan/Bridged)</div>
-                   </div>
-                )}
               </div>
               <button onClick={commitConfig} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/20 active:scale-[0.98] transition-all uppercase tracking-widest">APPLY & SAVE WAN CONFIG TO KERNEL</button>
            </div>
