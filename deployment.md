@@ -1,97 +1,94 @@
-# Nexus Router OS: Complete Deployment Guide (Ubuntu x64)
+# Nexus Router OS: Ultimate Deployment Guide (Ubuntu x64)
 
-Follow these instructions to install Nexus Router OS on your Ubuntu PC or Router. This guide configures the system to run out of `/var/www/html` using the default Nginx configuration and PM2 for process management.
+This guide addresses common errors like **403 Forbidden** and **MIME type mismatches** while deploying to a standard Ubuntu x64 environment.
 
 ---
 
-## 🏗️ 1. System Preparation & Prerequisites
-Update your package list and install the necessary software stack (Git, Nginx, Node.js, and PM2).
+## 🏗️ 1. Essential Stack Installation
+Run these commands to prepare your Ubuntu environment.
 
 ```bash
-# Update and upgrade system
+# Update system
 sudo apt update && sudo apt upgrade -y
 
 # Install Git and Nginx
 sudo apt install git nginx -y
 
-# Install Node.js (Latest LTS)
+# Install Node.js 20 (Required for PM2 and system updates)
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
 
-# Install PM2 (Process Manager)
+# Install PM2 Process Manager globally
 sudo npm install pm2 -g
 ```
 
 ---
 
-## 📂 2. Project Installation
-We will clone the repository directly into the standard web root.
+## 📂 2. Project Setup (Web Root)
+We will install the project directly into `/var/www/html`.
 
 ```bash
-# 1. Clean out the default Nginx index files
+# 1. Clear existing default files
 sudo rm -rf /var/www/html/*
 
-# 2. Clone the official repository
-# Note: We clone to a temporary folder first to ensure we get all hidden files (.git, etc.)
+# 2. Clone the repository
 git clone https://github.com/Djnirds1984/Nexus-Router-OS.git /tmp/nexus-os
 
-# 3. Move the project to the web root
+# 3. Copy project to web root (including hidden files)
 sudo cp -r /tmp/nexus-os/* /var/www/html/
 sudo cp -r /tmp/nexus-os/.* /var/www/html/ 2>/dev/null || true
 
-# 4. FIX PERMISSIONS (Prevents 403 Forbidden Errors)
-# Nginx runs as 'www-data'. It must own the files to serve them.
+# 4. CRITICAL: Fix Permissions (SOLVES 403 FORBIDDEN)
+# Nginx must be able to read and execute directories.
 sudo chown -R www-data:www-data /var/www/html
-sudo find /var/www/html -type d -exec chmod 755 {} \;
-sudo find /var/www/html -type f -exec chmod 644 {} \;
+sudo chmod -R 755 /var/www/html
 ```
 
 ---
 
-## 🛠️ 3. Nginx Default Configuration
-We will update the **default** Nginx site to support Single Page Application (SPA) routing and correct MIME types for modern browser module imports.
+## 🛠️ 3. Nginx Configuration (Default File)
+We must tell Nginx to treat `.tsx` files as JavaScript. This solves the "application/octet-stream" error.
 
-1. Edit the default config:
+1. Open the default config:
    `sudo nano /etc/nginx/sites-available/default`
 
-2. Ensure the `server` block looks exactly like this:
+2. Replace the **entire** file content with this:
 
 ```nginx
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
 
-    # The directory where you installed the project
     root /var/www/html;
     index index.html;
 
     server_name _;
 
     location / {
-        # This line is critical for React routing
+        # Critical for React routing
         try_files $uri $uri/ /index.html;
     }
 
-    # CRITICAL: Since this project imports .tsx directly in the browser, 
-    # Nginx must tell the browser it is a JavaScript file.
+    # CRITICAL: SOLVES MIME TYPE "application/octet-stream" ERROR
+    # This block forces .tsx and .ts files to be served as JavaScript
     location ~* \.(tsx|ts)$ {
+        types { }
         default_type application/javascript;
         add_header Content-Type application/javascript;
     }
 
-    # Cache static assets for speed
+    # Performance: Static asset caching
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|otf)$ {
         expires 30d;
         add_header Cache-Control "public, no-transform";
     }
 
-    # Logs for debugging
     error_log /var/log/nginx/nexus_error.log;
     access_log /var/log/nginx/nexus_access.log;
 }
 ```
 
-3. Save (Ctrl+O, Enter) and Exit (Ctrl+X).
+3. Save and Exit (Ctrl+O, Enter, Ctrl+X).
 4. Restart Nginx:
 ```bash
 sudo nginx -t
@@ -100,40 +97,36 @@ sudo systemctl restart nginx
 
 ---
 
-## 🚀 4. PM2 Setup & Automation
-Use PM2 to ensure the system is monitored and background services stay alive.
+## 🚀 4. PM2 Setup
+Configure PM2 to monitor the dashboard and ensure background services persist after reboots.
 
 ```bash
-# Navigate to project
+# Start a monitoring instance
 cd /var/www/html
+pm2 start "ls -la" --name "nexus-router" --watch
 
-# Start a monitor process for the Nexus Router environment
-# This keeps the dashboard directory 'active' and monitors for changes
-pm2 start "ls -la" --name "nexus-router-os" --watch
-
-# Configure PM2 to start automatically on system boot
+# Configure auto-boot
 pm2 startup
-# (COPY AND PASTE THE COMMAND PM2 OUTPUTS ABOVE IN YOUR TERMINAL)
-
-# Save the current process list
+# (Run the specific line the command above tells you to run)
 pm2 save
 ```
 
 ---
 
-## 🔍 5. Troubleshooting Common Errors
+## 🔍 5. Error Troubleshooting Guide
 
-### Error: 403 Forbidden
-This is caused by Nginx not having permission to read your files. 
-**Fix:** Run `sudo chown -R www-data:www-data /var/www/html`.
+### ❌ 403 Forbidden
+**Cause:** Nginx does not have permission to access `/var/www/html` or one of its parent folders.
+**Fix:** Run `sudo chmod 755 /var/www && sudo chmod 755 /var/www/html`.
 
-### Error: 404 on Refresh
-This happens if you refresh the page on a path like `/wan` or `/settings`.
-**Fix:** Ensure your Nginx config has the `try_files $uri $uri/ /index.html;` line.
+### ❌ Failed to load module (application/octet-stream)
+**Cause:** Nginx thinks `.tsx` is a binary file and tells the browser to download it instead of running it.
+**Fix:** Ensure the `location ~* \.(tsx|ts)$` block in your Nginx config has `default_type application/javascript;`.
 
-### Error: "contentScript.js" (Chrome Extension Error)
-If you see `TypeError: Cannot read properties of null (reading 'indexOf')` in your console, **ignore it**. This is caused by browser extensions (like Google Translate or Grammarly) and is NOT a bug in the Nexus Router OS code.
+### ❌ "Cannot read properties of null (reading 'indexOf')"
+**Cause:** This is a **Browser Extension Error** (Grammarly, Loom, etc.). 
+**Fix:** This is NOT a bug in the project. Open the site in **Incognito Mode** to verify it disappears.
 
 ---
-**Repository:** [https://github.com/Djnirds1984/Nexus-Router-OS.git](https://github.com/Djnirds1984/Nexus-Router-OS.git)
-*System: Nexus Router OS v1.2.4 (Ubuntu x64 Optimization)*
+**GitHub Repository:** [https://github.com/Djnirds1984/Nexus-Router-OS.git](https://github.com/Djnirds1984/Nexus-Router-OS.git)
+*Nexus Router OS - Developed for high-performance Ubuntu routing environments.*
