@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
@@ -205,8 +206,13 @@ const Dashboard = ({ wanInterfaces, metrics }: { wanInterfaces: WanInterface[], 
 /**
  * COMPONENT: BRIDGE & DHCP MANAGER
  */
-const BridgeManager = ({ availableInterfaces, bridges, setBridges, onApply }: any) => {
+const BridgeManager = ({ allInterfaces, bridges, setBridges, onApply, activeWanNames }: any) => {
   const [newBridgeName, setNewBridgeName] = useState('br0');
+
+  // Interfaces are available for bridge if they are NOT used as active WANs
+  const availableForBridge = useMemo(() => {
+    return allInterfaces.filter((iface: any) => !activeWanNames.includes(iface.interfaceName));
+  }, [allInterfaces, activeWanNames]);
 
   const addBridge = () => {
     const newBridge: BridgeConfig = {
@@ -280,7 +286,7 @@ const BridgeManager = ({ availableInterfaces, bridges, setBridges, onApply }: an
                    <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800">
                       <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Member Interfaces</h4>
                       <div className="flex flex-wrap gap-2">
-                         {availableInterfaces.map((iface: any) => (
+                         {availableForBridge.map((iface: any) => (
                            <button 
                              key={iface.id}
                              onClick={() => toggleIface(bridge.id, iface.interfaceName)}
@@ -293,6 +299,9 @@ const BridgeManager = ({ availableInterfaces, bridges, setBridges, onApply }: an
                               {iface.interfaceName.toUpperCase()}
                            </button>
                          ))}
+                         {availableForBridge.length === 0 && (
+                            <span className="text-[10px] text-slate-600 italic">No LAN-eligible ports available (All in WAN mode)</span>
+                         )}
                       </div>
                    </div>
 
@@ -512,10 +521,22 @@ const App = () => {
     });
   };
 
-  // Available interfaces are those not designated as WAN
-  const availableInterfaces = config.wanInterfaces.filter((wan: any) => 
-    !wan.gateway || wan.gateway === 'None'
-  );
+  // 1. Get all interfaces that are members of any bridge
+  const bridgedInterfaceNames = useMemo(() => {
+    return bridges.flatMap(b => b.interfaces);
+  }, [bridges]);
+
+  // 2. Filter Multi-WAN interfaces: Only show those NOT in a bridge
+  const eligibleWanInterfaces = useMemo(() => {
+    return config.wanInterfaces.filter((wan: any) => !bridgedInterfaceNames.includes(wan.interfaceName));
+  }, [config.wanInterfaces, bridgedInterfaceNames]);
+
+  // 3. Get names of interfaces currently designated as WAN (active configuration)
+  const activeWanNames = useMemo(() => {
+    return config.wanInterfaces
+      .filter((wan: any) => wan.gateway && wan.gateway !== 'None')
+      .map((wan: any) => wan.interfaceName);
+  }, [config.wanInterfaces]);
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
@@ -544,7 +565,7 @@ const App = () => {
               </div>
 
               <div className="grid grid-cols-1 gap-6 mb-10">
-                {config.wanInterfaces.map((wan: any) => (
+                {eligibleWanInterfaces.map((wan: any) => (
                   <div key={wan.id} className="bg-slate-950/80 p-6 rounded-2xl border border-slate-800 shadow-inner group transition-all hover:border-slate-600">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                        <div className="flex-1">
@@ -613,6 +634,12 @@ const App = () => {
                     )}
                   </div>
                 ))}
+                {eligibleWanInterfaces.length === 0 && (
+                   <div className="p-20 bg-slate-950/50 border border-dashed border-slate-800 rounded-2xl text-center flex flex-col items-center gap-4">
+                      <div className="text-4xl grayscale opacity-30">🔌</div>
+                      <div className="text-slate-500 text-sm font-mono uppercase tracking-widest">No available WAN hardware. (Check Bridge members)</div>
+                   </div>
+                )}
               </div>
 
               <button 
@@ -627,10 +654,11 @@ const App = () => {
 
       {activeTab === 'bridge' && (
         <BridgeManager 
-          availableInterfaces={availableInterfaces} 
+          allInterfaces={config.wanInterfaces} 
           bridges={bridges} 
           setBridges={setBridges} 
           onApply={commitBridges} 
+          activeWanNames={activeWanNames}
         />
       )}
       
