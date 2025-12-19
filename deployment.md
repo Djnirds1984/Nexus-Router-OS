@@ -33,9 +33,9 @@ sudo chown -R $USER:$USER /var/www/html/Nexus-Router-Os
 cd /var/www/html/Nexus-Router-Os
 git clone https://github.com/Djnirds1984/Nexus-Router-OS.git .
 
-# 3. Install the Backend Agent dependencies
-# IMPORTANT: Use --legacy-peer-deps to resolve Recharts/React version conflicts
-npm install express cors --legacy-peer-deps
+# 3. Install the Backend Agent dependencies (CRITICAL)
+# Even if frontend npm install failed, you MUST run this for the agent to work.
+npm install express cors
 ```
 
 ---
@@ -59,6 +59,7 @@ The backend agent manages the Linux Kernel. It must run as `root` for `iproute2`
     WorkingDirectory=/var/www/html/Nexus-Router-Os
     ExecStart=/usr/bin/node /var/www/html/Nexus-Router-Os/server.js
     Restart=always
+    RestartSec=5
 
     [Install]
     WantedBy=multi-user.target
@@ -67,7 +68,7 @@ The backend agent manages the Linux Kernel. It must run as `root` for `iproute2`
     ```bash
     sudo systemctl daemon-reload
     sudo systemctl enable nexus-agent
-    sudo systemctl start nexus-agent
+    sudo systemctl restart nexus-agent
     ```
 
 ---
@@ -118,14 +119,45 @@ Point the web server to the Nexus Router OS directory.
             proxy_set_header Connection 'upgrade';
             proxy_set_header Host $host;
             proxy_cache_bypass $http_upgrade;
+            
+            # Diagnostic headers
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         }
     }
     ```
 3.  **Activate and Restart**:
     ```bash
     sudo ln -s /etc/nginx/sites-available/nexus /etc/nginx/sites-enabled/
-    sudo rm /etc/nginx/sites-enabled/default
+    sudo rm -f /etc/nginx/sites-enabled/default
     sudo systemctl restart nginx
+    ```
+
+---
+
+## 🆘 Troubleshooting 502 Bad Gateway
+If you see **"Failed to communicate with Hardware Agent"** or **502 Bad Gateway**:
+
+1.  **Check if the Node process is actually running**:
+    ```bash
+    sudo systemctl status nexus-agent
+    ```
+2.  **If it's "failed", check the logs to see why**:
+    ```bash
+    sudo journalctl -u nexus-agent -n 50 --no-pager
+    ```
+3.  **Common fix (Missing modules)**:
+    If logs say `Error: Cannot find module 'express'`, run this in the project folder:
+    ```bash
+    cd /var/www/html/Nexus-Router-Os
+    sudo npm install express cors
+    sudo systemctl restart nexus-agent
+    ```
+4.  **Check Port Collision**:
+    Ensure no other process is using port 3000:
+    ```bash
+    sudo fuser -k 3000/tcp
+    sudo systemctl restart nexus-agent
     ```
 
 ---
@@ -134,10 +166,3 @@ Point the web server to the Nexus Router OS directory.
 1.  Navigate to `http://<YOUR_UBUNTU_IP>` in your browser.
 2.  Check the **Sidebar Status**: It must show **"Hardware Native"** (Green).
 3.  Go to **Multi-WAN**: Verify that your real hardware interfaces (e.g., `eth0`, `enp1s0`) are detected.
-4.  Configure your weights/priorities and click **"Sync Config to Ubuntu Kernel"**.
-
----
-
-## 🧠 8. AI Advisor & Updates
-*   **AI**: Enter your Gemini API Key in the **AI Advisor** tab to get live optimization scripts based on your specific traffic patterns.
-*   **Updates**: Use the **Updates** tab to pull the latest changes directly from the repository. The system will automatically run `git pull` and restart services.
