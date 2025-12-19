@@ -4,6 +4,7 @@
  */
 
 const logFile = '/var/log/nexus-agent.log';
+const configFile = './nexus-config.json';
 const fs = require('fs');
 const { execSync } = require('child_process');
 
@@ -14,6 +15,26 @@ function log(msg) {
     fs.appendFileSync(logFile, entry);
   } catch (e) {
     // Fallback if log file is unwriteable
+  }
+}
+
+// Load persisted configuration
+let nexusConfig = { bridges: [], wanConfig: { mode: 'LOAD_BALANCER', interfaces: [] } };
+if (fs.existsSync(configFile)) {
+  try {
+    nexusConfig = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+    log('Configuration loaded from disk.');
+  } catch (e) {
+    log('Failed to load config file: ' + e.message);
+  }
+}
+
+function saveConfig() {
+  try {
+    fs.writeFileSync(configFile, JSON.stringify(nexusConfig, null, 2));
+    log('Configuration saved to disk.');
+  } catch (e) {
+    log('Failed to save config file: ' + e.message);
   }
 }
 
@@ -121,65 +142,82 @@ try {
   });
 
   app.get('/api/bridges', (req, res) => {
-    try {
-      if (process.platform !== 'linux') return res.json([]);
-      const bridges = [];
-      try {
-        const output = execSync('ip -j link show type bridge').toString();
-        const data = JSON.parse(output);
-        for(const b of data) {
-           const members = execSync(`bridge link show br ${b.ifname}`).toString().split('\n')
-             .map(l => l.match(/^\d+: ([^:@\s]+)/)?.[1]).filter(Boolean);
-           bridges.push({
-             id: b.ifname,
-             name: b.ifname,
-             interfaces: members
-           });
-        }
-      } catch(e) { /* fallback if no bridges */ }
-      res.json(bridges);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
+    // Return the persisted bridge configuration as the source of truth
+    res.json(nexusConfig.bridges || []);
   });
 
   app.post('/api/bridges/apply', (req, res) => {
     const { bridges } = req.body;
+    nexusConfig.bridges = bridges;
+    saveConfig();
+
     const kernelLog = [];
     try {
-      if (process.platform !== 'linux') return res.json({ success: true, log: ['Dev-Mode: OK'] });
+      if (process.platform !== 'linux') return res.json({ success: true, log: ['Dev-Mode: Config Saved'] });
 
+      // Clean up deleted bridges (simplified: we just re-create everything based on current state)
+      // In a real production environment, you would diff the bridges
+      
       for(const bridge of bridges) {
         // Create bridge if not exists
-        try { execSync(`ip link add name ${bridge.name} type bridge`); kernelLog.push(`Created bridge ${bridge.name}`); } catch(e) {}
+        try { 
+          execSync(`ip link add name ${bridge.name} type bridge`, { stdio: 'ignore' }); 
+          kernelLog.push(`Created bridge ${bridge.name}`); 
+        } catch(e) {}
         
-        // Assign IP
-        if (bridge.ipAddress) {
-           try { execSync(`ip addr add ${bridge.ipAddress}/${bridge.netmask || '24'} dev ${bridge.name}`); } catch(e) {}
-           kernelLog.push(`Assigned IP ${bridge.ipAddress} to ${bridge.name}`);
-        }
-
-        // Add members
-        for(const iface of bridge.interfaces) {
-           try { execSync(`ip link set ${iface} master ${bridge.name}`); kernelLog.push(`Added ${iface} to ${bridge.name}`); } catch(e) {}
-        }
-        
+        // Ensure bridge is UP
         execSync(`ip link set ${bridge.name} up`);
 
+        // Assign IP (Flush existing first to avoid duplicate errors)
+        if (bridge.ipAddress) {
+           try { 
+             execSync(`ip addr flush dev ${bridge.name}`);
+             execSync(`ip addr add ${bridge.ipAddress}/${bridge.netmask || '24'} dev ${bridge.name}`); 
+             kernelLog.push(`Assigned IP ${bridge.ipAddress}/${bridge.netmask} to ${bridge.name}`);
+           } catch(e) {
+             kernelLog.push(`Warning setting IP for ${bridge.name}: ${e.message}`);
+           }
+        }
+
+        // Add member interfaces
+        for(const iface of bridge.interfaces) {
+           try { 
+             execSync(`ip link set ${iface} up`);
+             execSync(`ip link set ${iface} master ${bridge.name}`); 
+             kernelLog.push(`Added ${iface} to ${bridge.name}`); 
+           } catch(e) {
+             kernelLog.push(`Error adding ${iface} to ${bridge.name}: ${e.message}`);
+           }
+        }
+
         // DHCP Logic with dnsmasq
-        if (bridge.dhcpEnabled) {
-          const config = `interface=${bridge.name}\ndhcp-range=${bridge.dhcpStart},${bridge.dhcpEnd},${bridge.leaseTime || '12h'}\n`;
-          fs.writeFileSync(`/etc/dnsmasq.d/nexus-${bridge.name}.conf`, config);
-          kernelLog.push(`DHCP config written for ${bridge.name}`);
+        if (bridge.dhcpEnabled && bridge.dhcpStart && bridge.dhcpEnd) {
+          const configStr = `interface=${bridge.name}\ndhcp-range=${bridge.dhcpStart},${bridge.dhcpEnd},${bridge.leaseTime || '12h'}\n`;
+          const configPath = `/etc/dnsmasq.d/nexus-${bridge.name}.conf`;
+          try {
+            fs.writeFileSync(configPath, configStr);
+            kernelLog.push(`DHCP config written for ${bridge.name}`);
+          } catch(e) {
+            kernelLog.push(`Error writing DHCP config for ${bridge.name}: ${e.message}`);
+          }
         } else {
-          try { fs.unlinkSync(`/etc/dnsmasq.d/nexus-${bridge.name}.conf`); } catch(e) {}
+          try { 
+            const configPath = `/etc/dnsmasq.d/nexus-${bridge.name}.conf`;
+            if (fs.existsSync(configPath)) fs.unlinkSync(configPath); 
+          } catch(e) {}
         }
       }
       
-      try { execSync('systemctl restart dnsmasq'); kernelLog.push('DHCP Server Restarted'); } catch(e) { kernelLog.push('Error restarting dnsmasq: ' + e.message); }
+      try { 
+        execSync('systemctl restart dnsmasq'); 
+        kernelLog.push('DHCP Server (dnsmasq) Restarted'); 
+      } catch(e) { 
+        kernelLog.push('Error restarting dnsmasq: ' + e.message); 
+      }
 
       res.json({ success: true, log: kernelLog });
     } catch (err) {
+      log(`Error /bridges/apply: ${err.message}`);
       res.status(500).json({ error: err.message, success: false });
     }
   });
@@ -219,10 +257,13 @@ try {
 
   app.post('/api/apply', (req, res) => {
     const { mode, wanInterfaces } = req.body;
+    nexusConfig.wanConfig = { mode, interfaces: wanInterfaces };
+    saveConfig();
+
     const kernelLog = [];
     try {
       log(`Applying Kernel Config: Mode=${mode}`);
-      if (process.platform !== 'linux') return res.json({ success: true, log: ['Dev-Mode: OK'] });
+      if (process.platform !== 'linux') return res.json({ success: true, log: ['Dev-Mode: Config Saved'] });
 
       execSync('sysctl -w net.ipv4.ip_forward=1');
       kernelLog.push('Kernel: IPv4 Forwarding ENABLED');

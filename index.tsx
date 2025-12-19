@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
@@ -183,7 +182,7 @@ const Dashboard = ({ wanInterfaces, metrics }: { wanInterfaces: WanInterface[], 
                 <div>
                   <div className="font-bold text-white flex items-center gap-2">
                     {wan.name}
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-950 text-blue-400 border border-blue-500/10 uppercase font-mono">{wan.interfaceName}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-950 text-blue-400 border border-blue-500/20 uppercase font-mono">{wan.interfaceName}</span>
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">{wan.ipAddress} • <span className="text-slate-600">GW: {wan.gateway}</span></div>
                 </div>
@@ -379,7 +378,7 @@ const BridgeManager = ({ allInterfaces, bridges, setBridges, onApply, activeWanN
           onClick={onApply}
           className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/20 active:scale-[0.98] transition-all uppercase tracking-widest mt-6"
         >
-          Synchronize Bridge & DHCP to Kernel
+          APPLY & SAVE CONFIG TO KERNEL
         </button>
       </div>
     </div>
@@ -449,16 +448,20 @@ const App = () => {
 
   const refreshData = useCallback(async () => {
     try {
-      const [ifaceRes, metricRes] = await Promise.all([
+      const [ifaceRes, metricRes, bridgeRes] = await Promise.all([
         fetch(`${API_BASE}/interfaces`),
-        fetch(`${API_BASE}/metrics`)
+        fetch(`${API_BASE}/metrics`),
+        fetch(`${API_BASE}/bridges`)
       ]);
       
-      if (ifaceRes.ok && metricRes.ok) {
+      if (ifaceRes.ok && metricRes.ok && bridgeRes.ok) {
         const ifaces = await ifaceRes.json();
         const met = await metricRes.json();
+        const serverBridges = await bridgeRes.json();
+        
         setIsLive(true);
         setMetrics(met);
+        setBridges(serverBridges);
         
         setConfig((prev: any) => {
           const merged = ifaces.map((iface: any) => {
@@ -476,7 +479,7 @@ const App = () => {
 
   useEffect(() => {
     refreshData();
-    const interval = setInterval(refreshData, 3000);
+    const interval = setInterval(refreshData, 10000); // Periodic refresh (slower for stability)
     return () => clearInterval(interval);
   }, [refreshData]);
 
@@ -507,7 +510,9 @@ const App = () => {
       });
       const data = await res.json();
       if (data.success) {
-        alert('Nexus Bridge: Kernel synchronized successfully.\n' + data.log.join('\n'));
+        alert('Nexus Bridge: Kernel synchronized and saved successfully.\n' + data.log.join('\n'));
+        // Refresh data to ensure UI is in sync with server's persisted state
+        refreshData();
       }
     } catch(e) {
       alert('Nexus Bridge: Communication failure.');
@@ -646,7 +651,7 @@ const App = () => {
                 onClick={commitConfig}
                 className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/20 active:scale-[0.98] transition-all uppercase tracking-widest"
               >
-                Sync Configuration to Ubuntu Kernel
+                APPLY & SAVE WAN TO KERNEL
               </button>
            </div>
         </div>
