@@ -68,10 +68,11 @@
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
     "recharts": "https://esm.sh/recharts@^3.6.0"
   }
 }
@@ -89,20 +90,26 @@
     <div class="loading-text">Initializing Nexus Kernel...</div>
   </div>
   <div id="root"></div>
+  
+  <!-- LOAD THE APPLICATION ENTRY POINT -->
+  <script type="module" src="./index.tsx"></script>
+
   <script>
-    // Hide loader once React has had a chance to mount
+    // Hide loader once the window is ready
     window.addEventListener('load', () => {
       setTimeout(() => {
         const loader = document.getElementById('loading-overlay');
-        if (loader) loader.style.opacity = '0';
-        setTimeout(() => loader?.remove(), 500);
-      }, 800);
+        if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => loader.remove(), 500);
+        }
+      }, 1000);
     });
 
-    // Check for Nginx path errors
-    window.onerror = function(message, source, lineno, colno, error) {
-      if (message.includes('Script error')) {
-        console.warn('External script blocked (likely extension). If the UI is blank, check Nginx logs.');
+    // Handle Extension Errors (Silence noise from contentScript.js)
+    window.onerror = function(message, source) {
+      if (source && source.includes('chrome-extension')) {
+        return true; // Prevents extension errors from cluttering the console
       }
     };
   </script>
