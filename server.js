@@ -40,6 +40,35 @@ function saveConfig() {
 
 log('>>> NEXUS AGENT STARTING UP <<<');
 
+// Attempt to re-apply last known bridge config on startup
+const autoApplyBridges = () => {
+  if (process.platform !== 'linux') return;
+  if (nexusConfig.bridges && nexusConfig.bridges.length > 0) {
+    log('Auto-applying persisted bridge configurations...');
+    try {
+      // Basic logic to re-up bridges
+      nexusConfig.bridges.forEach(bridge => {
+        try { execSync(`ip link add name ${bridge.name} type bridge`, { stdio: 'ignore' }); } catch(e) {}
+        execSync(`ip link set ${bridge.name} up`);
+        if (bridge.ipAddress) {
+          try {
+            execSync(`ip addr flush dev ${bridge.name}`);
+            execSync(`ip addr add ${bridge.ipAddress}/${bridge.netmask || '24'} dev ${bridge.name}`);
+          } catch(e) {}
+        }
+        bridge.interfaces.forEach(iface => {
+          try { execSync(`ip link set ${iface} master ${bridge.name}`); } catch(e) {}
+          try { execSync(`ip link set ${iface} up`); } catch(e) {}
+        });
+      });
+      log('Bridge auto-apply complete.');
+    } catch (e) {
+      log('Bridge auto-apply error: ' + e.message);
+    }
+  }
+};
+autoApplyBridges();
+
 try {
   const express = require('express');
   const cors = require('cors');
@@ -63,52 +92,37 @@ try {
     log('System Check: ip-json not found. Using legacy text parsing.');
   }
 
-  const getGateways = () => {
-    try {
-      const routes = execSync('ip route show').toString();
-      const gatewayMap = {};
-      routes.split('\n').forEach(line => {
-        if (line.includes('default via')) {
-          const parts = line.split(/\s+/);
-          const devIndex = parts.indexOf('dev');
-          if (devIndex !== -1 && parts[devIndex + 1]) {
-            gatewayMap[parts[devIndex + 1]] = parts[2];
-          }
-        }
-      });
-      return gatewayMap;
-    } catch (e) { return {}; }
-  };
-
-  const getTrafficStats = () => {
-    try {
-      if (!fs.existsSync('/proc/net/dev')) return {};
-      const data = fs.readFileSync('/proc/net/dev', 'utf8');
-      const lines = data.split('\n').slice(2);
-      const stats = {};
-      lines.forEach(line => {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length > 1) {
-          const name = parts[0].replace(':', '');
-          stats[name] = {
-            rx: parseInt(parts[1]) / 1024 / 1024,
-            tx: parseInt(parts[9]) / 1024 / 1024
-          };
-        }
-      });
-      return stats;
-    } catch (e) { return {}; }
-  };
-
   app.get('/api/interfaces', (req, res) => {
     try {
       if (process.platform !== 'linux') {
         return res.json([{ id: 'eth0', name: 'WAN1', interfaceName: 'eth0', status: 'UP', ipAddress: '127.0.0.1', gateway: '1.1.1.1', throughput: { rx: 0, tx: 0 }, weight: 1, priority: 1 }]);
       }
-      let interfaces = [];
-      const traffic = getTrafficStats();
-      const gateways = getGateways();
+      
+      const gateways = {};
+      try {
+        const routes = execSync('ip route show').toString();
+        routes.split('\n').forEach(line => {
+          if (line.includes('default via')) {
+            const parts = line.split(/\s+/);
+            const devIndex = parts.indexOf('dev');
+            if (devIndex !== -1 && parts[devIndex + 1]) gateways[parts[devIndex + 1]] = parts[2];
+          }
+        });
+      } catch (e) {}
 
+      const traffic = {};
+      try {
+        const data = fs.readFileSync('/proc/net/dev', 'utf8');
+        data.split('\n').slice(2).forEach(line => {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length > 1) {
+            const name = parts[0].replace(':', '');
+            traffic[name] = { rx: parseInt(parts[1]) / 1024 / 1024, tx: parseInt(parts[9]) / 1024 / 1024 };
+          }
+        });
+      } catch (e) {}
+
+      let interfaces = [];
       if (supportsJson) {
         const ipData = JSON.parse(execSync('ip -j addr show').toString());
         interfaces = ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('br-') && !iface.ifname.startsWith('docker')).map(iface => {
@@ -124,15 +138,6 @@ try {
             weight: 1, priority: 1 
           };
         });
-      } else {
-        const output = execSync('ip addr show').toString();
-        const names = output.match(/^\d+: ([^:@\s]+)/gm);
-        if (names) {
-          interfaces = names.map(n => {
-            const name = n.split(': ')[1];
-            return { id: name, name: name.toUpperCase(), interfaceName: name, status: 'UP', ipAddress: 'N/A', gateway: gateways[name] || 'None', throughput: traffic[name] || { rx: 0, tx: 0 }, weight: 1, priority: 1 };
-          }).filter(i => i.id !== 'lo');
-        }
       }
       res.json(interfaces);
     } catch (err) {
@@ -142,7 +147,6 @@ try {
   });
 
   app.get('/api/bridges', (req, res) => {
-    // Return the persisted bridge configuration as the source of truth
     res.json(nexusConfig.bridges || []);
   });
 
@@ -155,65 +159,40 @@ try {
     try {
       if (process.platform !== 'linux') return res.json({ success: true, log: ['Dev-Mode: Config Saved'] });
 
-      // Clean up deleted bridges (simplified: we just re-create everything based on current state)
-      // In a real production environment, you would diff the bridges
-      
       for(const bridge of bridges) {
-        // Create bridge if not exists
-        try { 
-          execSync(`ip link add name ${bridge.name} type bridge`, { stdio: 'ignore' }); 
-          kernelLog.push(`Created bridge ${bridge.name}`); 
-        } catch(e) {}
-        
-        // Ensure bridge is UP
+        try { execSync(`ip link add name ${bridge.name} type bridge`, { stdio: 'ignore' }); kernelLog.push(`Created bridge ${bridge.name}`); } catch(e) {}
         execSync(`ip link set ${bridge.name} up`);
 
-        // Assign IP (Flush existing first to avoid duplicate errors)
         if (bridge.ipAddress) {
            try { 
              execSync(`ip addr flush dev ${bridge.name}`);
              execSync(`ip addr add ${bridge.ipAddress}/${bridge.netmask || '24'} dev ${bridge.name}`); 
              kernelLog.push(`Assigned IP ${bridge.ipAddress}/${bridge.netmask} to ${bridge.name}`);
-           } catch(e) {
-             kernelLog.push(`Warning setting IP for ${bridge.name}: ${e.message}`);
-           }
+           } catch(e) { kernelLog.push(`Warning setting IP for ${bridge.name}: ${e.message}`); }
         }
 
-        // Add member interfaces
         for(const iface of bridge.interfaces) {
            try { 
-             execSync(`ip link set ${iface} up`);
              execSync(`ip link set ${iface} master ${bridge.name}`); 
+             execSync(`ip link set ${iface} up`);
              kernelLog.push(`Added ${iface} to ${bridge.name}`); 
-           } catch(e) {
-             kernelLog.push(`Error adding ${iface} to ${bridge.name}: ${e.message}`);
-           }
+           } catch(e) { kernelLog.push(`Error adding ${iface} to ${bridge.name}: ${e.message}`); }
         }
 
-        // DHCP Logic with dnsmasq
         if (bridge.dhcpEnabled && bridge.dhcpStart && bridge.dhcpEnd) {
           const configStr = `interface=${bridge.name}\ndhcp-range=${bridge.dhcpStart},${bridge.dhcpEnd},${bridge.leaseTime || '12h'}\n`;
-          const configPath = `/etc/dnsmasq.d/nexus-${bridge.name}.conf`;
-          try {
-            fs.writeFileSync(configPath, configStr);
-            kernelLog.push(`DHCP config written for ${bridge.name}`);
-          } catch(e) {
-            kernelLog.push(`Error writing DHCP config for ${bridge.name}: ${e.message}`);
-          }
+          fs.writeFileSync(`/etc/dnsmasq.d/nexus-${bridge.name}.conf`, configStr);
+          kernelLog.push(`DHCP config written for ${bridge.name}`);
         } else {
           try { 
-            const configPath = `/etc/dnsmasq.d/nexus-${bridge.name}.conf`;
-            if (fs.existsSync(configPath)) fs.unlinkSync(configPath); 
+            const path = `/etc/dnsmasq.d/nexus-${bridge.name}.conf`;
+            if (fs.existsSync(path)) fs.unlinkSync(path); 
           } catch(e) {}
         }
       }
       
-      try { 
-        execSync('systemctl restart dnsmasq'); 
-        kernelLog.push('DHCP Server (dnsmasq) Restarted'); 
-      } catch(e) { 
-        kernelLog.push('Error restarting dnsmasq: ' + e.message); 
-      }
+      try { execSync('systemctl restart dnsmasq'); kernelLog.push('DHCP Server (dnsmasq) Restarted'); } 
+      catch(e) { kernelLog.push('DHCP Restart FAILED: Port 53 likely in use by systemd-resolved. Try "Fix DNS Conflict" in System tab.'); }
 
       res.json({ success: true, log: kernelLog });
     } catch (err) {
@@ -222,35 +201,45 @@ try {
     }
   });
 
+  app.post('/api/system/fix-dns-conflict', (req, res) => {
+    const kernelLog = [];
+    try {
+      if (process.platform !== 'linux') return res.json({ success: true, log: ['Dev-Mode: Emulated Fix OK'] });
+      
+      log('Fixing DNS Port 53 Conflict (stopping systemd-resolved)...');
+      execSync('systemctl stop systemd-resolved');
+      execSync('systemctl disable systemd-resolved');
+      kernelLog.push('systemd-resolved STOPPED and DISABLED.');
+      
+      // Also try to restart dnsmasq now that the port is free
+      try {
+        execSync('systemctl restart dnsmasq');
+        kernelLog.push('dnsmasq successfully restarted on Port 53.');
+      } catch (e) {
+        kernelLog.push('dnsmasq failed to restart: ' + e.message);
+      }
+      
+      res.json({ success: true, log: kernelLog });
+    } catch (err) {
+      log(`Error /system/fix-dns-conflict: ${err.message}`);
+      res.status(500).json({ error: err.message, success: false });
+    }
+  });
+
   app.get('/api/metrics', (req, res) => {
     try {
-      if (process.platform !== 'linux') {
-        return res.json({ cpuUsage: 0, memoryUsage: '0', temp: 'N/A', uptime: 'N/A', activeSessions: 0 });
-      }
+      if (process.platform !== 'linux') return res.json({ cpuUsage: 0, memoryUsage: '0', temp: 'N/A', uptime: 'N/A', activeSessions: 0 });
       const load = fs.readFileSync('/proc/loadavg', 'utf8').split(' ')[0];
       const mem = fs.readFileSync('/proc/meminfo', 'utf8').split('\n');
       const totalMem = parseInt((mem.find(l => l.startsWith('MemTotal:')) || "0").replace(/\D/g, '')) / 1024;
       const freeMem = parseInt((mem.find(l => l.startsWith('MemAvailable:')) || "0").replace(/\D/g, '')) / 1024;
-      
       let temp = 'N/A';
-      try {
-        if (fs.existsSync('/sys/class/thermal/thermal_zone0/temp')) {
-          temp = (parseInt(fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8')) / 1000).toFixed(1) + '°C';
-        }
-      } catch (e) {}
-
+      try { if (fs.existsSync('/sys/class/thermal/thermal_zone0/temp')) temp = (parseInt(fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8')) / 1000).toFixed(1) + '°C'; } catch (e) {}
       let uptime = 'N/A';
       try { uptime = execSync('uptime -p').toString().trim(); } catch (e) {}
 
-      res.json({
-        cpuUsage: parseFloat(load) * 10,
-        memoryUsage: ((totalMem - freeMem) / 1024).toFixed(1),
-        temp,
-        uptime,
-        activeSessions: 0
-      });
+      res.json({ cpuUsage: parseFloat(load) * 10, memoryUsage: ((totalMem - freeMem) / 1024).toFixed(1), temp, uptime, activeSessions: 0 });
     } catch (err) {
-      log(`Error /metrics: ${err.message}`);
       res.status(500).json({ error: err.message });
     }
   });
@@ -259,27 +248,18 @@ try {
     const { mode, wanInterfaces } = req.body;
     nexusConfig.wanConfig = { mode, interfaces: wanInterfaces };
     saveConfig();
-
     const kernelLog = [];
     try {
-      log(`Applying Kernel Config: Mode=${mode}`);
       if (process.platform !== 'linux') return res.json({ success: true, log: ['Dev-Mode: Config Saved'] });
-
       execSync('sysctl -w net.ipv4.ip_forward=1');
-      kernelLog.push('Kernel: IPv4 Forwarding ENABLED');
-
       try { execSync('ip route del default'); } catch (e) {}
-      kernelLog.push('Kernel: Routing Table FLUSHED');
-
       if (mode === 'LOAD_BALANCER') {
-        let routeCmd = 'ip route add default ';
-        const validWan = wanInterfaces.filter(wan => wan.status === 'UP' && wan.gateway && wan.gateway !== 'None');
-        if (validWan.length > 0) {
-          validWan.forEach(wan => {
-            routeCmd += `nexthop via ${wan.gateway} dev ${wan.interfaceName} weight ${wan.weight || 1} `;
-          });
-          execSync(routeCmd);
-          kernelLog.push('Kernel: Multi-WAN Load Balancing (ECMP) ACTIVE');
+        let cmd = 'ip route add default ';
+        const valid = wanInterfaces.filter(w => w.status === 'UP' && w.gateway && w.gateway !== 'None');
+        if (valid.length > 0) {
+          valid.forEach(w => { cmd += `nexthop via ${w.gateway} dev ${w.interfaceName} weight ${w.weight || 1} `; });
+          execSync(cmd);
+          kernelLog.push('Kernel: Multi-WAN Load Balancing ACTIVE');
         }
       } else {
         const primary = wanInterfaces.sort((a,b) => (a.priority || 1) - (b.priority || 1))[0];
@@ -290,31 +270,14 @@ try {
       }
       res.json({ success: true, log: kernelLog });
     } catch (err) {
-      log(`Error /apply: ${err.message}`);
       res.status(500).json({ error: err.message, success: false });
     }
   });
 
   const PORT = 3000;
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    log(`-------------------------------------------`);
-    log(` Nexus Hardware Agent Active`);
-    log(` Port: ${PORT}`);
-    log(` Status: LISTENING`);
-    log(`-------------------------------------------`);
-  });
-
-  server.on('error', (e) => {
-    if (e.code === 'EADDRINUSE') {
-      log(`CRITICAL: Port ${PORT} already in use. Run 'sudo fuser -k 3000/tcp'.`);
-    } else {
-      log(`FATAL: ${e.message}`);
-    }
-    process.exit(1);
-  });
+  app.listen(PORT, '0.0.0.0', () => { log(`Nexus Agent Active on Port ${PORT}`); });
 
 } catch (globalError) {
   log(`CRITICAL STARTUP ERROR: ${globalError.message}`);
-  log(`Ensure you ran 'npm install express cors' inside /var/www/html/Nexus-Router-Os`);
   process.exit(1);
 }
