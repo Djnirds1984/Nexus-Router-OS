@@ -131,7 +131,7 @@ const App: React.FC = () => {
                   <h3 className="text-lg font-bold text-white mb-2">Kernel Forwarding</h3>
                   <p className="text-sm text-slate-500 mb-6">Status of IPv4/IPv6 packet traversal.</p>
                   <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse"></div>
                     <span className="text-xs font-mono text-emerald-400 font-bold">ENABLED</span>
                   </div>
                </div>
@@ -173,21 +173,25 @@ const App: React.FC = () => {
       </div>
       
       {/* Footer Diagnostic Bar */}
-      <div className="fixed bottom-0 right-0 left-64 bg-slate-900/80 backdrop-blur-md border-t border-slate-800 px-6 py-2 flex items-center justify-between z-40">
-        <div className="flex items-center gap-6">
+      <div className="fixed bottom-0 right-0 left-64 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800 px-6 py-2.5 flex items-center justify-between z-40 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center gap-8">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Production Path</span>
-            <span className="text-[10px] font-mono text-blue-400">/var/www/nexus-os/dist</span>
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Active Runtime</span>
+            <span className="text-[10px] font-mono text-blue-400 bg-blue-500/5 px-2 py-0.5 rounded border border-blue-500/10">/var/www/nexus-os/dist</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Web User</span>
-            <span className="text-[10px] font-mono text-emerald-400">www-data</span>
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ownership</span>
+            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10">www-data:www-data</span>
           </div>
         </div>
         <div className="flex items-center gap-4">
+           <div className="flex items-center gap-2 mr-4">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Nginx Verified</span>
+           </div>
            <button 
              onClick={() => setIsTerminalOpen(!isTerminalOpen)}
-             className="text-[10px] font-bold text-slate-400 hover:text-white transition-colors bg-slate-800 px-3 py-1 rounded border border-slate-700"
+             className="text-[10px] font-black text-slate-300 hover:text-white transition-all bg-slate-800 hover:bg-slate-700 px-4 py-1.5 rounded-lg border border-slate-700 shadow-lg active:scale-95"
            >
              {isTerminalOpen ? 'CLOSE CONSOLE' : 'OPEN CONSOLE (ALT+T)'}
            </button>

@@ -1,30 +1,32 @@
 
 # Nexus Router OS: Deployment Guide (Ubuntu x64)
 
-If you are seeing a **500 Internal Server Error**, Nginx is likely blocked by Ubuntu's security permissions (AppArmor or simple folder permissions).
+**CRITICAL FIX:** You are seeing a 500 Error because Nginx cannot access the `/root/` folder. Follow these steps to move the project to a public location.
 
 ---
 
-## ⚡ The "One-Command" Fix (Move to Safe Zone)
-Nginx struggles to read files inside `/home`. The most stable way to run this router dashboard is to move it to the standard web directory.
-
-Run these commands in order:
+## ⚡ The "Exit Root" Migration
+Run these commands to move your build out of the restricted root folder and into the web server's safe zone.
 
 ```bash
-# 1. Move the project to a safe location
-sudo cp -r ~/Nexus-Router-OS /var/www/nexus-os
+# 1. Create the target directory
+sudo mkdir -p /var/www/nexus-os
 
-# 2. Set the owner to the web server user
+# 2. Copy the 'dist' folder from your current location
+# (Run this as root/sudo)
+sudo cp -r /root/Nexus-Router-OS/dist /var/www/nexus-os/
+
+# 3. Set the correct owner (www-data is the Nginx user)
 sudo chown -R www-data:www-data /var/www/nexus-os
 
-# 3. Ensure the folder has correct permissions
+# 4. Set directory permissions (755 is standard)
 sudo chmod -R 755 /var/www/nexus-os
 ```
 
 ---
 
 ## 🛠️ Updated Nginx Configuration
-Now, update your Nginx config to point to this new, safe location.
+Now, update Nginx to look at the new path.
 
 ### Step 1: Edit the config
 `sudo nano /etc/nginx/sites-available/default`
@@ -37,7 +39,7 @@ server {
 
     server_name _;
 
-    # Safe path with correct permissions
+    # THE NEW SAFE PATH
     root /var/www/nexus-os/dist;
     index index.html;
 
@@ -46,13 +48,13 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # Avoid 500 errors by not using custom error pages that might not exist
+    # Logging for diagnostics
     error_log /var/log/nginx/nexus_error.log;
     access_log /var/log/nginx/nexus_access.log;
 }
 ```
 
-### Step 3: Restart
+### Step 3: Test and Restart
 ```bash
 sudo nginx -t
 sudo systemctl restart nginx
@@ -60,20 +62,10 @@ sudo systemctl restart nginx
 
 ---
 
-## 🔍 Still seeing a 500 Error?
-If the error persists, run this command to see the *exact* reason:
-`sudo tail -n 20 /var/log/nginx/nexus_error.log`
+## 🔍 How to Verify the Fix
+If you still see an error, check the logs specifically created for this app:
+`sudo tail -f /var/log/nginx/nexus_error.log`
 
-**Common log messages and their meanings:**
-*   `permission denied`: You missed the `chown` or `chmod` steps above.
-*   `no such file or directory`: The path `/var/www/nexus-os/dist` doesn't exist. Make sure you ran `npm run build` before copying the folder.
-
----
-
-## 🚀 Post-Installation
-Once you see the dashboard:
-1. Go to **AI Advisor**.
-2. Ask: "I am on Ubuntu 24.04, generate the nftables rules for my enp1s0 and enp2s0 interfaces for load balancing."
-3. Copy the output into the **Terminal** tab or your Ubuntu SSH session.
+If you see **"Permission Denied"**, it means the `chown` command in Step 3 failed or wasn't run.
 
 *Repository: https://github.com/Djnirds1984/Nexus-Router-OS.git*
