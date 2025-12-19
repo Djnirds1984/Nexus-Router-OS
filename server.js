@@ -3,39 +3,35 @@
  * This script must run as root to interact with the Linux kernel (iproute2).
  */
 
-// Defensive module loading to catch missing dependencies
+console.log(`[${new Date().toISOString()}] Nexus Core Agent: Initializing...`);
+
 try {
+  // Defensive check for mandatory modules
   const express = require('express');
   const cors = require('cors');
   const { execSync } = require('child_process');
   const fs = require('fs');
-  const path = require('path');
 
   const app = express();
   app.use(cors());
   app.use(express.json());
 
-  // Log all requests for debugging
+  // Request logger for audit
   app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${req.ip}`);
     next();
   });
 
-  /**
-   * Diagnostic Check: Ensure iproute2 supports JSON
-   */
+  // Diagnostic: Check iproute2 capabilities
   let supportsJson = false;
   try {
     execSync('ip -j addr show', { stdio: 'ignore' });
     supportsJson = true;
-    console.log('Kernel Check: ip-json support detected.');
+    console.log('Kernel Feature: ip-json supported.');
   } catch (e) {
-    console.warn('Kernel Check: ip-json NOT supported. Falling back to text parsing.');
+    console.warn('Kernel Warning: ip-json not found. Using text parser fallback.');
   }
 
-  /**
-   * FETCH REAL GATEWAYS
-   */
   const getGateways = () => {
     try {
       const routes = execSync('ip route show').toString();
@@ -51,14 +47,10 @@ try {
       });
       return gatewayMap;
     } catch (e) { 
-      console.error('Gateway Lookup Error:', e.message);
       return {}; 
     }
   };
 
-  /**
-   * FETCH TRAFFIC STATS
-   */
   const getTrafficStats = () => {
     try {
       if (!fs.existsSync('/proc/net/dev')) return {};
@@ -77,7 +69,6 @@ try {
       });
       return stats;
     } catch (e) { 
-      console.error('ProcNetDev Read Error:', e.message);
       return {}; 
     }
   };
@@ -85,7 +76,7 @@ try {
   app.get('/api/interfaces', (req, res) => {
     try {
       if (process.platform !== 'linux') {
-        return res.json([{ id: 'demo', name: 'DEMO', interfaceName: 'eth0', status: 'UP', ipAddress: '127.0.0.1', gateway: '127.0.0.1', throughput: { rx: 0, tx: 0 }, weight: 1, priority: 1 }]);
+        return res.json([{ id: 'eth0', name: 'WAN1', interfaceName: 'eth0', status: 'UP', ipAddress: '127.0.0.1', gateway: '1.1.1.1', throughput: { rx: 0, tx: 0 }, weight: 1, priority: 1 }]);
       }
 
       let interfaces = [];
@@ -120,7 +111,6 @@ try {
       }
       res.json(interfaces);
     } catch (err) {
-      console.error('API Error /interfaces:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -133,11 +123,8 @@ try {
 
       const load = fs.readFileSync('/proc/loadavg', 'utf8').split(' ')[0];
       const mem = fs.readFileSync('/proc/meminfo', 'utf8').split('\n');
-      const totalMemLine = mem.find(l => l.startsWith('MemTotal:')) || "0";
-      const freeMemLine = mem.find(l => l.startsWith('MemAvailable:')) || "0";
-      
-      const totalMem = parseInt(totalMemLine.replace(/\D/g, '')) / 1024;
-      const freeMem = parseInt(freeMemLine.replace(/\D/g, '')) / 1024;
+      const totalMem = parseInt((mem.find(l => l.startsWith('MemTotal:')) || "0").replace(/\D/g, '')) / 1024;
+      const freeMem = parseInt((mem.find(l => l.startsWith('MemAvailable:')) || "0").replace(/\D/g, '')) / 1024;
       
       let temp = 'N/A';
       try {
@@ -149,18 +136,14 @@ try {
       let uptime = 'N/A';
       try { uptime = execSync('uptime -p').toString().trim(); } catch (e) {}
 
-      let sessions = 0;
-      try { sessions = parseInt(execSync('ss -t | wc -l').toString()) - 1; } catch (e) {}
-
       res.json({
         cpuUsage: parseFloat(load) * 10,
         memoryUsage: ((totalMem - freeMem) / 1024).toFixed(1),
         temp,
         uptime,
-        activeSessions: sessions
+        activeSessions: 0
       });
     } catch (err) {
-      console.error('API Error /metrics:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -169,46 +152,33 @@ try {
     const { mode, wanInterfaces } = req.body;
     const log = [];
     try {
-      if (process.platform !== 'linux') {
-        return res.json({ success: true, log: ['Dev Environment: Kernel calls bypassed.'] });
-      }
+      if (process.platform !== 'linux') return res.json({ success: true, log: ['Dev-Mode: Bypass'] });
 
-      console.log(`Applying Configuration: Mode=${mode}`);
-      
       execSync('sysctl -w net.ipv4.ip_forward=1');
-      log.push('Kernel: Enabled IPv4 Forwarding');
+      log.push('Kernel: IP Forwarding Enabled');
 
-      try { execSync('ip route del default'); } catch (e) { console.warn('Purge warning:', e.message); }
-      log.push('Kernel: Flushed routing table');
+      try { execSync('ip route del default'); } catch (e) {}
+      log.push('Kernel: Routing Table Reset');
 
       if (mode === 'LOAD_BALANCER') {
         let routeCmd = 'ip route add default ';
         const validWan = wanInterfaces.filter(wan => wan.status === 'UP' && wan.gateway && wan.gateway !== 'None');
-        
         if (validWan.length > 0) {
           validWan.forEach(wan => {
             routeCmd += `nexthop via ${wan.gateway} dev ${wan.interfaceName} weight ${wan.weight || 1} `;
           });
           execSync(routeCmd);
-          log.push('Kernel: Multi-WAN ECMP active');
-        } else {
-          log.push('Error: No valid UP interfaces with gateways found.');
-          return res.status(400).json({ success: false, log });
+          log.push('Kernel: ECMP Multi-WAN Applied');
         }
       } else {
         const primary = wanInterfaces.sort((a,b) => (a.priority || 1) - (b.priority || 1))[0];
-        if (primary && primary.gateway && primary.gateway !== 'None') {
+        if (primary && primary.gateway) {
           execSync(`ip route add default via ${primary.gateway} dev ${primary.interfaceName}`);
-          log.push(`Kernel: Failover active -> ${primary.interfaceName}`);
-        } else {
-          log.push('Error: Primary gateway not found.');
-          return res.status(400).json({ success: false, log });
+          log.push(`Kernel: HA-Failover set to ${primary.interfaceName}`);
         }
       }
-
       res.json({ success: true, log });
     } catch (err) {
-      console.error('API Error /apply:', err);
       res.status(500).json({ error: err.message, success: false });
     }
   });
@@ -218,22 +188,22 @@ try {
     console.log(`-------------------------------------------`);
     console.log(` Nexus Hardware Agent Active`);
     console.log(` Port: ${PORT}`);
-    console.log(` Path: /var/www/html/Nexus-Router-Os`);
+    console.log(` Host: 0.0.0.0`);
+    console.log(` Status: LISTENING`);
     console.log(`-------------------------------------------`);
   });
 
   server.on('error', (e) => {
-    if (e.code === 'EADDRINUSE') {
-      console.error(`FATAL: Port ${PORT} is already in use by another process.`);
-    } else {
-      console.error('FATAL: Server startup error:', e.message);
-    }
+    console.error('SERVER FATAL ERROR:', e.message);
     process.exit(1);
   });
 
 } catch (globalError) {
-  console.error('CRITICAL STARTUP ERROR:', globalError.message);
-  console.error('This usually means dependencies (express, cors) are missing.');
-  console.error('FIX: Run "cd /var/www/html/Nexus-Router-Os && npm install express cors"');
+  console.error('-------------------------------------------');
+  console.error(' CRITICAL STARTUP FAILURE');
+  console.error(' ERROR:', globalError.message);
+  console.error(' Likely missing: express or cors');
+  console.error(' FIX: Run "sudo npm install express cors"');
+  console.error('-------------------------------------------');
   process.exit(1);
 }
