@@ -1,0 +1,7 @@
+{
+  "name": "Nexus Router OS",
+  "description": "A sophisticated management dashboard for Ubuntu-based x64 routers, featuring multi-WAN load balancing, failover orchestration, and AI-powered network diagnostics.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
