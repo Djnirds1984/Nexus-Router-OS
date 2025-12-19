@@ -79,7 +79,7 @@ const App: React.FC = () => {
       { cmd: 'git remote -v', msg: 'Verifying upstream repository...' },
       { cmd: 'git fetch origin main', msg: 'Fetching delta packets from main branch...' },
       { cmd: 'git pull origin main', msg: 'Applying filesystem patches...' },
-      { cmd: 'npm install --frozen-lockfile', msg: 'Re-evaluating dependency tree...' },
+      { cmd: 'npm install --legacy-peer-deps', msg: 'Re-evaluating dependency tree with peer-dependency resolution...' },
       { cmd: 'npm run build', msg: 'Building optimized production bundles...' },
       { cmd: 'systemctl restart nginx', msg: 'Purging edge cache and restarting proxy...' }
     ];

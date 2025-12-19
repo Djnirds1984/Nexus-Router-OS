@@ -34,7 +34,8 @@ cd /var/www/html/Nexus-Router-Os
 git clone https://github.com/Djnirds1984/Nexus-Router-OS.git .
 
 # 3. Install the Backend Agent dependencies
-npm install express cors
+# IMPORTANT: Use --legacy-peer-deps to resolve Recharts/React version conflicts
+npm install express cors --legacy-peer-deps
 ```
 
 ---
