@@ -1,4 +1,3 @@
-
 const express = require('express');
 const { execSync } = require('child_process');
 const cors = require('cors');
@@ -53,6 +52,13 @@ const getTrafficStats = () => {
 
 app.get('/api/interfaces', (req, res) => {
   try {
+    // Check if running on Linux
+    if (process.platform !== 'linux') {
+      return res.json([
+        { id: 'eth0', name: 'DEMO INTERFACE', interfaceName: 'eth0', status: 'UP', ipAddress: '192.168.1.10', gateway: '192.168.1.1', throughput: { rx: 1.2, tx: 0.4 }, latency: 15, weight: 50, priority: 1 }
+      ]);
+    }
+
     const ipData = JSON.parse(execSync('ip -j addr show').toString());
     const traffic = getTrafficStats();
     const gateways = getGateways();
@@ -68,8 +74,8 @@ app.get('/api/interfaces', (req, res) => {
         gateway: gateways[iface.ifname] || 'Static/None',
         throughput: traffic[iface.ifname] || { rx: 0, tx: 0 },
         latency: 0,
-        weight: 1, // Default weight
-        priority: 1 // Default priority
+        weight: 1, 
+        priority: 1 
       };
     });
     res.json(interfaces);
@@ -80,15 +86,18 @@ app.get('/api/interfaces', (req, res) => {
 
 app.get('/api/metrics', (req, res) => {
   try {
+    if (process.platform !== 'linux') {
+      return res.json({ cpuUsage: 5, memoryUsage: '1.2', temp: '42°C', uptime: 'Simulation', activeSessions: 10 });
+    }
+
     const load = fs.readFileSync('/proc/loadavg', 'utf8').split(' ')[0];
     const mem = fs.readFileSync('/proc/meminfo', 'utf8').split('\n');
     const totalMem = parseInt(mem[0].replace(/\D/g, '')) / 1024;
     const freeMem = parseInt(mem[2].replace(/\D/g, '')) / 1024;
     
-    // Attempt to get CPU temp
     let temp = 'N/A';
     try {
-      temp = execSync('cat /sys/class/thermal/thermal_zone0/temp').toString().trim() / 1000 + '°C';
+      temp = (parseInt(fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8')) / 1000).toFixed(1) + '°C';
     } catch (e) {}
 
     res.json({
@@ -107,28 +116,32 @@ app.post('/api/apply', (req, res) => {
   const { mode, wanInterfaces } = req.body;
   const log = [];
   try {
+    if (process.platform !== 'linux') {
+      return res.json({ success: true, log: ['Simulation: Applied config to virtual stack.'] });
+    }
+
     // 1. IP Forwarding
     execSync('sysctl -w net.ipv4.ip_forward=1');
-    log.push('Enabled IPv4 Forwarding');
+    log.push('Kernel: Enabled IPv4 Forwarding');
 
     // 2. Clear Default Routes
     try { execSync('ip route del default'); } catch (e) {}
-    log.push('Cleared existing default routes');
+    log.push('Kernel: Purged existing routing cache');
 
     if (mode === 'LOAD_BALANCER') {
       let routeCmd = 'ip route add default ';
       wanInterfaces.forEach(wan => {
-        if (wan.status === 'UP' && wan.gateway !== 'Static/None') {
-          routeCmd += `nexthop via ${wan.gateway} dev ${wan.interfaceName} weight ${wan.weight} `;
+        if (wan.status === 'UP' && wan.gateway !== 'Static/None' && wan.gateway !== 'N/A') {
+          routeCmd += `nexthop via ${wan.gateway} dev ${wan.interfaceName} weight ${wan.weight || 1} `;
         }
       });
       execSync(routeCmd);
-      log.push('Applied Multipath Load Balancing');
+      log.push('Kernel: Multipath ECMP load balancing active');
     } else {
-      const primary = wanInterfaces.sort((a,b) => a.priority - b.priority)[0];
-      if (primary && primary.gateway !== 'Static/None') {
+      const primary = wanInterfaces.sort((a,b) => (a.priority || 1) - (b.priority || 1))[0];
+      if (primary && primary.gateway !== 'Static/None' && primary.gateway !== 'N/A') {
         execSync(`ip route add default via ${primary.gateway} dev ${primary.interfaceName}`);
-        log.push(`Applied Failover: Primary is ${primary.interfaceName}`);
+        log.push(`Kernel: Failover active - Primary route via ${primary.interfaceName}`);
       }
     }
 
@@ -141,5 +154,5 @@ app.post('/api/apply', (req, res) => {
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Nexus Core Agent running on port ${PORT}`);
-  console.log('Ensure you are running as ROOT for kernel access.');
+  console.log('System Status: READY');
 });

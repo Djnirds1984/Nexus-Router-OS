@@ -1,73 +1,57 @@
-# 🌐 Nexus OS Router: The Ultimate Ubuntu x64 Deployment Guide
+# 🌐 Nexus OS Router: Full Ubuntu x64 Deployment Manual
 
-This guide provides the complete, step-by-step instructions to turn a standard Ubuntu PC into a high-performance, AI-powered Multi-WAN Router.
+This guide covers the complete installation of the Nexus Router OS from scratch on an Ubuntu x64 PC. This system enables real-world Multi-WAN Load Balancing, Auto-Failover, and AI-driven network optimization.
 
 ---
 
 ## 🏗️ 1. Hardware Requirements
-*   **CPU**: x86_64 (Intel/AMD) with at least 2 cores.
-*   **RAM**: 2GB minimum (4GB recommended for AI heavy workloads).
-*   **NICs (Network Cards)**: 
-    *   **1x LAN Port**: For your internal network switch/access point.
-    *   **2x (or more) WAN Ports**: For your ISP connections (Fiber, Starlink, 5G, etc.).
+*   **CPU**: x86_64 (Intel/AMD) with 2+ cores.
+*   **RAM**: 2GB+ (4GB recommended).
+*   **NICs (Network Interfaces)**: 
+    *   **Port 1 (LAN)**: Connect to your internal network.
+    *   **Port 2 (WAN1)**: Primary ISP.
+    *   **Port 3 (WAN2)**: Secondary ISP.
 *   **Storage**: 16GB+ SSD.
 
 ---
 
-## 🐧 2. Operating System Setup
-1.  Install **Ubuntu 24.04 LTS (Server or Desktop)**.
-2.  During installation, ensure **OpenSSH Server** is enabled for remote management.
-3.  Perform a full system update:
+## 🐧 2. Ubuntu OS Setup
+1.  Download and install **Ubuntu 24.04 LTS**.
+2.  Enable **OpenSSH Server** during installation.
+3.  Once installed, log in and update the system:
     ```bash
     sudo apt update && sudo apt upgrade -y
     ```
 
 ---
 
-## 🛠️ 3. Core Dependencies Installation
-Nexus OS requires Node.js for the hardware agent and Nginx to serve the dashboard.
+## 📂 3. Repository Installation
+You must clone the official Nexus Router repository to your host machine.
 
 ```bash
-# Install Node.js, NPM, and Nginx
-sudo apt install nodejs npm nginx git -y
+# 1. Install Git and Node.js dependencies
+sudo apt install git nodejs npm nginx -y
 
-# Verify versions
-node -v  # Should be 18.x or higher
-```
-
----
-
-## 📂 4. Project Initialization (GitHub Setup)
-If you are pulling from a repository, follow these steps:
-
-```bash
-# Create the Nexus system directory
-sudo mkdir -p /opt/nexus
-sudo chown $USER:$USER /opt/nexus
+# 2. Clone the repository from GitHub
+cd /opt
+sudo git clone https://github.com/Djnirds1984/Nexus-Router-OS.git nexus
+sudo chown -R $USER:$USER /opt/nexus
 cd /opt/nexus
 
-# Clone the project (Replace with your actual repo URL if hosted)
-# git clone https://github.com/YourUsername/Nexus-Router-OS.git .
-
-# Alternatively, manually create the files:
-# Create server.js (Copy code from project files)
-# Create index.html and index.tsx (Copy code from project files)
-
-# Install Agent dependencies
-npm init -y
+# 3. Install Core Agent dependencies
 npm install express cors
 ```
 
 ---
 
-## ⚡ 5. Deploying the Nexus Core Agent (Backend)
-The agent needs to run as `root` to modify routing tables. We use `systemd` to ensure it starts on boot.
+## ⚡ 4. Deploying the Nexus Core Agent (Backend)
+The Core Agent allows the browser UI to talk to the Linux Kernel. It must run as root.
 
-1.  Create the service file:
+1.  Create the system service:
     ```bash
     sudo nano /etc/systemd/system/nexus-agent.service
     ```
-2.  Paste the following configuration:
+2.  Paste the following:
     ```ini
     [Unit]
     Description=Nexus Router Core Agent
@@ -83,7 +67,7 @@ The agent needs to run as `root` to modify routing tables. We use `systemd` to e
     [Install]
     WantedBy=multi-user.target
     ```
-3.  Enable and start:
+3.  Enable and start the service:
     ```bash
     sudo systemctl daemon-reload
     sudo systemctl enable nexus-agent
@@ -92,69 +76,56 @@ The agent needs to run as `root` to modify routing tables. We use `systemd` to e
 
 ---
 
-## 🌐 6. Kernel Hardening & Performance Tuning
-To act as a router, the Ubuntu kernel must be configured to forward packets and use high-speed congestion algorithms.
+## 🌐 5. Kernel Networking Optimization
+Run these commands to prepare Ubuntu for high-speed routing:
 
-1.  Open sysctl config: `sudo nano /etc/sysctl.conf`
-2.  Append these optimized parameters:
-    ```ini
-    # Enable IPv4 Forwarding
-    net.ipv4.ip_forward=1
+```bash
+# Enable IPv4 Forwarding and BBR Congestion Control
+sudo tee -a /etc/sysctl.conf <<EOF
+net.ipv4.ip_forward=1
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+net.ipv4.conf.all.rp_filter=1
+net.ipv4.conf.all.accept_redirects=0
+net.ipv4.conf.all.send_redirects=0
+EOF
 
-    # Enable BBR TCP Congestion Control (Google's algo for better speed)
-    net.core.default_qdisc=fq
-    net.ipv4.tcp_congestion_control=bbr
-
-    # Protect against spoofing
-    net.ipv4.conf.all.rp_filter=1
-    net.ipv4.conf.default.rp_filter=1
-
-    # Maximize network buffer sizes
-    net.core.rmem_max=16777216
-    net.core.wmem_max=16777216
-    ```
-3.  Apply the parameters:
-    ```bash
-    sudo sysctl -p
-    ```
+# Apply the changes
+sudo sysctl -p
+```
 
 ---
 
-## 🎨 7. Serving the Dashboard (Frontend)
-Nginx will serve the React-based UI.
+## 🎨 6. Serving the Dashboard (Frontend)
+Nginx will host the Nexus Dashboard.
 
-1.  Copy the frontend files to the web root:
+1.  Copy the frontend files:
     ```bash
     sudo cp /opt/nexus/index.html /var/www/html/
     sudo cp /opt/nexus/index.tsx /var/www/html/
-    # Ensure standard permissions
-    sudo chown -R www-data:www-data /var/www/html
     ```
-2.  Configure Nginx to allow larger payloads and CORS if necessary, though the defaults for a single-page app usually suffice.
-3.  Restart Nginx:
+2.  Verify Nginx is running:
     ```bash
     sudo systemctl restart nginx
     ```
 
 ---
 
-## 🧠 8. AI Advisor Configuration
-To use the **AI Advisor (Gemini)**, you must ensure the environment has access to an API Key.
-The UI expects `process.env.API_KEY`. In the `index.html` file, you should replace the empty string in the global `window.process` object with your actual Gemini API key if not handled by a secure vault.
+## 🔍 7. Post-Installation Check
+1.  Open your browser to `http://<your-pc-ip>`.
+2.  Confirm the **"Kernel Bridge"** status in the sidebar is **Green (Hardware Native)**.
+3.  Navigate to **Multi-WAN** to see your physical interfaces listed (e.g., `enp1s0`, `enp2s0`).
+4.  Configure your weights/priorities and click **"Sync Config to Ubuntu Kernel"**.
 
 ---
 
-## 🔍 9. Final Verification
-1.  Open your browser and navigate to `http://<your-router-ip>`.
-2.  Check the **Kernel Bridge** indicator in the bottom-left sidebar.
-    *   **Green (Hardware Native)**: Successfully talking to the Ubuntu Agent.
-    *   **Amber (Simulated)**: Check if `nexus-agent` is running (`sudo systemctl status nexus-agent`).
-3.  Go to the **Multi-WAN** tab and click **Sync Config to Ubuntu Kernel**. 
-4.  Run `ip route` in your terminal to see the real-time multipath routes applied by Nexus OS!
+## 🧠 8. AI Advisor Integration
+To enable the AI Neuralink:
+1.  Obtain a Gemini API key from Google AI Studio.
+2.  The application will request your API key via the **"AI Advisor"** tab or you can set the `API_KEY` environment variable in the agent service.
 
 ---
 
 ## 🆘 Troubleshooting
-*   **Error: Permission Denied**: Ensure `server.js` is running as `root` (via the systemd service).
-*   **Dashboard shows no interfaces**: Ensure `iproute2` is installed (`sudo apt install iproute2 -y`).
-*   **AI fails**: Check browser console for Gemini API errors or quota limits.
+*   **"Simulated Env" status**: Ensure the `nexus-agent` is running on port 3000. Check logs with `sudo journalctl -u nexus-agent -f`.
+*   **No Interfaces Found**: Ensure your user has permissions to run `ip` commands or that the agent is running as `root`.
