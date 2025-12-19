@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-// Fix: Import createRoot from 'react-dom/client' for React 18+ compatibility
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -22,13 +21,6 @@ interface WanInterface {
   priority: number;
   throughput: { rx: number; tx: number; };
   latency: number;
-}
-
-interface TerminalLog {
-  id: string;
-  type: 'info' | 'command' | 'success' | 'error';
-  message: string;
-  timestamp: Date;
 }
 
 /**
@@ -204,28 +196,36 @@ const AIAdvisor = ({ config }) => {
   const [loading, setLoading] = useState(false);
 
   const getAdvice = async () => {
+    // Safety check for API Key
+    // Fix: Using process.env.API_KEY directly as required by system guidelines
+    if (!process.env.API_KEY) {
+      setAdvice('System Error: API Key is not configured in the host environment.');
+      return;
+    }
+
     setLoading(true);
     try {
-      // Fix: Create instance right before call
+      // Fix: Direct initialization of GoogleGenAI using process.env.API_KEY
+      // Fix: Using 'gemini-3-pro-preview' for complex networking advice and CLI command generation
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3-pro-preview',
         contents: `Expert Linux Networking advice for Ubuntu 24.04 Router with Multi-WAN. Mode: ${config.mode}. Interfaces: ${JSON.stringify(config.wanInterfaces)}. Provide 3 specific CLI commands for iproute2 or nftables.`,
         config: { tools: [{ googleSearch: {} }] }
       });
-      setAdvice(response.text);
+      // response.text is a direct property, using it correctly
+      setAdvice(response.text || '');
       
-      // Fix: Extract grounding chunks as per mandatory requirements
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
       const extractedSources = chunks
-        .filter(chunk => chunk.web)
-        .map(chunk => ({
+        .filter((chunk: any) => chunk.web)
+        .map((chunk: any) => ({
           title: chunk.web.title || 'Source',
           uri: chunk.web.uri || '#'
         }));
       setSources(extractedSources);
     } catch (e) {
-      setAdvice('Error connecting to AI kernel. Ensure API Key is valid.');
+      setAdvice('Connection timed out or API refusal. Please check your network credentials.');
     }
     setLoading(false);
   };
@@ -239,11 +239,10 @@ const AIAdvisor = ({ config }) => {
             {loading ? 'Consulting Gemini...' : 'Analyze Topology'}
           </button>
         </div>
-        <div className="bg-slate-950 p-6 rounded-xl border border-slate-800 font-mono text-sm leading-relaxed text-slate-300 mb-6">
+        <div className="bg-slate-950 p-6 rounded-xl border border-slate-800 font-mono text-sm leading-relaxed text-slate-300 mb-6 whitespace-pre-wrap">
           {advice || 'Click "Analyze Topology" to receive optimized Ubuntu network configuration commands.'}
         </div>
         
-        {/* Fix: Display mandatory grounding sources */}
         {sources.length > 0 && (
           <div className="space-y-3 pt-4 border-t border-slate-800">
             <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Grounding Sources</h4>
@@ -296,7 +295,6 @@ const App = () => {
   );
 };
 
-// Fix: Use createRoot from 'react-dom/client' for React 18+ as ReactDOM.createRoot is deprecated in newer types
 const container = document.getElementById('root');
 if (container) {
   const root = createRoot(container);
