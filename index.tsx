@@ -30,7 +30,8 @@ interface SystemMetrics {
   activeSessions: number;
 }
 
-const API_BASE = 'http://localhost:3000/api';
+// Updated to relative path to support remote access via Router IP
+const API_BASE = '/api';
 
 /**
  * COMPONENT: LAYOUT
@@ -287,6 +288,8 @@ const App = () => {
       const data = await res.json();
       if (data.success) {
         alert('Nexus Core: Kernel synchronized successfully.\n' + data.log.join('\n'));
+      } else {
+        alert('Nexus Core: Application failed. Hardware agent returned an error.');
       }
     } catch(e) {
       alert('Nexus Core: Failed to communicate with Hardware Agent.');
