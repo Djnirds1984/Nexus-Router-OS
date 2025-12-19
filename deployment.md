@@ -11,6 +11,16 @@ This is the definitive guide to deploying the Nexus Router OS. Following these i
 
 ---
 
+## 🚀 FAST FIX: For "Bad Gateway" or "Failed Start"
+If your agent isn't starting, run these three commands immediately:
+```bash
+cd /var/www/html/Nexus-Router-Os
+sudo npm install express cors --save
+sudo systemctl restart nexus-agent
+```
+
+---
+
 ## 🐧 2. System Prerequisites
 Run these commands to install the necessary engine components:
 
@@ -33,9 +43,8 @@ sudo chown -R $USER:$USER /var/www/html/Nexus-Router-Os
 cd /var/www/html/Nexus-Router-Os
 git clone https://github.com/Djnirds1984/Nexus-Router-OS.git .
 
-# 3. Install the Backend Agent dependencies (CRITICAL)
-# Even if frontend npm install failed, you MUST run this for the agent to work.
-npm install express cors
+# 3. Install the Backend Agent dependencies (MANDATORY)
+sudo npm install express cors --save
 ```
 
 ---
@@ -59,7 +68,8 @@ The backend agent manages the Linux Kernel. It must run as `root` for `iproute2`
     WorkingDirectory=/var/www/html/Nexus-Router-Os
     ExecStart=/usr/bin/node /var/www/html/Nexus-Router-Os/server.js
     Restart=always
-    RestartSec=5
+    RestartSec=10
+    StartLimitIntervalSec=0
 
     [Install]
     WantedBy=multi-user.target
@@ -138,21 +148,24 @@ Point the web server to the Nexus Router OS directory.
 ## 🆘 Troubleshooting 502 Bad Gateway
 If you see **"Failed to communicate with Hardware Agent"** or **502 Bad Gateway**:
 
-1.  **Check if the Node process is actually running**:
+1.  **Manual Start Check**:
+    Run the server manually to see the error message:
+    ```bash
+    cd /var/www/html/Nexus-Router-Os
+    sudo node server.js
+    ```
+    (If it says "Cannot find module", you missed `npm install`)
+
+2.  **Check Service Status**:
     ```bash
     sudo systemctl status nexus-agent
     ```
-2.  **If it's "failed", check the logs to see why**:
+
+3.  **Check Logs**:
     ```bash
     sudo journalctl -u nexus-agent -n 50 --no-pager
     ```
-3.  **Common fix (Missing modules)**:
-    If logs say `Error: Cannot find module 'express'`, run this in the project folder:
-    ```bash
-    cd /var/www/html/Nexus-Router-Os
-    sudo npm install express cors
-    sudo systemctl restart nexus-agent
-    ```
+
 4.  **Check Port Collision**:
     Ensure no other process is using port 3000:
     ```bash
