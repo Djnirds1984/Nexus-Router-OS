@@ -1,11 +1,11 @@
 # Nexus Router OS: Complete Deployment Guide (Ubuntu x64)
 
-Follow these steps to deploy Nexus Router OS on a clean Ubuntu x64 server. This guide assumes you are installing the project into the standard web root at `/var/www/html/nexus-os`.
+Follow these steps to deploy Nexus Router OS on a clean Ubuntu x64 machine. This guide sets up the project in the root `/var/www/html` directory using the default Nginx configuration.
 
 ---
 
 ## 🏗️ 1. Environment Preparation
-Ensure your system is up to date and has the necessary tools installed.
+Update your Ubuntu system and install the core dependencies.
 
 ```bash
 sudo apt update && sudo apt upgrade -y
@@ -15,112 +15,92 @@ sudo apt install nginx git -y
 ---
 
 ## 📂 2. Project Installation
-We will clone the official repository directly into the `/var/www/html` directory.
+We will clone the repository contents directly into the standard web root `/var/www/html`.
 
 ```bash
-# 1. Navigate to the web root
-cd /var/www/html
+# 1. Clean out the default Nginx files
+sudo rm -rf /var/www/html/*
 
-# 2. Clone the repository (and rename the folder to nexus-os)
-sudo git clone https://github.com/Djnirds1984/Nexus-Router-OS.git nexus-os
+# 2. Clone the repository into a temporary location and move it to the web root
+# (Cloning directly into /var/www/html requires an empty directory)
+git clone https://github.com/Djnirds1984/Nexus-Router-OS.git /tmp/nexus-os
+sudo cp -r /tmp/nexus-os/* /var/www/html/
+sudo cp -r /tmp/nexus-os/.* /var/www/html/ 2>/dev/null || true
 
-# 3. Enter the project directory
-cd nexus-os
+# 3. Set ownership to the Nginx user (www-data)
+# This is mandatory for Nginx to serve the files correctly.
+sudo chown -R www-data:www-data /var/www/html
 
-# 4. Set ownership to Nginx user (www-data)
-# This is CRITICAL to prevent 403 Forbidden and 500 Internal Server Errors
-sudo chown -R www-data:www-data /var/www/html/nexus-os
-
-# 5. Set correct folder and file permissions
-sudo find /var/www/html/nexus-os -type d -exec chmod 755 {} \;
-sudo find /var/www/html/nexus-os -type f -exec chmod 644 {} \;
+# 4. Apply correct filesystem permissions
+sudo find /var/www/html -type d -exec chmod 755 {} \;
+sudo find /var/www/html -type f -exec chmod 644 {} \;
 ```
 
 ---
 
-## 🛠️ 3. Nginx Configuration
-Create a specialized configuration to serve the React application and handle client-side routing.
+## 🛠️ 3. Nginx Configuration (Default Site)
+Instead of creating a new file, we will modify the existing Nginx default configuration.
 
-1. Create the configuration file:
-   `sudo nano /etc/nginx/sites-available/nexus-os`
+1. Open the default configuration file:
+   `sudo nano /etc/nginx/sites-available/default`
 
-2. Paste the following configuration:
+2. Replace the content of the `server { ... }` block with this optimized configuration:
 
 ```nginx
 server {
-    listen 80;
-    listen [::]:80;
+    listen 80 default_server;
+    listen [::]:80 default_server;
 
-    # Use your server IP or domain name here
-    server_name _; 
-
-    # Path to the unified project directory
-    root /var/www/html/nexus-os;
+    # Point to the root directory where the project is installed
+    root /var/www/html;
     index index.html;
 
+    server_name _;
+
     location / {
-        # This handles React client-side routing (Single Page App)
+        # Support React client-side routing
         try_files $uri $uri/ /index.html;
     }
 
-    # Enable support for .tsx and .ts files as JS modules if needed
+    # CRITICAL: Serve .tsx files as Javascript modules for the browser
     location ~* \.(tsx|ts)$ {
         add_header Content-Type application/javascript;
     }
 
-    # Optimization: Cache static assets
+    # Optional: Cache static assets to improve performance
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|otf)$ {
         expires 30d;
         add_header Cache-Control "public, no-transform";
     }
 
-    # Custom Logging
+    # Error and Access logs
     error_log /var/log/nginx/nexus_os_error.log;
     access_log /var/log/nginx/nexus_os_access.log;
 }
 ```
 
-3. Enable the site and restart Nginx:
+3. Save and Exit (Ctrl+O, Enter, Ctrl+X).
+
+4. Restart Nginx to apply the changes:
 ```bash
-# Disable the default Nginx site
-sudo rm -f /etc/nginx/sites-enabled/default
-
-# Enable Nexus Router OS
-sudo ln -s /etc/nginx/sites-available/nexus-os /etc/nginx/sites-enabled/
-
-# Verify config syntax and restart
 sudo nginx -t
 sudo systemctl restart nginx
 ```
 
 ---
 
-## 🔍 4. Verification & Troubleshooting
+## 🔍 4. Verification & Diagnostics
 
-### Check Path Integrity
-Run this command to ensure all project files are present in the target location:
-`ls -la /var/www/html/nexus-os`
+### Check Installation Path
+Verify that your files are in the right place:
+`ls -la /var/www/html`
 
-You should see:
-- `index.html`
-- `index.tsx`
-- `App.tsx`
-- `components/`
-- `services/`
-- `metadata.json`
-
-### Error: Black Screen (UI Not Loading)
-1. **Open Browser Console (F12)**.
-2. If you see `404 Not Found` for `index.tsx`, verify that the file exists at `/var/www/html/nexus-os/index.tsx`.
-3. Ensure the `root` path in your Nginx configuration matches exactly: `/var/www/html/nexus-os`.
-
-### Error: 403 Forbidden or 500 Internal Server Error
-This is a permission issue. Nginx cannot read your files. Fix it with:
-`sudo chown -R www-data:www-data /var/www/html/nexus-os`
-
-### Browser Extension Errors
-Errors in the console referring to `contentScript.js` or `chrome-extension://` are caused by browser plugins (like Grammarly, Google Translate, or LastPass). They **do not** affect the Nexus OS logic. Use **Incognito Mode** to test without extensions.
+### Troubleshooting "Black Screen"
+If the page loads but nothing shows:
+1. Open Browser Console (F12).
+2. If you see a MIME type error (e.g., "Expected a JavaScript module script but the server responded with a MIME type of text/plain"), ensure the `location ~* \.(tsx|ts)$` block is correctly added to your Nginx config.
+3. If you see a 403 Forbidden, ensure you ran the `chown` command in Step 2.
 
 ---
-**Official Repository:** [github.com/Djnirds1984/Nexus-Router-OS](https://github.com/Djnirds1984/Nexus-Router-OS.git)
-*Built for high-availability Ubuntu routing environments.*
+**GitHub Repository:** [https://github.com/Djnirds1984/Nexus-Router-OS.git](https://github.com/Djnirds1984/Nexus-Router-OS.git)
+*Built for high-performance Ubuntu routing and load balancing.*
