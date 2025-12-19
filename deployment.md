@@ -1,57 +1,52 @@
-# 🌐 Nexus OS Router: Full Ubuntu x64 Deployment Manual
+# 🌐 Nexus OS Router: Absolute Ubuntu x64 Deployment Manual
 
-This guide covers the complete installation of the Nexus Router OS from scratch on an Ubuntu x64 PC. This system enables real-world Multi-WAN Load Balancing, Auto-Failover, and AI-driven network optimization.
-
----
-
-## 🏗️ 1. Hardware Requirements
-*   **CPU**: x86_64 (Intel/AMD) with 2+ cores.
-*   **RAM**: 2GB+ (4GB recommended).
-*   **NICs (Network Interfaces)**: 
-    *   **Port 1 (LAN)**: Connect to your internal network.
-    *   **Port 2 (WAN1)**: Primary ISP.
-    *   **Port 3 (WAN2)**: Secondary ISP.
-*   **Storage**: 16GB+ SSD.
+This is the definitive guide to deploying the Nexus Router OS. Following these instructions will transform a standard Ubuntu x64 PC into a professional Multi-WAN Load Balancer and Failover Router.
 
 ---
 
-## 🐧 2. Ubuntu OS Setup
-1.  Download and install **Ubuntu 24.04 LTS**.
-2.  Enable **OpenSSH Server** during installation.
-3.  Once installed, log in and update the system:
-    ```bash
-    sudo apt update && sudo apt upgrade -y
-    ```
+## 🏗️ 1. Hardware Preparation
+*   **Host**: Ubuntu 24.04 LTS (x86_64).
+*   **Network**: At least 3 Physical Ethernet Ports (1 LAN, 2 WAN).
+*   **User**: Must have `sudo` privileges.
 
 ---
 
-## 📂 3. Repository Installation
-You must clone the official Nexus Router repository to your host machine.
+## 🐧 2. System Prerequisites
+Run these commands to install the necessary engine components:
 
 ```bash
-# 1. Install Git and Node.js dependencies
-sudo apt install git nodejs npm nginx -y
+sudo apt update && sudo apt upgrade -y
+sudo apt install git nodejs npm nginx iproute2 net-tools -y
+```
 
-# 2. Clone the repository from GitHub
-cd /opt
-sudo git clone https://github.com/Djnirds1984/Nexus-Router-OS.git nexus
-sudo chown -R $USER:$USER /opt/nexus
-cd /opt/nexus
+---
 
-# 3. Install Core Agent dependencies
+## 📂 3. Repository Installation (Mandatory Path)
+The project **must** be installed in `/var/www/html/Nexus-Router-Os`.
+
+```bash
+# 1. Create the directory and set ownership
+sudo mkdir -p /var/www/html/Nexus-Router-Os
+sudo chown -R $USER:$USER /var/www/html/Nexus-Router-Os
+
+# 2. Clone the repository into the specific directory
+cd /var/www/html/Nexus-Router-Os
+git clone https://github.com/Djnirds1984/Nexus-Router-OS.git .
+
+# 3. Install the Backend Agent dependencies
 npm install express cors
 ```
 
 ---
 
-## ⚡ 4. Deploying the Nexus Core Agent (Backend)
-The Core Agent allows the browser UI to talk to the Linux Kernel. It must run as root.
+## ⚡ 4. Nexus Core Agent (Backend Daemon)
+The backend agent manages the Linux Kernel. It must run as `root` for `iproute2` access.
 
-1.  Create the system service:
+1.  **Create Service File**:
     ```bash
     sudo nano /etc/systemd/system/nexus-agent.service
     ```
-2.  Paste the following:
+2.  **Paste Configuration**:
     ```ini
     [Unit]
     Description=Nexus Router Core Agent
@@ -60,14 +55,14 @@ The Core Agent allows the browser UI to talk to the Linux Kernel. It must run as
     [Service]
     Type=simple
     User=root
-    WorkingDirectory=/opt/nexus
-    ExecStart=/usr/bin/node /opt/nexus/server.js
+    WorkingDirectory=/var/www/html/Nexus-Router-Os
+    ExecStart=/usr/bin/node /var/www/html/Nexus-Router-Os/server.js
     Restart=always
 
     [Install]
     WantedBy=multi-user.target
     ```
-3.  Enable and start the service:
+3.  **Start the Service**:
     ```bash
     sudo systemctl daemon-reload
     sudo systemctl enable nexus-agent
@@ -76,11 +71,11 @@ The Core Agent allows the browser UI to talk to the Linux Kernel. It must run as
 
 ---
 
-## 🌐 5. Kernel Networking Optimization
-Run these commands to prepare Ubuntu for high-speed routing:
+## 🌐 5. Kernel Optimization & Routing
+Execute these commands to enable the Ubuntu PC to function as a router:
 
 ```bash
-# Enable IPv4 Forwarding and BBR Congestion Control
+# Enable Packet Forwarding and BBR High-Speed Congestion Control
 sudo tee -a /etc/sysctl.conf <<EOF
 net.ipv4.ip_forward=1
 net.core.default_qdisc=fq
@@ -90,42 +85,58 @@ net.ipv4.conf.all.accept_redirects=0
 net.ipv4.conf.all.send_redirects=0
 EOF
 
-# Apply the changes
+# Apply kernel parameters immediately
 sudo sysctl -p
 ```
 
 ---
 
-## 🎨 6. Serving the Dashboard (Frontend)
-Nginx will host the Nexus Dashboard.
+## 🎨 6. Nginx Web Server Configuration
+Point the web server to the Nexus Router OS directory.
 
-1.  Copy the frontend files:
+1.  **Configure Nginx**:
     ```bash
-    sudo cp /opt/nexus/index.html /var/www/html/
-    sudo cp /opt/nexus/index.tsx /var/www/html/
+    sudo nano /etc/nginx/sites-available/nexus
     ```
-2.  Verify Nginx is running:
+2.  **Paste Configuration**:
+    ```nginx
+    server {
+        listen 80;
+        server_name _;
+        root /var/www/html/Nexus-Router-Os;
+        index index.html;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        location /api/ {
+            proxy_pass http://localhost:3000/api/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
+        }
+    }
+    ```
+3.  **Activate and Restart**:
     ```bash
+    sudo ln -s /etc/nginx/sites-available/nexus /etc/nginx/sites-enabled/
+    sudo rm /etc/nginx/sites-enabled/default
     sudo systemctl restart nginx
     ```
 
 ---
 
-## 🔍 7. Post-Installation Check
-1.  Open your browser to `http://<your-pc-ip>`.
-2.  Confirm the **"Kernel Bridge"** status in the sidebar is **Green (Hardware Native)**.
-3.  Navigate to **Multi-WAN** to see your physical interfaces listed (e.g., `enp1s0`, `enp2s0`).
+## 🔍 7. Verification & Launch
+1.  Navigate to `http://<YOUR_UBUNTU_IP>` in your browser.
+2.  Check the **Sidebar Status**: It must show **"Hardware Native"** (Green).
+3.  Go to **Multi-WAN**: Verify that your real hardware interfaces (e.g., `eth0`, `enp1s0`) are detected.
 4.  Configure your weights/priorities and click **"Sync Config to Ubuntu Kernel"**.
 
 ---
 
-## 🧠 8. AI Advisor Integration
-To enable the AI Neuralink:
-1.  Obtain a Gemini API key from Google AI Studio.
-2.  The application will request your API key via the **"AI Advisor"** tab or you can set the `API_KEY` environment variable in the agent service.
-
----
-
-## 🆘 Troubleshooting
-*   **"Simulated Env" status**: Ensure the `nexus-agent` is running on port 3000. Check logs with `sudo journalctl -u nexus-agent -f`.
-*   **No Interfaces Found**: Ensure your user has permissions to run `ip` commands or that the agent is running as `root`.
+## 🧠 8. AI Advisor & Updates
+*   **AI**: Enter your Gemini API Key in the **AI Advisor** tab to get live optimization scripts based on your specific traffic patterns.
+*   **Updates**: Use the **Updates** tab to pull the latest changes directly from the repository. The system will automatically run `git pull` and restart services.

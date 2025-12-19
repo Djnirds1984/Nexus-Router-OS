@@ -2,6 +2,7 @@ const express = require('express');
 const { execSync } = require('child_process');
 const cors = require('cors');
 const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(cors());
@@ -52,7 +53,6 @@ const getTrafficStats = () => {
 
 app.get('/api/interfaces', (req, res) => {
   try {
-    // Check if running on Linux
     if (process.platform !== 'linux') {
       return res.json([
         { id: 'eth0', name: 'DEMO INTERFACE', interfaceName: 'eth0', status: 'UP', ipAddress: '192.168.1.10', gateway: '192.168.1.1', throughput: { rx: 1.2, tx: 0.4 }, latency: 15, weight: 50, priority: 1 }
@@ -63,7 +63,7 @@ app.get('/api/interfaces', (req, res) => {
     const traffic = getTrafficStats();
     const gateways = getGateways();
     
-    const interfaces = ipData.filter(iface => iface.ifname !== 'lo').map(iface => {
+    const interfaces = ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('br-')).map(iface => {
       const addr = iface.addr_info[0] || {};
       return {
         id: iface.ifname,
@@ -92,8 +92,11 @@ app.get('/api/metrics', (req, res) => {
 
     const load = fs.readFileSync('/proc/loadavg', 'utf8').split(' ')[0];
     const mem = fs.readFileSync('/proc/meminfo', 'utf8').split('\n');
-    const totalMem = parseInt(mem[0].replace(/\D/g, '')) / 1024;
-    const freeMem = parseInt(mem[2].replace(/\D/g, '')) / 1024;
+    const totalMemLine = mem.find(l => l.startsWith('MemTotal:'));
+    const freeMemLine = mem.find(l => l.startsWith('MemAvailable:'));
+    
+    const totalMem = parseInt(totalMemLine.replace(/\D/g, '')) / 1024;
+    const freeMem = parseInt(freeMemLine.replace(/\D/g, '')) / 1024;
     
     let temp = 'N/A';
     try {
@@ -130,13 +133,17 @@ app.post('/api/apply', (req, res) => {
 
     if (mode === 'LOAD_BALANCER') {
       let routeCmd = 'ip route add default ';
-      wanInterfaces.forEach(wan => {
-        if (wan.status === 'UP' && wan.gateway !== 'Static/None' && wan.gateway !== 'N/A') {
+      const validWan = wanInterfaces.filter(wan => wan.status === 'UP' && wan.gateway !== 'Static/None' && wan.gateway !== 'N/A');
+      
+      if (validWan.length > 0) {
+        validWan.forEach(wan => {
           routeCmd += `nexthop via ${wan.gateway} dev ${wan.interfaceName} weight ${wan.weight || 1} `;
-        }
-      });
-      execSync(routeCmd);
-      log.push('Kernel: Multipath ECMP load balancing active');
+        });
+        execSync(routeCmd);
+        log.push('Kernel: Multipath ECMP load balancing active');
+      } else {
+        log.push('Kernel Warning: No active WAN gateways found for load balancing');
+      }
     } else {
       const primary = wanInterfaces.sort((a,b) => (a.priority || 1) - (b.priority || 1))[0];
       if (primary && primary.gateway !== 'Static/None' && primary.gateway !== 'N/A') {
@@ -154,5 +161,5 @@ app.post('/api/apply', (req, res) => {
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Nexus Core Agent running on port ${PORT}`);
-  console.log('System Status: READY');
+  console.log('Installation Path: /var/www/html/Nexus-Router-Os');
 });
