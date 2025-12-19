@@ -29,23 +29,25 @@ const UpdateManager: React.FC<UpdateManagerProps> = ({ onApplyUpdate, isUpdating
         <div className="flex items-center gap-4">
           <div className="text-right">
             <div className="text-slate-500 text-xs font-bold uppercase tracking-widest">Connected Repository</div>
-            <div className="text-blue-400 font-mono text-sm">nexus-router-os/core</div>
+            <div className="text-blue-400 font-mono text-sm underline decoration-blue-500/30 underline-offset-4">
+              Djnirds1984/Nexus-Router-OS
+            </div>
           </div>
-          <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-xl">🐙</div>
+          <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-xl shadow-inner">🐙</div>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Version Status Card */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800">
+          <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-xl shadow-black/20">
             <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-6">Current Version</h3>
             <div className="flex items-center justify-between mb-8">
               <div>
-                <div className="text-4xl font-bold text-white mb-1">v1.2.4</div>
-                <div className="text-xs text-slate-500">Build: x64-stable-202410</div>
+                <div className="text-4xl font-bold text-white mb-1 tracking-tighter">v1.2.4</div>
+                <div className="text-xs text-slate-500 font-mono">Build: x64-202410-STABLE</div>
               </div>
-              <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-500">
+              <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-500 shadow-lg shadow-emerald-500/5">
                 ✓
               </div>
             </div>
@@ -53,7 +55,7 @@ const UpdateManager: React.FC<UpdateManagerProps> = ({ onApplyUpdate, isUpdating
             <button 
               onClick={checkUpdates}
               disabled={checking || isUpdating}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+              className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition-all active:scale-95 disabled:opacity-50 border border-slate-700 hover:border-slate-600"
             >
               {checking ? 'FETCHING GITHUB...' : 'CHECK FOR UPDATES'}
             </button>
@@ -79,7 +81,7 @@ const UpdateManager: React.FC<UpdateManagerProps> = ({ onApplyUpdate, isUpdating
         {/* Change Log / Advice */}
         <div className="lg:col-span-2 space-y-6">
           {updateAvailable ? (
-            <div className="bg-blue-600/10 border border-blue-500/30 p-8 rounded-2xl animate-in zoom-in-95 duration-300">
+            <div className="bg-blue-600/10 border border-blue-500/30 p-8 rounded-2xl animate-in zoom-in-95 duration-300 shadow-2xl shadow-blue-500/5">
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h3 className="text-xl font-bold text-white flex items-center gap-3">
@@ -97,7 +99,7 @@ const UpdateManager: React.FC<UpdateManagerProps> = ({ onApplyUpdate, isUpdating
                 </button>
               </div>
 
-              <div className="bg-slate-950/50 rounded-xl p-6 border border-blue-500/10 mb-6">
+              <div className="bg-slate-950/50 rounded-xl p-6 border border-blue-500/10 mb-6 shadow-inner">
                 <h4 className="text-blue-400 text-xs font-bold uppercase mb-4 tracking-widest">Patch Highlights</h4>
                 <ul className="space-y-3 text-slate-300 text-sm">
                   <li className="flex gap-3">
@@ -120,16 +122,16 @@ const UpdateManager: React.FC<UpdateManagerProps> = ({ onApplyUpdate, isUpdating
               </div>
             </div>
           ) : (
-            <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center flex flex-col items-center justify-center">
+            <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center flex flex-col items-center justify-center shadow-lg shadow-black/20">
               <div className="text-6xl mb-6 grayscale opacity-20">🚀</div>
-              <h3 className="text-xl font-bold text-white">System Up to Date</h3>
+              <h3 className="text-xl font-bold text-white tracking-tight">System Up to Date</h3>
               <p className="text-slate-500 mt-2 max-w-xs mx-auto text-sm">
-                Your Nexus OS is running the latest stable build. No updates required.
+                Your Nexus OS is running the latest stable build from <code className="text-slate-400">main</code>.
               </p>
             </div>
           )}
 
-          <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800">
+          <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-lg shadow-black/10">
             <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-6">Commit History</h3>
             <div className="space-y-6">
               {[
@@ -137,14 +139,14 @@ const UpdateManager: React.FC<UpdateManagerProps> = ({ onApplyUpdate, isUpdating
                 { hash: '4c9d5e1', msg: 'fix: Multi-WAN latency polling frequency', author: 'root', date: '5 days ago' },
                 { hash: '1a2b3c4', msg: 'chore: update gemini-pro models and tools', author: 'nexus-dev', date: '1 week ago' },
               ].map((commit) => (
-                <div key={commit.hash} className="flex items-center justify-between group cursor-help">
+                <div key={commit.hash} className="flex items-center justify-between group cursor-help hover:bg-slate-800/20 -mx-4 px-4 py-2 rounded-xl transition-all">
                   <div className="flex items-center gap-4">
-                    <div className="font-mono text-xs text-blue-500 bg-blue-500/10 px-2 py-1 rounded">
+                    <div className="font-mono text-xs text-blue-500 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20">
                       {commit.hash}
                     </div>
                     <div>
                       <div className="text-sm text-slate-300 font-medium group-hover:text-white transition-colors">{commit.msg}</div>
-                      <div className="text-[10px] text-slate-500">{commit.author} • {commit.date}</div>
+                      <div className="text-[10px] text-slate-500 uppercase tracking-tighter">{commit.author} • {commit.date}</div>
                     </div>
                   </div>
                   <div className="text-slate-700 group-hover:text-slate-500 transition-colors">↗</div>

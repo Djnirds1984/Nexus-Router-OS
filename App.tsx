@@ -75,24 +75,25 @@ const App: React.FC = () => {
   const handleApplyUpdate = async () => {
     setIsUpdating(true);
     setIsTerminalOpen(true);
-    addLog('info', 'Initializing GitHub update sequence...');
+    addLog('info', 'Connecting to github.com/Djnirds1984/Nexus-Router-OS...');
     
     const updateSteps = [
-      { cmd: 'git fetch origin main', msg: 'Fetching latest commits from remote...' },
-      { cmd: 'git pull origin main', msg: 'Synchronizing local files...' },
-      { cmd: 'npm install --frozen-lockfile', msg: 'Updating node modules...' },
-      { cmd: 'npm run build', msg: 'Compiling production assets...' },
-      { cmd: 'systemctl restart nexus-dashboard', msg: 'Restarting system service...' }
+      { cmd: 'git remote -v', msg: 'Verifying upstream repository...' },
+      { cmd: 'git fetch origin main', msg: 'Fetching delta packets from main branch...' },
+      { cmd: 'git pull origin main', msg: 'Applying filesystem patches...' },
+      { cmd: 'npm install --frozen-lockfile', msg: 'Re-evaluating dependency tree...' },
+      { cmd: 'npm run build', msg: 'Building optimized production bundles...' },
+      { cmd: 'systemctl restart nginx', msg: 'Purging edge cache and restarting proxy...' }
     ];
 
     for (const step of updateSteps) {
       addLog('info', step.msg);
       addLog('command', step.cmd);
-      await new Promise(r => setTimeout(r, 1200));
-      addLog('success', 'Task complete.');
+      await new Promise(r => setTimeout(r, 1000));
+      addLog('success', 'OK');
     }
 
-    addLog('success', 'System updated to v1.2.5. Reloading...');
+    addLog('success', 'System upgraded to v1.2.5. Initializing hot-reload...');
     setTimeout(() => {
       setIsUpdating(false);
       window.location.reload();
@@ -119,7 +120,7 @@ const App: React.FC = () => {
         return <UpdateManager onApplyUpdate={handleApplyUpdate} isUpdating={isUpdating} />;
       case 'settings':
         return (
-          <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center animate-in fade-in zoom-in-95">
+          <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center animate-in fade-in zoom-in-95 shadow-2xl">
             <h1 className="text-2xl font-bold text-white mb-4">Kernel & System Runtime</h1>
             <p className="text-slate-400 max-w-md mx-auto mb-8">Low-level optimization for Ubuntu x86_64 host system.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
@@ -129,9 +130,9 @@ const App: React.FC = () => {
                 { label: 'Hardware Offload', desc: 'SR-IOV & DPDK settings' },
                 { label: 'Firmware Updates', desc: 'Check for microcode updates' }
               ].map(item => (
-                <div key={item.label} className="p-6 bg-slate-950 rounded-xl border border-slate-800 text-left hover:border-blue-500/50 transition-all cursor-pointer group active:scale-95">
-                  <div className="font-bold text-white group-hover:text-blue-400">{item.label}</div>
-                  <div className="text-xs text-slate-500 mt-1">{item.desc}</div>
+                <div key={item.label} className="p-6 bg-slate-950 rounded-xl border border-slate-800 text-left hover:border-blue-500/50 transition-all cursor-pointer group active:scale-95 shadow-lg shadow-black/20">
+                  <div className="font-bold text-white group-hover:text-blue-400 transition-colors">{item.label}</div>
+                  <div className="text-xs text-slate-500 mt-1 uppercase tracking-tight opacity-70">{item.desc}</div>
                 </div>
               ))}
             </div>

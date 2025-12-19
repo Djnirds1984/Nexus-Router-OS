@@ -10,113 +10,107 @@ This guide provides the necessary steps to deploy the **Nexus Router OS** manage
 To use this system as a router, your Ubuntu PC requires:
 *   **Architecture:** x86_64 (Intel/AMD).
 *   **NICs:** At least 3 Ethernet ports (1 for LAN, 2 for WAN interfaces).
-    *   Recommended: Intel i225/i226 or Realtek 2.5G NICs.
 *   **Storage:** 16GB+ (Dashboard + Linux OS).
-*   **RAM:** 2GB minimum (8GB+ recommended for heavy state tracking).
+*   **RAM:** 2GB minimum (8GB+ recommended).
 
 ---
 
 ## 2. Host OS Preparation (Ubuntu 24.04 LTS)
 
-Before running the dashboard, the Ubuntu kernel must be configured to allow packet forwarding.
-
 ### Enable IPv4 Forwarding
 Run the following commands to enable routing:
 ```bash
-# Enable forwarding immediately
 sudo sysctl -w net.ipv4.ip_forward=1
-
-# Persist changes across reboots
 echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
 
 ### Install Essential Networking Tools
-The dashboard generates commands for these utilities:
 ```bash
 sudo apt update
-sudo apt install -y iproute2 nftables curl nodejs npm
+sudo apt install -y iproute2 nftables curl nodejs npm nginx
 ```
 
 ---
 
 ## 3. Dashboard Installation
 
-The Nexus OS dashboard is a React-based interface used to orchestrate the Linux `iproute2` and `nftables` stacks.
-
 ### Step 1: Clone and Install
 ```bash
-git clone https://github.com/YOUR_USERNAME/nexus-router-os.git
-cd nexus-router-os
+git clone https://github.com/Djnirds1984/Nexus-Router-OS.git
+cd Nexus-Router-OS
 npm install
 ```
 
 ### Step 2: Environment Configuration
-Ensure your Gemini API Key is available in your environment to power the **AI Advisor**:
+Ensure your Gemini API Key is available to power the **AI Advisor**:
 ```bash
 export API_KEY='your_google_gemini_api_key'
 ```
 
-### Step 3: Launch the Dashboard
+### Step 3: Production Service
+It is recommended to use `pm2` to keep the dashboard running:
 ```bash
-# Start the management UI
-npm run dev
+sudo npm install -g pm2
+pm2 start npm --name "nexus-os" -- run dev
 ```
-The dashboard will be accessible at `http://your-pc-ip:5173`.
 
 ---
 
-## 4. Configuring Multi-WAN
+## 4. Nginx Configuration (Default Site)
 
-Nexus OS uses a "Management Interface" approach. It does not directly execute root-level commands for security reasons. Instead:
+Instead of creating a new configuration, we will modify the default Ubuntu Nginx site to proxy traffic to our dashboard.
+
+### Step 1: Edit Default Configuration
+```bash
+sudo nano /etc/nginx/sites-available/default
+```
+
+### Step 2: Update the 'location /' block
+Find the `location /` block inside the `server` block and replace it with the following:
+
+```nginx
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    root /var/www/html;
+    index index.html index.htm;
+
+    server_name _;
+
+    location / {
+        proxy_pass http://localhost:5173;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+### Step 3: Restart Nginx
+```bash
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+---
+
+## 5. Configuring Multi-WAN
 
 1.  **Orchestrate:** Go to the **Multi-WAN** tab in the dashboard.
 2.  **Select Mode:** Choose between `LOAD BALANCER` or `AUTO FAILOVER`.
-3.  **Generate Advice:** Navigate to the **AI Advisor** tab. It will analyze your current configuration and generate a specific script for your Ubuntu kernel.
-4.  **Execute:** Copy the generated commands from the **Implementation** panel or the **System Console** and execute them in your Ubuntu terminal with `sudo`.
-
----
-
-## 5. Automated System Integration (Advanced)
-
-To allow the dashboard to apply changes directly (Active Orchestration), you can set up a simple bridge service or use the generated commands in a Netplan configuration.
-
-### Example: Netplan Multi-WAN (Static)
-If you are using the Load Balancing mode, the AI Advisor will suggest a structure similar to this in `/etc/netplan/01-netcfg.yaml`:
-
-```yaml
-network:
-  version: 2
-  ethernets:
-    enp1s0: # WAN 1
-      dhcp4: yes
-      routes:
-        - to: default
-          via: 192.168.1.1
-          metric: 100
-    enp2s0: # WAN 2
-      dhcp4: yes
-      routes:
-        - to: default
-          via: 192.168.100.1
-          metric: 200
-```
+3.  **Generate Advice:** Navigate to the **AI Advisor** tab.
+4.  **Execute:** Copy the generated commands and execute them in your terminal with `sudo`.
 
 ---
 
 ## 6. Security Hardening
 
-When deploying on a real PC, ensure the following:
-1.  **UFW/Firewall:** Only allow access to the dashboard (Port 5173) from the LAN interface.
-2.  **SSH:** Disable password authentication and use SSH keys.
-3.  **Kernel Hardening:** The **AI Advisor** provides `sysctl` commands for protection against IP spoofing and SYN flood attacks.
+*   **UFW:** `sudo ufw allow 80/tcp` (Nginx) and `sudo ufw allow 22/tcp` (SSH).
+*   **Kernel:** Use the AI Advisor's suggested `sysctl` hardening commands.
 
 ---
-
-## Troubleshooting
-
-*   **Interface not showing:** Run `ip link show` to verify your physical interface names (e.g., `eth0` vs `enp1s0`) and update them in `services/mockNetworkService.ts`.
-*   **AI Advisor Offline:** Verify your `API_KEY` is correctly exported and you have an active internet connection on at least one WAN link.
-
----
-*Created by Nexus OS AI Deployment Engine*
+*Repository: https://github.com/Djnirds1984/Nexus-Router-OS.git*
