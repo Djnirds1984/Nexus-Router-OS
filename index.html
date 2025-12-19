@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -92,7 +91,7 @@
   <div id="root"></div>
   
   <!-- LOAD THE APPLICATION ENTRY POINT -->
-  <script type="module" src="./index.tsx"></script>
+  <script type="module" src="./index.tsx" crossorigin></script>
 
   <script>
     // Hide loader once the window is ready
@@ -108,8 +107,8 @@
 
     // Handle Extension Errors (Silence noise from contentScript.js)
     window.onerror = function(message, source) {
-      if (source && source.includes('chrome-extension')) {
-        return true; // Prevents extension errors from cluttering the console
+      if (source && (source.includes('chrome-extension') || source.includes('contentScript'))) {
+        return true; 
       }
     };
   </script>
