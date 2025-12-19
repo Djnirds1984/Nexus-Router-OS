@@ -57,40 +57,63 @@ pm2 start npm --name "nexus-os" -- run dev
 
 ---
 
-## 4. Nginx Configuration (Default Site)
+## 4. Nginx Configuration (Full Default Replacement)
 
-Instead of creating a new configuration, we will modify the default Ubuntu Nginx site to proxy traffic to our dashboard.
+To avoid configuration errors, **replace the entire contents** of `/etc/nginx/sites-available/default` with the following block.
 
-### Step 1: Edit Default Configuration
+### Step 1: Clear and Edit
 ```bash
+sudo truncate -s 0 /etc/nginx/sites-available/default
 sudo nano /etc/nginx/sites-available/default
 ```
 
-### Step 2: Update the 'location /' block
-Find the `location /` block inside the `server` block and replace it with the following:
-
+### Step 2: Paste this content
 ```nginx
+##
+# Nexus Router OS Default Nginx Proxy Configuration
+# Optimized for Ubuntu x64 Dashboard
+##
+
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
 
+    server_name _;
+
+    # Root for fallback (not used as we proxy everything)
     root /var/www/html;
     index index.html index.htm;
 
-    server_name _;
-
     location / {
+        # Proxy traffic to the Vite/React dashboard
         proxy_pass http://localhost:5173;
+        
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support (Crucial for Terminal & HMR)
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # Timeout settings for live terminal sessions
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+    }
+
+    # Custom error pages for router management
+    error_page 502 /502.html;
+    location = /502.html {
+        return 502 "Nexus OS: Dashboard service is starting or offline. Please wait...";
+        add_header Content-Type text/plain;
     }
 }
 ```
 
-### Step 3: Restart Nginx
+### Step 3: Verify and Restart
 ```bash
 sudo nginx -t
 sudo systemctl restart nginx
