@@ -5,6 +5,7 @@
 
 const logFile = '/var/log/nexus-agent.log';
 const fs = require('fs');
+const { execSync } = require('child_process');
 
 function log(msg) {
   const entry = `[${new Date().toISOString()}] ${msg}\n`;
@@ -21,7 +22,6 @@ log('>>> NEXUS AGENT STARTING UP <<<');
 try {
   const express = require('express');
   const cors = require('cors');
-  const { execSync } = require('child_process');
 
   const app = express();
   app.use(cors());
@@ -117,6 +117,70 @@ try {
     } catch (err) {
       log(`Error /interfaces: ${err.message}`);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/bridges', (req, res) => {
+    try {
+      if (process.platform !== 'linux') return res.json([]);
+      const bridges = [];
+      try {
+        const output = execSync('ip -j link show type bridge').toString();
+        const data = JSON.parse(output);
+        for(const b of data) {
+           const members = execSync(`bridge link show br ${b.ifname}`).toString().split('\n')
+             .map(l => l.match(/^\d+: ([^:@\s]+)/)?.[1]).filter(Boolean);
+           bridges.push({
+             id: b.ifname,
+             name: b.ifname,
+             interfaces: members
+           });
+        }
+      } catch(e) { /* fallback if no bridges */ }
+      res.json(bridges);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/bridges/apply', (req, res) => {
+    const { bridges } = req.body;
+    const kernelLog = [];
+    try {
+      if (process.platform !== 'linux') return res.json({ success: true, log: ['Dev-Mode: OK'] });
+
+      for(const bridge of bridges) {
+        // Create bridge if not exists
+        try { execSync(`ip link add name ${bridge.name} type bridge`); kernelLog.push(`Created bridge ${bridge.name}`); } catch(e) {}
+        
+        // Assign IP
+        if (bridge.ipAddress) {
+           try { execSync(`ip addr add ${bridge.ipAddress}/${bridge.netmask || '24'} dev ${bridge.name}`); } catch(e) {}
+           kernelLog.push(`Assigned IP ${bridge.ipAddress} to ${bridge.name}`);
+        }
+
+        // Add members
+        for(const iface of bridge.interfaces) {
+           try { execSync(`ip link set ${iface} master ${bridge.name}`); kernelLog.push(`Added ${iface} to ${bridge.name}`); } catch(e) {}
+        }
+        
+        execSync(`ip link set ${bridge.name} up`);
+
+        // DHCP Logic with dnsmasq
+        if (bridge.dhcpEnabled) {
+          const config = `interface=${bridge.name}\ndhcp-range=${bridge.dhcpStart},${bridge.dhcpEnd},${bridge.leaseTime || '12h'}\n`;
+          fs.writeFileSync(`/etc/dnsmasq.d/nexus-${bridge.name}.conf`, config);
+          kernelLog.push(`DHCP config written for ${bridge.name}`);
+        } else {
+          try { fs.unlinkSync(`/etc/dnsmasq.d/nexus-${bridge.name}.conf`); } catch(e) {}
+        }
+      }
+      
+      try { execSync('systemctl restart dnsmasq'); kernelLog.push('DHCP Server Restarted'); } catch(e) { kernelLog.push('Error restarting dnsmasq: ' + e.message); }
+
+      res.json({ success: true, log: kernelLog });
+    } catch (err) {
+      res.status(500).json({ error: err.message, success: false });
     }
   });
 

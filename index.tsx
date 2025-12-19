@@ -22,6 +22,18 @@ interface WanInterface {
   latency: number;
 }
 
+interface BridgeConfig {
+  id: string;
+  name: string;
+  interfaces: string[];
+  ipAddress: string;
+  netmask: string;
+  dhcpEnabled: boolean;
+  dhcpStart: string;
+  dhcpEnd: string;
+  leaseTime: string;
+}
+
 interface SystemMetrics {
   cpuUsage: number;
   memoryUsage: string;
@@ -39,6 +51,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
+    { id: 'bridge', label: 'Bridge & DHCP', icon: '🌉' },
     { id: 'advisor', label: 'AI Advisor', icon: '🧠' },
     { id: 'settings', label: 'System', icon: '⚙️' },
   ];
@@ -190,6 +203,181 @@ const Dashboard = ({ wanInterfaces, metrics }: { wanInterfaces: WanInterface[], 
 };
 
 /**
+ * COMPONENT: BRIDGE & DHCP MANAGER
+ */
+const BridgeManager = ({ availableInterfaces, bridges, setBridges, onApply }: any) => {
+  const [newBridgeName, setNewBridgeName] = useState('br0');
+
+  const addBridge = () => {
+    const newBridge: BridgeConfig = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: newBridgeName,
+      interfaces: [],
+      ipAddress: '192.168.10.1',
+      netmask: '24',
+      dhcpEnabled: true,
+      dhcpStart: '192.168.10.50',
+      dhcpEnd: '192.168.10.150',
+      leaseTime: '12h'
+    };
+    setBridges([...bridges, newBridge]);
+  };
+
+  const removeBridge = (id: string) => {
+    setBridges(bridges.filter((b: any) => b.id !== id));
+  };
+
+  const toggleIface = (bridgeId: string, ifaceName: string) => {
+    setBridges(bridges.map((b: any) => {
+      if (b.id !== bridgeId) return b;
+      const isMember = b.interfaces.includes(ifaceName);
+      return {
+        ...b,
+        interfaces: isMember 
+          ? b.interfaces.filter((i: string) => i !== ifaceName)
+          : [...b.interfaces, ifaceName]
+      };
+    }));
+  };
+
+  return (
+    <div className="space-y-6">
+      <header className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Bridge & DHCP</h1>
+          <p className="text-slate-500 text-sm mt-1">Combine physical ports into virtual LANs with integrated DHCP services.</p>
+        </div>
+        <div className="flex gap-2">
+          <input 
+            type="text" 
+            value={newBridgeName} 
+            onChange={e => setNewBridgeName(e.target.value)}
+            className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl text-white outline-none focus:border-blue-500 transition-all text-sm w-32"
+          />
+          <button onClick={addBridge} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-xs font-bold transition-all shadow-lg active:scale-95">
+            CREATE BRIDGE
+          </button>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 gap-6">
+        {bridges.map((bridge: BridgeConfig) => (
+          <div key={bridge.id} className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 backdrop-blur-md shadow-xl">
+             <div className="flex justify-between items-start mb-8">
+                <div>
+                   <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_#3b82f6]"></span>
+                      {bridge.name}
+                   </h3>
+                   <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">VIRTUAL KERNEL INTERFACE</div>
+                </div>
+                <button onClick={() => removeBridge(bridge.id)} className="text-rose-500 hover:text-rose-400 text-[10px] font-black uppercase tracking-widest bg-rose-500/5 px-3 py-1 rounded-lg border border-rose-500/10">DELETE</button>
+             </div>
+
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Bridge Settings */}
+                <div className="space-y-6">
+                   <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800">
+                      <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Member Interfaces</h4>
+                      <div className="flex flex-wrap gap-2">
+                         {availableInterfaces.map((iface: any) => (
+                           <button 
+                             key={iface.id}
+                             onClick={() => toggleIface(bridge.id, iface.interfaceName)}
+                             className={`px-4 py-2 rounded-xl border text-[10px] font-black transition-all ${
+                               bridge.interfaces.includes(iface.interfaceName)
+                               ? 'bg-blue-600 border-blue-500 text-white shadow-lg'
+                               : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700'
+                             }`}
+                           >
+                              {iface.interfaceName.toUpperCase()}
+                           </button>
+                         ))}
+                      </div>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1 block">Bridge IP</label>
+                        <input 
+                          type="text" 
+                          value={bridge.ipAddress}
+                          onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, ipAddress: e.target.value} : b))}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1 block">Netmask (CIDR)</label>
+                        <input 
+                          type="text" 
+                          value={bridge.netmask}
+                          onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, netmask: e.target.value} : b))}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-white outline-none focus:border-blue-500"
+                        />
+                      </div>
+                   </div>
+                </div>
+
+                {/* DHCP Settings */}
+                <div className={`p-8 rounded-3xl border transition-all ${bridge.dhcpEnabled ? 'bg-emerald-500/5 border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.05)]' : 'bg-slate-950/50 border-slate-800'}`}>
+                   <div className="flex justify-between items-center mb-6">
+                      <h4 className="text-sm font-bold text-white uppercase tracking-tight">DHCP Server</h4>
+                      <button 
+                        onClick={() => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, dhcpEnabled: !b.dhcpEnabled} : b))}
+                        className={`px-6 py-1.5 rounded-full text-[10px] font-black uppercase transition-all border ${bridge.dhcpEnabled ? 'bg-emerald-500 text-slate-950 border-emerald-400' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
+                      >
+                         {bridge.dhcpEnabled ? 'ENABLED' : 'DISABLED'}
+                      </button>
+                   </div>
+
+                   <div className="space-y-4 opacity-100 transition-opacity">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                           <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1 block">Start IP</label>
+                           <input 
+                             type="text" disabled={!bridge.dhcpEnabled}
+                             value={bridge.dhcpStart}
+                             onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, dhcpStart: e.target.value} : b))}
+                             className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 outline-none focus:border-emerald-500 disabled:opacity-30"
+                           />
+                        </div>
+                        <div>
+                           <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1 block">End IP</label>
+                           <input 
+                             type="text" disabled={!bridge.dhcpEnabled}
+                             value={bridge.dhcpEnd}
+                             onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, dhcpEnd: e.target.value} : b))}
+                             className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 outline-none focus:border-emerald-500 disabled:opacity-30"
+                           />
+                        </div>
+                      </div>
+                      <div>
+                         <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1 block">Lease Expiration</label>
+                         <input 
+                           type="text" disabled={!bridge.dhcpEnabled}
+                           value={bridge.leaseTime}
+                           onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, leaseTime: e.target.value} : b))}
+                           className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 outline-none focus:border-emerald-500 disabled:opacity-30"
+                         />
+                      </div>
+                   </div>
+                </div>
+             </div>
+          </div>
+        ))}
+
+        <button 
+          onClick={onApply}
+          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/20 active:scale-[0.98] transition-all uppercase tracking-widest mt-6"
+        >
+          Synchronize Bridge & DHCP to Kernel
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/**
  * COMPONENT: AI ADVISOR
  */
 const AIAdvisor = ({ config }: any) => {
@@ -248,6 +436,7 @@ const App = () => {
     mode: RouterMode.LOAD_BALANCER,
     wanInterfaces: []
   });
+  const [bridges, setBridges] = useState<BridgeConfig[]>([]);
 
   const refreshData = useCallback(async () => {
     try {
@@ -263,7 +452,6 @@ const App = () => {
         setMetrics(met);
         
         setConfig((prev: any) => {
-          // Merge names from previous state if they exist
           const merged = ifaces.map((iface: any) => {
             const existing = prev.wanInterfaces.find((w: any) => w.id === iface.id);
             return existing ? { ...iface, name: existing.name, weight: existing.weight, priority: existing.priority } : iface;
@@ -301,12 +489,33 @@ const App = () => {
     }
   };
 
+  const commitBridges = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/bridges/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bridges })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Nexus Bridge: Kernel synchronized successfully.\n' + data.log.join('\n'));
+      }
+    } catch(e) {
+      alert('Nexus Bridge: Communication failure.');
+    }
+  };
+
   const updateWanName = (id: string, newName: string) => {
     setConfig({
       ...config,
       wanInterfaces: config.wanInterfaces.map((w: any) => w.id === id ? { ...w, name: newName } : w)
     });
   };
+
+  // Available interfaces are those not designated as WAN
+  const availableInterfaces = config.wanInterfaces.filter((wan: any) => 
+    !wan.gateway || wan.gateway === 'None'
+  );
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
@@ -404,12 +613,6 @@ const App = () => {
                     )}
                   </div>
                 ))}
-                {config.wanInterfaces.length === 0 && (
-                   <div className="p-20 bg-slate-950/50 border border-dashed border-slate-800 rounded-2xl text-center flex flex-col items-center gap-4">
-                      <div className="text-4xl grayscale opacity-30">🔌</div>
-                      <div className="text-slate-500 text-sm font-mono uppercase tracking-widest">No active WAN hardware detected by the kernel.</div>
-                   </div>
-                )}
               </div>
 
               <button 
@@ -420,6 +623,15 @@ const App = () => {
               </button>
            </div>
         </div>
+      )}
+
+      {activeTab === 'bridge' && (
+        <BridgeManager 
+          availableInterfaces={availableInterfaces} 
+          bridges={bridges} 
+          setBridges={setBridges} 
+          onApply={commitBridges} 
+        />
       )}
       
       {activeTab === 'advisor' && <AIAdvisor config={config} />}
@@ -437,16 +649,6 @@ const App = () => {
               <div className="p-6 bg-slate-950/80 border border-slate-800 rounded-2xl shadow-inner">
                  <div className="text-[10px] text-slate-500 mb-2 font-black uppercase tracking-widest">Repository Origin</div>
                  <div className="text-emerald-400 font-bold font-mono text-xs truncate">github.com/Djnirds1984/Nexus-Router-OS</div>
-              </div>
-           </div>
-
-           <div className="mt-10 p-6 bg-blue-600/5 border border-blue-500/10 rounded-2xl text-left max-w-xl mx-auto">
-              <div className="text-[10px] text-blue-500 font-black uppercase tracking-widest mb-3">Kernel Log Diagnostic</div>
-              <div className="font-mono text-[11px] text-slate-400 space-y-2">
-                 <div className="flex gap-4"><span className="text-slate-600">[OK]</span> <span>IPv4 forwarding enabled in sysctl</span></div>
-                 <div className="flex gap-4"><span className="text-slate-600">[OK]</span> <span>Multipath routing cache cleared via ip-route</span></div>
-                 <div className="flex gap-4"><span className="text-slate-600">[OK]</span> <span>Interface detection module: ACTIVE</span></div>
-                 <div className="flex gap-4"><span className="text-blue-500">[INFO]</span> <span>BBR Congestion Control: STATE=OPTIMAL</span></div>
               </div>
            </div>
         </div>

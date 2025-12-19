@@ -10,7 +10,11 @@ Run these commands as `root` or with `sudo`.
 ```bash
 # Update Ubuntu and install critical dependencies
 sudo apt update && sudo apt upgrade -y
-sudo apt install git nodejs npm nginx iproute2 net-tools fuser -y
+sudo apt install git nodejs npm nginx iproute2 net-tools fuser dnsmasq bridge-utils -y
+
+# Disable default systemd-resolved to avoid DNS port conflicts (optional, if using dnsmasq for all DNS)
+# sudo systemctl stop systemd-resolved
+# sudo systemctl disable systemd-resolved
 ```
 
 ---
@@ -75,10 +79,11 @@ The Hardware Agent manages the Linux Kernel and needs to run as a persistent ser
 
 ---
 
-## 🌐 4. Kernel Routing Configuration
-Ensure the Ubuntu kernel is optimized for high-performance routing.
+## 🌐 4. Kernel Routing & DHCP Configuration
+Ensure the Ubuntu kernel is optimized and dnsmasq is ready for DHCP.
 
 ```bash
+# Optimize Kernel
 sudo tee /etc/sysctl.d/99-nexus-router.conf <<EOF
 net.ipv4.ip_forward=1
 net.ipv4.conf.all.rp_filter=1
@@ -88,8 +93,11 @@ net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
 EOF
 
-# Apply kernel changes immediately
 sudo sysctl -p /etc/sysctl.d/99-nexus-router.conf
+
+# Prepare dnsmasq for Nexus management
+sudo mkdir -p /etc/dnsmasq.d
+sudo systemctl enable dnsmasq
 ```
 
 ---
@@ -140,15 +148,14 @@ Configure Nginx to serve the dashboard and route API requests to the Agent.
 
 ## ✅ 6. Final Launch
 Navigate to your Ubuntu machine's IP in a web browser.
-1. Go to the **Multi-WAN** tab.
-2. You will see your real hardware interfaces (e.g., `eth0`, `enp1s0`).
-3. **Rename** them as desired (e.g., "Starlink", "Fiber").
-4. Adjust Weights or Priorities.
-5. Click **"Sync Configuration to Ubuntu Kernel"**.
+1. Go to the **Multi-WAN** tab to define your Internet ports.
+2. Use the **Bridge & DHCP** tab to merge your LAN ports (e.g., `eth1`, `eth2`) into `br0`.
+3. Enable **DHCP Server** on your bridge to automatically assign IPs to local devices.
+4. Click **"Synchronize Bridge & DHCP to Kernel"**.
 
 ---
 
 ## 🆘 Troubleshooting
-- **Bad Gateway (502)**: Ensure `nexus-agent` service is running: `sudo systemctl status nexus-agent`.
-- **Interface Not Found**: Ensure you have multiple network interfaces connected and recognized by Ubuntu (`ip link show`).
+- **DHCP Not Working**: Check dnsmasq status: `sudo systemctl status dnsmasq`.
+- **Bridge Issues**: Check active bridges: `brctl show` or `ip link show type bridge`.
 - **Logs**: View detailed agent logs at `cat /var/log/nexus-agent.log`.

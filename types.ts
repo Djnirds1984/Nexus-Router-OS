@@ -26,6 +26,18 @@ export interface WanInterface {
   latency: number;
 }
 
+export interface BridgeConfig {
+  id: string;
+  name: string; // e.g. br0
+  interfaces: string[]; // member interfaces
+  ipAddress: string;
+  netmask: string;
+  dhcpEnabled: boolean;
+  dhcpStart: string;
+  dhcpEnd: string;
+  leaseTime: string;
+}
+
 export interface SystemMetrics {
   cpuUsage: number;
   memoryUsage: number;
