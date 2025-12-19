@@ -78,6 +78,12 @@
 </script>
 </head>
 <body>
+  <noscript>
+    <div style="padding: 2rem; background: #0B0F1A; color: white; text-align: center; height: 100vh; display: flex; flex-direction: column; justify-content: center;">
+      <h1 style="color: #ef4444;">JavaScript Disabled</h1>
+      <p>Nexus Router OS requires JavaScript to manage your Ubuntu interfaces.</p>
+    </div>
+  </noscript>
   <div id="loading-overlay">
     <span class="loader"></span>
     <div class="loading-text">Initializing Nexus Kernel...</div>
@@ -92,6 +98,13 @@
         setTimeout(() => loader?.remove(), 500);
       }, 800);
     });
+
+    // Check for Nginx path errors
+    window.onerror = function(message, source, lineno, colno, error) {
+      if (message.includes('Script error')) {
+        console.warn('External script blocked (likely extension). If the UI is blank, check Nginx logs.');
+      }
+    };
   </script>
 </body>
 </html>

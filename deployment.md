@@ -1,71 +1,63 @@
 
 # Nexus Router OS: Deployment Guide (Ubuntu x64)
 
-**CRITICAL FIX:** You are seeing a 500 Error because Nginx cannot access the `/root/` folder. Follow these steps to move the project to a public location.
+The **500 Internal Server Error** happens because Nginx (running as `www-data`) is forbidden from entering the `/root/` directory. 
 
 ---
 
-## ⚡ The "Exit Root" Migration
-Run these commands to move your build out of the restricted root folder and into the web server's safe zone.
+## 🚀 The "Nuclear" Fix Script
+Copy and paste this entire block into your terminal to fix the permissions and Nginx config automatically:
 
 ```bash
-# 1. Create the target directory
+# 1. Prepare the web directory
 sudo mkdir -p /var/www/nexus-os
+sudo cp -r /root/Nexus-Router-OS/dist/* /var/www/nexus-os/
 
-# 2. Copy the 'dist' folder from your current location
-# (Run this as root/sudo)
-sudo cp -r /root/Nexus-Router-OS/dist /var/www/nexus-os/
-
-# 3. Set the correct owner (www-data is the Nginx user)
+# 2. Fix Permissions (Crucial step)
 sudo chown -R www-data:www-data /var/www/nexus-os
-
-# 4. Set directory permissions (755 is standard)
 sudo chmod -R 755 /var/www/nexus-os
-```
 
----
-
-## 🛠️ Updated Nginx Configuration
-Now, update Nginx to look at the new path.
-
-### Step 1: Edit the config
-`sudo nano /etc/nginx/sites-available/default`
-
-### Step 2: Paste this EXACT content
-```nginx
+# 3. Overwrite Nginx Config with a Bulletproof Version
+sudo tee /etc/nginx/sites-available/default <<EOF
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-
     server_name _;
-
-    # THE NEW SAFE PATH
-    root /var/www/nexus-os/dist;
+    root /var/www/nexus-os;
     index index.html;
 
     location / {
-        # This handles the React Single Page App routing
-        try_files $uri $uri/ /index.html;
+        try_files \$uri \$uri/ /index.html;
     }
 
-    # Logging for diagnostics
+    # Custom logging for your app
     error_log /var/log/nginx/nexus_error.log;
     access_log /var/log/nginx/nexus_access.log;
 }
-```
+EOF
 
-### Step 3: Test and Restart
-```bash
-sudo nginx -t
-sudo systemctl restart nginx
+# 4. Final Restart
+sudo nginx -t && sudo systemctl restart nginx
 ```
 
 ---
 
-## 🔍 How to Verify the Fix
-If you still see an error, check the logs specifically created for this app:
-`sudo tail -f /var/log/nginx/nexus_error.log`
+## 🔍 Troubleshooting the 500 Error
+If you still see a "500 Internal Server Error" after running the script:
+1. **Check the logs:** `sudo tail -n 50 /var/log/nginx/nexus_error.log`
+2. **Missing Files:** Ensure the folder `/var/www/nexus-os` actually contains `index.html`. 
+   - Run: `ls -l /var/www/nexus-os`
+   - If it's empty, you didn't run `npm run build` inside your project folder before copying.
 
-If you see **"Permission Denied"**, it means the `chown` command in Step 3 failed or wasn't run.
+## 💡 About the `contentScript.js` Error
+The error `Uncaught TypeError: Cannot read properties of null (reading 'indexOf')` in your browser console is **NOT** related to your server or the Nexus OS code. 
+- It is caused by a **Browser Extension** (likely a Password Manager or AdBlocker).
+- It will disappear if you open the dashboard in an **Incognito Window**.
+
+---
+
+## 🛠️ Post-Setup: AI Advisor
+Once the dashboard is visible, go to the **AI Advisor** tab. Ask: 
+> "Generate the /etc/nftables.conf for a multi-WAN setup with load balancing for enp1s0 and enp2s0 on Ubuntu 24.04."
 
 *Repository: https://github.com/Djnirds1984/Nexus-Router-OS.git*
