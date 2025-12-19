@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nexus Router OS</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Babel for on-the-fly TSX compilation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     body {
@@ -90,8 +92,8 @@
   </div>
   <div id="root"></div>
   
-  <!-- LOAD THE APPLICATION ENTRY POINT -->
-  <script type="module" src="./index.tsx" crossorigin="anonymous"></script>
+  <!-- Changed type to text/babel to allow on-the-fly compilation of TSX -->
+  <script type="text/babel" data-type="module" data-presets="typescript,react" src="./index.tsx"></script>
 
   <script>
     // Hide loader once the window is ready
@@ -105,8 +107,8 @@
       }, 1000);
     });
 
-    // Handle Extension Errors (Silence noise from contentScript.js)
-    window.onerror = function(message, source) {
+    // Silence Extension Noise (Like the contentScript.js errors you are seeing)
+    window.onerror = function(message, source, lineno, colno, error) {
       if (source && (source.includes('chrome-extension') || source.includes('contentScript'))) {
         return true; 
       }
