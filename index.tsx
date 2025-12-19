@@ -490,8 +490,18 @@ const App = () => {
   };
 
   const activeWanNames = useMemo(() => config.wanInterfaces.filter((wan: any) => wan.gateway && wan.gateway !== 'None').map((wan: any) => wan.interfaceName), [config.wanInterfaces]);
-  const bridgedInterfaceNames = useMemo(() => bridges.flatMap(b => b.interfaces), [bridges]);
-  const eligibleWanInterfaces = useMemo(() => config.wanInterfaces.filter((wan: any) => !bridgedInterfaceNames.includes(wan.interfaceName)), [config.wanInterfaces, bridgedInterfaceNames]);
+  
+  // 1. Get all interface names associated with LAN (Bridges and their members)
+  const lanInterfaceNames = useMemo(() => {
+    const bridgeDevices = bridges.map(b => b.name);
+    const bridgeMembers = bridges.flatMap(b => b.interfaces);
+    return [...bridgeDevices, ...bridgeMembers];
+  }, [bridges]);
+
+  // 2. Filter Multi-WAN interfaces: Exclude any interface that is part of LAN
+  const eligibleWanInterfaces = useMemo(() => {
+    return config.wanInterfaces.filter((wan: any) => !lanInterfaceNames.includes(wan.interfaceName));
+  }, [config.wanInterfaces, lanInterfaceNames]);
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
@@ -592,7 +602,7 @@ const App = () => {
                 {eligibleWanInterfaces.length === 0 && (
                    <div className="p-20 bg-slate-950/50 border border-dashed border-slate-800 rounded-2xl text-center flex flex-col items-center gap-4">
                       <div className="text-4xl grayscale opacity-30">🔌</div>
-                      <div className="text-slate-500 text-sm font-mono uppercase tracking-widest">No available WAN hardware. (All ports are currently bridged)</div>
+                      <div className="text-slate-500 text-sm font-mono uppercase tracking-widest">No available WAN hardware. (Interfaces are currently Lan/Bridged)</div>
                    </div>
                 )}
               </div>
