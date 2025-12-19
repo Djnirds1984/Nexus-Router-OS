@@ -24,7 +24,6 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<TerminalLog[]>([]);
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
 
-  // Update metrics and traffic periodically
   useEffect(() => {
     const timer = setInterval(() => {
       setMetrics(getMockMetrics());
@@ -169,9 +168,32 @@ const App: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      <div className="relative pb-20">
+      <div className="relative pb-24">
         {renderContent()}
       </div>
+      
+      {/* Footer Diagnostic Bar */}
+      <div className="fixed bottom-0 right-0 left-64 bg-slate-900/80 backdrop-blur-md border-t border-slate-800 px-6 py-2 flex items-center justify-between z-40">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Production Path</span>
+            <span className="text-[10px] font-mono text-blue-400">/var/www/nexus-os/dist</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Web User</span>
+            <span className="text-[10px] font-mono text-emerald-400">www-data</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+           <button 
+             onClick={() => setIsTerminalOpen(!isTerminalOpen)}
+             className="text-[10px] font-bold text-slate-400 hover:text-white transition-colors bg-slate-800 px-3 py-1 rounded border border-slate-700"
+           >
+             {isTerminalOpen ? 'CLOSE CONSOLE' : 'OPEN CONSOLE (ALT+T)'}
+           </button>
+        </div>
+      </div>
+
       <Terminal logs={logs} isOpen={isTerminalOpen} onClose={() => setIsTerminalOpen(false)} />
     </Layout>
   );

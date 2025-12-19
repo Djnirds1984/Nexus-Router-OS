@@ -1,30 +1,35 @@
 
 # Nexus Router OS: Deployment Guide (Ubuntu x64)
 
-The "Connection Refused" error in your logs happens because Nginx is looking for a development server on port 5173 that isn't started. **Follow these steps to switch to Static Mode (Professional Router Setup).**
+If you are seeing a **500 Internal Server Error**, Nginx is likely blocked by Ubuntu's security permissions (AppArmor or simple folder permissions).
 
 ---
 
-## 1. Prepare the "Real Project" Files
-You must turn the source code into optimized browser files. Run these commands inside the `Nexus-Router-OS` folder:
+## ⚡ The "One-Command" Fix (Move to Safe Zone)
+Nginx struggles to read files inside `/home`. The most stable way to run this router dashboard is to move it to the standard web directory.
+
+Run these commands in order:
 
 ```bash
-# 1. Install dependencies
-npm install
+# 1. Move the project to a safe location
+sudo cp -r ~/Nexus-Router-OS /var/www/nexus-os
 
-# 2. Build the production files
-npm run build
+# 2. Set the owner to the web server user
+sudo chown -R www-data:www-data /var/www/nexus-os
+
+# 3. Ensure the folder has correct permissions
+sudo chmod -R 755 /var/www/nexus-os
 ```
-*This creates a folder named `dist`. These are the "real" files Nginx needs to show.*
 
 ---
 
-## 2. Definitive Nginx Fix (Static Mode)
-We are going to delete the old "Proxy" configuration and tell Nginx exactly where the `dist` folder is.
+## 🛠️ Updated Nginx Configuration
+Now, update your Nginx config to point to this new, safe location.
 
-### Step 1: Replace the entire Nginx config
-Run `sudo nano /etc/nginx/sites-available/default` and **delete everything**, then paste this:
+### Step 1: Edit the config
+`sudo nano /etc/nginx/sites-available/default`
 
+### Step 2: Paste this EXACT content
 ```nginx
 server {
     listen 80 default_server;
@@ -32,37 +37,22 @@ server {
 
     server_name _;
 
-    # CHANGE THIS: Point it to your actual 'dist' folder path
-    # Example: /home/ubuntu/Nexus-Router-OS/dist
-    root /PATH/TO/YOUR/Nexus-Router-OS/dist;
-    
+    # Safe path with correct permissions
+    root /var/www/nexus-os/dist;
     index index.html;
 
     location / {
-        # This line is critical for React routing
+        # This handles the React Single Page App routing
         try_files $uri $uri/ /index.html;
     }
 
-    # Custom 404 page pointing back to dashboard
-    error_page 404 /index.html;
-
-    # Performance optimizations for the router UI
-    location /assets/ {
-        expires 1y;
-        add_header Cache-Control "public";
-    }
+    # Avoid 500 errors by not using custom error pages that might not exist
+    error_log /var/log/nginx/nexus_error.log;
+    access_log /var/log/nginx/nexus_access.log;
 }
 ```
 
-### Step 2: Fix Home Directory Permissions (CRITICAL)
-Nginx often can't "see" into your `/home` folder. Run this to give Nginx permission:
-```bash
-# Replace 'YOUR_USER' with your Ubuntu username (e.g., 'ubuntu')
-chmod o+x /home/YOUR_USER
-chmod -R o+r /home/YOUR_USER/Nexus-Router-OS/dist
-```
-
-### Step 3: Restart and Verify
+### Step 3: Restart
 ```bash
 sudo nginx -t
 sudo systemctl restart nginx
@@ -70,15 +60,20 @@ sudo systemctl restart nginx
 
 ---
 
-## 3. Alternative: Quick Dev Start
-If you just want to see it working **right now** without changing Nginx:
-1. Open a terminal in the project folder.
-2. Run `npm run dev`.
-3. Keep that terminal open. The dashboard will now appear at your IP.
+## 🔍 Still seeing a 500 Error?
+If the error persists, run this command to see the *exact* reason:
+`sudo tail -n 20 /var/log/nginx/nexus_error.log`
+
+**Common log messages and their meanings:**
+*   `permission denied`: You missed the `chown` or `chmod` steps above.
+*   `no such file or directory`: The path `/var/www/nexus-os/dist` doesn't exist. Make sure you ran `npm run build` before copying the folder.
 
 ---
 
-## 4. Why the logs showed errors?
-Your logs showed `upstream: "http://127.0.0.1:5173/"`. This means Nginx was acting as a middle-man, but there was nobody at the other end (port 5173) to talk to. By following the **Static Mode** instructions above, you remove the middle-man and Nginx reads the files directly from the disk.
+## 🚀 Post-Installation
+Once you see the dashboard:
+1. Go to **AI Advisor**.
+2. Ask: "I am on Ubuntu 24.04, generate the nftables rules for my enp1s0 and enp2s0 interfaces for load balancing."
+3. Copy the output into the **Terminal** tab or your Ubuntu SSH session.
 
 *Repository: https://github.com/Djnirds1984/Nexus-Router-OS.git*
