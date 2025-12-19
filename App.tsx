@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import InterfaceManager from './components/InterfaceManager';
 import AIAdvisor from './components/AIAdvisor';
+import UpdateManager from './components/UpdateManager';
 import Terminal from './components/Terminal';
 import { NetworkConfig, RouterMode, SystemMetrics, TerminalLog } from './types';
 import { INITIAL_WAN_INTERFACES, getMockMetrics, simulateTraffic } from './services/mockNetworkService';
@@ -19,6 +20,7 @@ const App: React.FC = () => {
   });
   const [appliedConfig, setAppliedConfig] = useState<NetworkConfig>(currentConfig);
   const [isApplying, setIsApplying] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [logs, setLogs] = useState<TerminalLog[]>([]);
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
 
@@ -30,7 +32,6 @@ const App: React.FC = () => {
         ...prev,
         wanInterfaces: prev.wanInterfaces.map(simulateTraffic)
       }));
-      // Also update appliedConfig to keep the simulation consistent
       setAppliedConfig(prev => ({
         ...prev,
         wanInterfaces: prev.wanInterfaces.map(simulateTraffic)
@@ -46,26 +47,22 @@ const App: React.FC = () => {
       type,
       message,
       timestamp: new Date()
-    }].slice(-50)); // Keep last 50 logs
+    }].slice(-50));
   };
 
   const handleApply = async () => {
     setIsApplying(true);
     setIsTerminalOpen(true);
     addLog('info', `Initiating configuration deployment for ${currentConfig.mode}...`);
-    
     try {
       addLog('info', 'Contacting Nexus AI for optimized command sequences...');
       const advice = await getNetworkAdvice(currentConfig);
-      
       addLog('info', 'Generated command pipeline:');
       for (const cmd of advice.commands) {
         addLog('command', cmd);
-        // Simulate execution delay
         await new Promise(r => setTimeout(r, 600));
         addLog('success', `Executed: OK`);
       }
-
       addLog('success', 'Configuration successfully synchronized with kernel.');
       setAppliedConfig({ ...currentConfig });
     } catch (err) {
@@ -73,6 +70,33 @@ const App: React.FC = () => {
     } finally {
       setIsApplying(false);
     }
+  };
+
+  const handleApplyUpdate = async () => {
+    setIsUpdating(true);
+    setIsTerminalOpen(true);
+    addLog('info', 'Initializing GitHub update sequence...');
+    
+    const updateSteps = [
+      { cmd: 'git fetch origin main', msg: 'Fetching latest commits from remote...' },
+      { cmd: 'git pull origin main', msg: 'Synchronizing local files...' },
+      { cmd: 'npm install --frozen-lockfile', msg: 'Updating node modules...' },
+      { cmd: 'npm run build', msg: 'Compiling production assets...' },
+      { cmd: 'systemctl restart nexus-dashboard', msg: 'Restarting system service...' }
+    ];
+
+    for (const step of updateSteps) {
+      addLog('info', step.msg);
+      addLog('command', step.cmd);
+      await new Promise(r => setTimeout(r, 1200));
+      addLog('success', 'Task complete.');
+    }
+
+    addLog('success', 'System updated to v1.2.5. Reloading...');
+    setTimeout(() => {
+      setIsUpdating(false);
+      window.location.reload();
+    }, 2000);
   };
 
   const renderContent = () => {
@@ -91,6 +115,8 @@ const App: React.FC = () => {
         );
       case 'advisor':
         return <AIAdvisor config={currentConfig} />;
+      case 'updates':
+        return <UpdateManager onApplyUpdate={handleApplyUpdate} isUpdating={isUpdating} />;
       case 'settings':
         return (
           <div className="bg-slate-900 p-12 rounded-2xl border border-slate-800 text-center animate-in fade-in zoom-in-95">
@@ -109,12 +135,6 @@ const App: React.FC = () => {
                 </div>
               ))}
             </div>
-            <button 
-              onClick={() => setIsTerminalOpen(!isTerminalOpen)}
-              className="mt-12 text-slate-500 hover:text-white flex items-center gap-2 mx-auto font-mono text-sm border border-slate-800 px-4 py-2 rounded-lg"
-            >
-              {isTerminalOpen ? 'CLOSE CONSOLE' : 'OPEN SYSTEM CONSOLE'} [~/]
-            </button>
           </div>
         );
       default:
