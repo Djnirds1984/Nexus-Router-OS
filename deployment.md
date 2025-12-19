@@ -1,58 +1,126 @@
+# Nexus Router OS: Complete Deployment Guide (Ubuntu x64)
 
-# Nexus Router OS: Deployment Guide (Ubuntu x64)
-
-The project is now unified under `/var/www/html/nexus-os`. This location is safe for Nginx and resolves the 500 errors.
+Follow these steps to deploy Nexus Router OS on a clean Ubuntu x64 server. This guide assumes you are installing the project into the standard web root at `/var/www/html/nexus-os`.
 
 ---
 
-## 🚀 Step 1: Migration & Permissions
-Run these commands to ensure all files are in the unified directory with the correct owner.
+## 🏗️ 1. Environment Preparation
+Ensure your system is up to date and has the necessary tools installed.
 
 ```bash
-# 1. Create the directory
-sudo mkdir -p /var/www/html/nexus-os
-
-# 2. Copy all files from your current project folder to the destination
-# Run this from inside your project folder:
-sudo cp -r ./* /var/www/html/nexus-os/
-
-# 3. Apply standard web server ownership
-sudo chown -R www-data:www-data /var/www/html/nexus-os
-sudo chmod -R 755 /var/www/html/nexus-os
+sudo apt update && sudo apt upgrade -y
+sudo apt install nginx git -y
 ```
 
 ---
 
-## 🛠️ Step 2: Nginx Config
-Ensure your `/etc/nginx/sites-available/default` looks like this:
+## 📂 2. Project Installation
+We will clone the official repository directly into the `/var/www/html` directory.
+
+```bash
+# 1. Navigate to the web root
+cd /var/www/html
+
+# 2. Clone the repository (and rename the folder to nexus-os)
+sudo git clone https://github.com/Djnirds1984/Nexus-Router-OS.git nexus-os
+
+# 3. Enter the project directory
+cd nexus-os
+
+# 4. Set ownership to Nginx user (www-data)
+# This is CRITICAL to prevent 403 Forbidden and 500 Internal Server Errors
+sudo chown -R www-data:www-data /var/www/html/nexus-os
+
+# 5. Set correct folder and file permissions
+sudo find /var/www/html/nexus-os -type d -exec chmod 755 {} \;
+sudo find /var/www/html/nexus-os -type f -exec chmod 644 {} \;
+```
+
+---
+
+## 🛠️ 3. Nginx Configuration
+Create a specialized configuration to serve the React application and handle client-side routing.
+
+1. Create the configuration file:
+   `sudo nano /etc/nginx/sites-available/nexus-os`
+
+2. Paste the following configuration:
 
 ```nginx
 server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
+    listen 80;
+    listen [::]:80;
 
-    # POINT THIS TO THE UNIFIED DIRECTORY
+    # Use your server IP or domain name here
+    server_name _; 
+
+    # Path to the unified project directory
     root /var/www/html/nexus-os;
     index index.html;
 
     location / {
+        # This handles React client-side routing (Single Page App)
         try_files $uri $uri/ /index.html;
     }
 
-    # Enable logging for troubleshooting
-    error_log /var/log/nginx/nexus_error.log;
-    access_log /var/log/nginx/nexus_access.log;
+    # Enable support for .tsx and .ts files as JS modules if needed
+    location ~* \.(tsx|ts)$ {
+        add_header Content-Type application/javascript;
+    }
+
+    # Optimization: Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|otf)$ {
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+    }
+
+    # Custom Logging
+    error_log /var/log/nginx/nexus_os_error.log;
+    access_log /var/log/nginx/nexus_os_access.log;
 }
+```
+
+3. Enable the site and restart Nginx:
+```bash
+# Disable the default Nginx site
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Enable Nexus Router OS
+sudo ln -s /etc/nginx/sites-available/nexus-os /etc/nginx/sites-enabled/
+
+# Verify config syntax and restart
+sudo nginx -t
+sudo systemctl restart nginx
 ```
 
 ---
 
-## 🔍 Step 3: Troubleshooting
-1. **Black Screen?** 
-   Check the Console. If you see "404 Not Found" for `index.tsx`, your Nginx `root` path is slightly off or you haven't copied the files to `/var/www/html/nexus-os`.
-2. **500 Error?**
-   Run `sudo tail -f /var/log/nginx/nexus_error.log`. It will tell you exactly which folder is restricted.
-3. **contentScript.js error?**
-   **IGNORE IT.** This is caused by your Chrome extensions (like Google Translate or Dashlane). It does not affect the Router OS. Test in an **Incognito Window** to see it disappear.
+## 🔍 4. Verification & Troubleshooting
 
-*Repository: https://github.com/Djnirds1984/Nexus-Router-OS.git*
+### Check Path Integrity
+Run this command to ensure all project files are present in the target location:
+`ls -la /var/www/html/nexus-os`
+
+You should see:
+- `index.html`
+- `index.tsx`
+- `App.tsx`
+- `components/`
+- `services/`
+- `metadata.json`
+
+### Error: Black Screen (UI Not Loading)
+1. **Open Browser Console (F12)**.
+2. If you see `404 Not Found` for `index.tsx`, verify that the file exists at `/var/www/html/nexus-os/index.tsx`.
+3. Ensure the `root` path in your Nginx configuration matches exactly: `/var/www/html/nexus-os`.
+
+### Error: 403 Forbidden or 500 Internal Server Error
+This is a permission issue. Nginx cannot read your files. Fix it with:
+`sudo chown -R www-data:www-data /var/www/html/nexus-os`
+
+### Browser Extension Errors
+Errors in the console referring to `contentScript.js` or `chrome-extension://` are caused by browser plugins (like Grammarly, Google Translate, or LastPass). They **do not** affect the Nexus OS logic. Use **Incognito Mode** to test without extensions.
+
+---
+**Official Repository:** [github.com/Djnirds1984/Nexus-Router-OS](https://github.com/Djnirds1984/Nexus-Router-OS.git)
+*Built for high-availability Ubuntu routing environments.*
