@@ -18,6 +18,10 @@ function log(msg) {
   }
 }
 
+// Global state for rate calculation
+let prevTraffic = {};
+let lastPollTime = Date.now();
+
 // Load persisted configuration
 let nexusConfig = { bridges: [], wanConfig: { mode: 'LOAD_BALANCER', interfaces: [] } };
 if (fs.existsSync(configFile)) {
@@ -51,7 +55,6 @@ function refreshFirewall() {
     execSync('sysctl -w net.ipv4.ip_forward=1');
     
     // Flush existing NAT and Forward rules managed by Nexus to avoid duplicates
-    // We target POSTROUTING for Masquerade
     try { execSync('iptables -t nat -F POSTROUTING'); } catch(e) {}
     try { execSync('iptables -F FORWARD'); } catch(e) {}
 
@@ -153,6 +156,9 @@ try {
         });
       } catch (e) {}
 
+      // Calculate traffic rates (Mbps)
+      const currentTime = Date.now();
+      const timeDelta = (currentTime - lastPollTime) / 1000; // seconds
       const traffic = {};
       try {
         const data = fs.readFileSync('/proc/net/dev', 'utf8');
@@ -160,21 +166,37 @@ try {
           const parts = line.trim().split(/\s+/);
           if (parts.length > 1) {
             const name = parts[0].replace(':', '');
-            traffic[name] = { rx: parseInt(parts[1]) / 1024 / 1024, tx: parseInt(parts[9]) / 1024 / 1024 };
+            const rxBytes = parseInt(parts[1]);
+            const txBytes = parseInt(parts[9]);
+
+            if (prevTraffic[name]) {
+              const rxDelta = rxBytes - prevTraffic[name].rx;
+              const txDelta = txBytes - prevTraffic[name].tx;
+              
+              // (Bytes * 8 bits) / (1,000,000) / time = Mbps
+              traffic[name] = { 
+                rx: Math.max(0, (rxDelta * 8) / 1000000 / timeDelta), 
+                tx: Math.max(0, (txDelta * 8) / 1000000 / timeDelta) 
+              };
+            } else {
+              traffic[name] = { rx: 0, tx: 0 };
+            }
+            prevTraffic[name] = { rx: rxBytes, tx: txBytes };
           }
         });
       } catch (e) {}
+      lastPollTime = currentTime;
 
       let interfaces = [];
       if (supportsJson) {
         const ipData = JSON.parse(execSync('ip -j addr show').toString());
-        interfaces = ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('br-') && !iface.ifname.startsWith('docker')).map(iface => {
+        interfaces = ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth') && !iface.ifname.startsWith('docker')).map(iface => {
           const addr = (iface.addr_info && iface.addr_info[0]) ? iface.addr_info[0] : {};
           return {
             id: iface.ifname,
             name: iface.ifname.toUpperCase(),
             interfaceName: iface.ifname,
-            status: iface.operstate === 'UP' ? 'UP' : 'DOWN',
+            status: iface.operstate === 'UP' || iface.flags.includes('UP') ? 'UP' : 'DOWN',
             ipAddress: addr.local || 'N/A',
             gateway: gateways[iface.ifname] || 'None',
             throughput: traffic[iface.ifname] || { rx: 0, tx: 0 },
@@ -223,7 +245,6 @@ try {
         }
 
         if (bridge.dhcpEnabled && bridge.dhcpStart && bridge.dhcpEnd) {
-          // Add DNS option (6) to push Google DNS to clients so they can browse the web
           const configStr = `interface=${bridge.name}\ndhcp-range=${bridge.dhcpStart},${bridge.dhcpEnd},${bridge.leaseTime || '12h'}\ndhcp-option=option:dns-server,8.8.8.8,1.1.1.1\n`;
           fs.writeFileSync(`/etc/dnsmasq.d/nexus-${bridge.name}.conf`, configStr);
           kernelLog.push(`DHCP config (with DNS push) written for ${bridge.name}`);
@@ -238,7 +259,6 @@ try {
       try { execSync('systemctl restart dnsmasq'); kernelLog.push('DHCP Server (dnsmasq) Restarted'); } 
       catch(e) { kernelLog.push('DHCP Restart FAILED: Port 53 conflict.'); }
 
-      // Re-apply NAT rules to ensure forwarding is active for the new bridges
       const fwLogs = refreshFirewall();
       kernelLog.push(...fwLogs);
 
@@ -318,7 +338,6 @@ try {
         }
       }
 
-      // Refresh Firewall rules whenever WAN config is changed to ensure NAT stays in sync
       const fwLogs = refreshFirewall();
       kernelLog.push(...fwLogs);
 

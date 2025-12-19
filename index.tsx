@@ -18,7 +18,7 @@ interface WanInterface {
   ipAddress: string;
   weight: number;
   priority: number;
-  throughput: { rx: number; tx: number; };
+  throughput: { rx: number; tx: number; }; // Now Mbps from backend
   latency: number;
 }
 
@@ -104,14 +104,12 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
   const [history, setHistory] = useState<any[]>([]);
   const historyLimit = 60;
 
-  // Initialize selected interface if not set
   useEffect(() => {
     if (!selectedIface && interfaces.length > 0) {
       setSelectedIface(interfaces[0].interfaceName);
     }
   }, [interfaces, selectedIface]);
 
-  // Update history when interfaces data changes
   useEffect(() => {
     if (!selectedIface) return;
     const currentData = interfaces.find(i => i.interfaceName === selectedIface);
@@ -120,7 +118,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
     setHistory(prev => {
       const newEntry = {
         time: new Date().toLocaleTimeString(),
-        rx: currentData.throughput.rx,
+        rx: currentData.throughput.rx, // Backend provides Mbps
         tx: currentData.throughput.tx
       };
       const updated = [...prev, newEntry];
@@ -133,20 +131,25 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
     return interfaces.find(i => i.interfaceName === selectedIface);
   }, [interfaces, selectedIface]);
 
+  // Total Internet Usage calculation for current session
+  const totalMbps = useMemo(() => {
+    return history.reduce((acc, curr) => acc + curr.rx + curr.tx, 0) / (history.length || 1);
+  }, [history]);
+
   return (
     <div className="space-y-6">
       <header className="flex justify-between items-end mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">System Telemetry</h1>
-          <p className="text-slate-500 text-sm mt-1 uppercase tracking-wider font-mono">Uptime: {metrics.uptime || 'Detecting...'}</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Internet Telemetry</h1>
+          <p className="text-slate-500 text-sm mt-1 uppercase tracking-wider font-mono">Host: Nexus-Node-01 • {metrics.uptime || 'Probing...'}</p>
         </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { label: 'CPU LOAD', val: `${metrics.cpuUsage?.toFixed(1) || 0}%`, color: 'text-blue-400' },
-          { label: 'MEM USAGE', val: `${metrics.memoryUsage || 0} GB`, color: 'text-white' },
-          { label: 'SESSIONS', val: metrics.activeSessions || 0, color: 'text-white' },
+          { label: 'CPU WORKLOAD', val: `${metrics.cpuUsage?.toFixed(1) || 0}%`, color: 'text-blue-400' },
+          { label: 'MEMORY LOAD', val: `${metrics.memoryUsage || 0} GB`, color: 'text-white' },
+          { label: 'AVG USAGE', val: `${totalMbps.toFixed(2)} Mbps`, color: 'text-emerald-400' },
           { label: 'CORE TEMP', val: metrics.temp || 'N/A', color: 'text-amber-400' },
         ].map((m, i) => (
           <div key={i} className="bg-slate-900/40 p-6 rounded-2xl border border-slate-800 backdrop-blur-md shadow-sm hover:border-slate-700 transition-colors">
@@ -161,18 +164,18 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 relative z-10">
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <span className="w-1.5 h-4 bg-blue-500 rounded-sm shadow-[0_0_8px_#3b82f6]" /> Live Port Monitor
+                <span className="w-1.5 h-4 bg-emerald-500 rounded-sm shadow-[0_0_8px_#10b981]" /> Live Usage Monitor
               </h2>
-              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Real-time throughput analysis</div>
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Bitrate history • Real-time stream</div>
             </div>
             
             <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 p-1.5 rounded-2xl shadow-inner">
-               <span className="text-[10px] text-slate-600 font-black uppercase ml-2 mr-1">Port:</span>
+               <span className="text-[10px] text-slate-600 font-black uppercase ml-2 mr-1 tracking-widest">Interface:</span>
                <select 
                  value={selectedIface}
                  onChange={(e) => {
                    setSelectedIface(e.target.value);
-                   setHistory([]); // Reset history on switch
+                   setHistory([]); 
                  }}
                  className="bg-slate-900 text-blue-400 border border-slate-800 rounded-xl px-4 py-2 text-xs font-bold font-mono outline-none focus:border-blue-500 transition-all cursor-pointer"
                >
@@ -183,12 +186,12 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
             </div>
           </div>
 
-          <div className="h-[280px] w-full">
+          <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={history}>
                 <defs>
-                  <linearGradient id="colorRx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
-                  <linearGradient id="colorTx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
+                  <linearGradient id="colorRx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
+                  <linearGradient id="colorTx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                 <XAxis dataKey="time" hide />
@@ -198,39 +201,41 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
                   itemStyle={{ fontWeight: 'bold' }}
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '20px', textTransform: 'uppercase', letterSpacing: '1px' }} />
-                <Area name="Downlink (RX)" type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorRx)" isAnimationActive={false} />
-                <Area name="Uplink (TX)" type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorTx)" isAnimationActive={false} />
+                <Area name="Internet Usage (RX)" type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorRx)" isAnimationActive={false} />
+                <Area name="Internet Usage (TX)" type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorTx)" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
 
           <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-800">
-             <div className="text-center">
-                <div className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mb-1">Current RX</div>
-                <div className="text-xl font-mono text-emerald-400 font-bold">{activeIfaceData?.throughput.rx.toFixed(2) || '0.00'} <span className="text-[10px]">MB/s</span></div>
+             <div className="text-center group">
+                <div className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mb-1 group-hover:text-emerald-500 transition-colors">Live RX Bitrate</div>
+                <div className="text-2xl font-mono text-emerald-400 font-bold">{activeIfaceData?.throughput.rx.toFixed(2) || '0.00'} <span className="text-[10px] text-slate-500">Mbps</span></div>
              </div>
-             <div className="text-center">
-                <div className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mb-1">Current TX</div>
-                <div className="text-xl font-mono text-blue-400 font-bold">{activeIfaceData?.throughput.tx.toFixed(2) || '0.00'} <span className="text-[10px]">MB/s</span></div>
+             <div className="text-center group">
+                <div className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mb-1 group-hover:text-blue-500 transition-colors">Live TX Bitrate</div>
+                <div className="text-2xl font-mono text-blue-400 font-bold">{activeIfaceData?.throughput.tx.toFixed(2) || '0.00'} <span className="text-[10px] text-slate-500">Mbps</span></div>
              </div>
           </div>
         </div>
 
         <div className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 flex flex-col justify-between backdrop-blur-md">
            <div>
-              <h2 className="text-lg font-bold text-white mb-6">Host Environment</h2>
+              <h2 className="text-lg font-bold text-white mb-6">Traffic Context</h2>
               <div className="space-y-4">
-                 <div className="p-4 bg-slate-950/50 rounded-2xl border border-slate-800 group hover:border-blue-500/30 transition-all">
-                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">OS Runtime</div>
-                    <div className="text-sm font-mono text-blue-400">Ubuntu 24.04 x86_64</div>
+                 <div className="p-5 bg-slate-950/50 rounded-2xl border border-slate-800 group hover:border-blue-500/30 transition-all">
+                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">Global IP (WAN)</div>
+                    <div className="text-sm font-mono text-blue-400 break-all">{activeIfaceData?.ipAddress || 'Not Assigned'}</div>
                  </div>
-                 <div className="p-4 bg-slate-950/50 rounded-2xl border border-slate-800 group hover:border-emerald-500/30 transition-all">
-                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">IPv4 Forwarding</div>
-                    <div className="text-sm font-mono text-emerald-400">STATE: ACTIVE (Kernel NAT)</div>
+                 <div className="p-5 bg-slate-950/50 rounded-2xl border border-slate-800 group hover:border-emerald-500/30 transition-all">
+                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">Interface Gateway</div>
+                    <div className="text-sm font-mono text-emerald-400">{activeIfaceData?.gateway || 'Bridge-Local'}</div>
                  </div>
-                 <div className="p-4 bg-slate-950/50 rounded-2xl border border-slate-800 group hover:border-amber-500/30 transition-all">
-                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">Network Stack</div>
-                    <div className="text-sm font-mono text-amber-400">TCP BBR Accelerated</div>
+                 <div className="p-5 bg-slate-950/50 rounded-2xl border border-slate-800 group hover:border-amber-500/30 transition-all">
+                    <div className="text-[10px] text-slate-500 font-bold uppercase mb-1 tracking-widest">Interface Type</div>
+                    <div className="text-sm font-mono text-amber-400">
+                      {selectedIface.startsWith('br') ? 'VIRTUAL BRIDGE' : 'PHYSICAL HARDWARE'}
+                    </div>
                  </div>
               </div>
            </div>
@@ -240,11 +245,11 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
       <div className="bg-slate-900/60 rounded-3xl border border-slate-800 overflow-hidden shadow-xl backdrop-blur-md">
         <div className="bg-slate-800/20 p-6 border-b border-slate-800 flex justify-between items-center">
            <h3 className="font-bold text-white text-sm tracking-tight uppercase tracking-widest">Hardware Port Inventory</h3>
-           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{interfaces.length} ACTIVE INTERFACES</span>
+           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{interfaces.length} ACTIVE PORTS</span>
         </div>
         <div className="divide-y divide-slate-800 font-mono">
           {interfaces.map((wan: any) => (
-            <div key={wan.id} className="p-6 flex items-center justify-between hover:bg-slate-800/10 transition-colors group">
+            <div key={wan.id} className={`p-6 flex items-center justify-between hover:bg-slate-800/10 transition-colors group cursor-pointer ${selectedIface === wan.interfaceName ? 'bg-blue-600/5' : ''}`} onClick={() => setSelectedIface(wan.interfaceName)}>
               <div className="flex items-center gap-6">
                 <div className={`w-3 h-3 rounded-full ${wan.status === WanStatus.UP ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-rose-500'}`} />
                 <div>
@@ -256,13 +261,13 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-sm text-emerald-400 font-bold tracking-tighter">RX: {wan.throughput.rx.toFixed(2)} MB/s</div>
-                <div className="text-sm text-blue-400 font-bold tracking-tighter">TX: {wan.throughput.tx.toFixed(2)} MB/s</div>
+                <div className="text-sm text-emerald-400 font-bold tracking-tighter">RX: {wan.throughput.rx.toFixed(2)} Mbps</div>
+                <div className="text-sm text-blue-400 font-bold tracking-tighter">TX: {wan.throughput.tx.toFixed(2)} Mbps</div>
               </div>
             </div>
           ))}
           {interfaces.length === 0 && (
-            <div className="p-10 text-center text-slate-600 italic text-sm">Probing kernel for network descriptors...</div>
+            <div className="p-10 text-center text-slate-600 italic text-sm">Waiting for hardware telemetry link...</div>
           )}
         </div>
       </div>
@@ -528,8 +533,8 @@ const App = () => {
 
   useEffect(() => {
     refreshData();
-    // Increased refresh rate for smoother dashboard telemetry
-    const interval = setInterval(refreshData, 3000); 
+    // 2-second polling for responsive telemetry
+    const interval = setInterval(refreshData, 2000); 
     return () => clearInterval(interval);
   }, [refreshData]);
 
@@ -628,11 +633,11 @@ const App = () => {
                           <div className="text-sm font-mono text-slate-300">{wan.gateway}</div>
                        </div>
                        <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
-                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">RX Throughput</div>
+                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">RX Usage</div>
                           <div className="text-sm font-mono text-emerald-400 font-bold">{wan.throughput?.rx.toFixed(2) || '0.00'} Mbps</div>
                        </div>
                        <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800">
-                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">TX Throughput</div>
+                          <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">TX Usage</div>
                           <div className="text-sm font-mono text-blue-400 font-bold">{wan.throughput?.tx.toFixed(2) || '0.00'} Mbps</div>
                        </div>
                     </div>
