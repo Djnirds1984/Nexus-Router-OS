@@ -29,20 +29,20 @@ export const INITIAL_WAN_INTERFACES: WanInterface[] = [
 ];
 
 export const getMockMetrics = (): SystemMetrics => ({
-  cpuUsage: 12 + Math.random() * 5,
-  memoryUsage: 2.4,
-  uptime: '45d 12h 03m',
-  activeSessions: 142 + Math.floor(Math.random() * 20)
+  cpuUsage: 8 + Math.random() * 4,
+  memoryUsage: 1.8 + Math.random() * 0.4,
+  uptime: '0d 00h 05m',
+  activeSessions: 85 + Math.floor(Math.random() * 15)
 });
 
 export const simulateTraffic = (wan: WanInterface): WanInterface => {
-  const variation = (Math.random() - 0.5) * 10;
+  const variation = (Math.random() - 0.5) * 20;
   return {
     ...wan,
     throughput: {
-      rx: Math.max(0, wan.throughput.rx + variation),
-      tx: Math.max(0, wan.throughput.tx + variation / 2)
+      rx: Math.max(5, wan.throughput.rx + variation),
+      tx: Math.max(2, wan.throughput.tx + variation / 2)
     },
-    latency: Math.max(5, wan.latency + (Math.random() - 0.5) * 2)
+    latency: Math.max(5, wan.latency + (Math.random() - 0.5) * 4)
   };
 };
