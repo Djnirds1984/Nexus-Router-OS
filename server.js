@@ -38,6 +38,49 @@ function saveConfig() {
   }
 }
 
+/**
+ * Firewall & NAT Orchestrator
+ */
+function refreshFirewall() {
+  if (process.platform !== 'linux') return ['Dev-Mode: Firewall Skip'];
+  const logs = [];
+  try {
+    log('Refreshing Firewall Rules (NAT/Forwarding)...');
+    
+    // Enable IPv4 Forwarding in Kernel
+    execSync('sysctl -w net.ipv4.ip_forward=1');
+    
+    // Flush existing NAT and Forward rules managed by Nexus to avoid duplicates
+    // We target POSTROUTING for Masquerade
+    try { execSync('iptables -t nat -F POSTROUTING'); } catch(e) {}
+    try { execSync('iptables -F FORWARD'); } catch(e) {}
+
+    // Allow established connections
+    execSync('iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT');
+
+    // Identify active WAN interfaces from config
+    const activeWans = nexusConfig.wanConfig.interfaces.filter(w => w.status === 'UP');
+    
+    // Apply NAT (Masquerade) to each WAN interface
+    activeWans.forEach(wan => {
+      execSync(`iptables -t nat -A POSTROUTING -o ${wan.interfaceName} -j MASQUERADE`);
+      execSync(`iptables -A FORWARD -o ${wan.interfaceName} -j ACCEPT`);
+      logs.push(`NAT: Enabled Masquerade on ${wan.interfaceName}`);
+    });
+
+    // Allow traffic from Bridges to go out
+    (nexusConfig.bridges || []).forEach(br => {
+      execSync(`iptables -A FORWARD -i ${br.name} -j ACCEPT`);
+      logs.push(`Forward: Allowed traffic from ${br.name}`);
+    });
+
+    return logs;
+  } catch (err) {
+    log(`Firewall Error: ${err.message}`);
+    return [`Firewall Error: ${err.message}`];
+  }
+}
+
 log('>>> NEXUS AGENT STARTING UP <<<');
 
 // Attempt to re-apply last known bridge config on startup
@@ -46,7 +89,6 @@ const autoApplyBridges = () => {
   if (nexusConfig.bridges && nexusConfig.bridges.length > 0) {
     log('Auto-applying persisted bridge configurations...');
     try {
-      // Basic logic to re-up bridges
       nexusConfig.bridges.forEach(bridge => {
         try { execSync(`ip link add name ${bridge.name} type bridge`, { stdio: 'ignore' }); } catch(e) {}
         execSync(`ip link set ${bridge.name} up`);
@@ -62,6 +104,7 @@ const autoApplyBridges = () => {
         });
       });
       log('Bridge auto-apply complete.');
+      refreshFirewall();
     } catch (e) {
       log('Bridge auto-apply error: ' + e.message);
     }
@@ -180,9 +223,10 @@ try {
         }
 
         if (bridge.dhcpEnabled && bridge.dhcpStart && bridge.dhcpEnd) {
-          const configStr = `interface=${bridge.name}\ndhcp-range=${bridge.dhcpStart},${bridge.dhcpEnd},${bridge.leaseTime || '12h'}\n`;
+          // Add DNS option (6) to push Google DNS to clients so they can browse the web
+          const configStr = `interface=${bridge.name}\ndhcp-range=${bridge.dhcpStart},${bridge.dhcpEnd},${bridge.leaseTime || '12h'}\ndhcp-option=option:dns-server,8.8.8.8,1.1.1.1\n`;
           fs.writeFileSync(`/etc/dnsmasq.d/nexus-${bridge.name}.conf`, configStr);
-          kernelLog.push(`DHCP config written for ${bridge.name}`);
+          kernelLog.push(`DHCP config (with DNS push) written for ${bridge.name}`);
         } else {
           try { 
             const path = `/etc/dnsmasq.d/nexus-${bridge.name}.conf`;
@@ -192,7 +236,11 @@ try {
       }
       
       try { execSync('systemctl restart dnsmasq'); kernelLog.push('DHCP Server (dnsmasq) Restarted'); } 
-      catch(e) { kernelLog.push('DHCP Restart FAILED: Port 53 likely in use by systemd-resolved. Try "Fix DNS Conflict" in System tab.'); }
+      catch(e) { kernelLog.push('DHCP Restart FAILED: Port 53 conflict.'); }
+
+      // Re-apply NAT rules to ensure forwarding is active for the new bridges
+      const fwLogs = refreshFirewall();
+      kernelLog.push(...fwLogs);
 
       res.json({ success: true, log: kernelLog });
     } catch (err) {
@@ -211,7 +259,6 @@ try {
       execSync('systemctl disable systemd-resolved');
       kernelLog.push('systemd-resolved STOPPED and DISABLED.');
       
-      // Also try to restart dnsmasq now that the port is free
       try {
         execSync('systemctl restart dnsmasq');
         kernelLog.push('dnsmasq successfully restarted on Port 53.');
@@ -251,8 +298,10 @@ try {
     const kernelLog = [];
     try {
       if (process.platform !== 'linux') return res.json({ success: true, log: ['Dev-Mode: Config Saved'] });
+      
       execSync('sysctl -w net.ipv4.ip_forward=1');
       try { execSync('ip route del default'); } catch (e) {}
+      
       if (mode === 'LOAD_BALANCER') {
         let cmd = 'ip route add default ';
         const valid = wanInterfaces.filter(w => w.status === 'UP' && w.gateway && w.gateway !== 'None');
@@ -268,6 +317,11 @@ try {
           kernelLog.push(`Kernel: HA-Failover set to Primary -> ${primary.interfaceName}`);
         }
       }
+
+      // Refresh Firewall rules whenever WAN config is changed to ensure NAT stays in sync
+      const fwLogs = refreshFirewall();
+      kernelLog.push(...fwLogs);
+
       res.json({ success: true, log: kernelLog });
     } catch (err) {
       res.status(500).json({ error: err.message, success: false });
