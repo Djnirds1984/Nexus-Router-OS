@@ -53,13 +53,20 @@ setInterval(() => {
   lastCpuStats = currentStats;
 }, 1000);
 
-// --- Traffic Telemetry Engine ---
+// --- Traffic & State Management ---
 let prevTraffic = {};
 let lastTrafficPollTime = Date.now();
 
 let nexusConfig = { bridges: [], wanConfig: { mode: 'LOAD_BALANCER', interfaces: [] } };
 if (fs.existsSync(configFile)) {
-  try { nexusConfig = JSON.parse(fs.readFileSync(configFile, 'utf8')); } catch (e) { }
+  try { 
+    nexusConfig = JSON.parse(fs.readFileSync(configFile, 'utf8')); 
+    log('Nexus Config persistent state loaded.');
+  } catch (e) { }
+}
+
+function saveConfig() {
+  fs.writeFileSync(configFile, JSON.stringify(nexusConfig, null, 2));
 }
 
 try {
@@ -69,6 +76,7 @@ try {
   app.use(cors());
   app.use(express.json());
 
+  // GET: Available Hardware Interfaces
   app.get('/api/interfaces', (req, res) => {
     try {
       if (process.platform !== 'linux') {
@@ -112,8 +120,7 @@ try {
       } catch (e) {}
       lastTrafficPollTime = currentTime;
 
-      const ipOutput = execSync('ip -j addr show').toString();
-      const ipData = JSON.parse(ipOutput);
+      const ipData = JSON.parse(execSync('ip -j addr show').toString());
       const interfaces = ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth')).map(iface => {
         const addr = (iface.addr_info && iface.addr_info[0]) ? iface.addr_info[0] : {};
         return {
@@ -131,12 +138,12 @@ try {
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
+  // GET: System Metrics
   app.get('/api/metrics', (req, res) => {
     try {
       if (process.platform !== 'linux') {
         return res.json({ cpuUsage: 12, cores: [10, 15, 8, 20], memoryUsage: '2.4', totalMem: '16.0', temp: '42°C', uptime: '1 hour', activeSessions: 42 });
       }
-      
       const memLines = fs.readFileSync('/proc/meminfo', 'utf8').split('\n');
       const getKB = (key) => parseInt((memLines.find(l => l.startsWith(key)) || "0").replace(/\D/g, ''));
       const totalMem = getKB('MemTotal:');
@@ -149,7 +156,6 @@ try {
           temp = (parseInt(fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8')) / 1000).toFixed(0) + '°C';
         }
       } catch (e) {}
-
       let uptime = 'N/A';
       try { uptime = execSync('uptime -p').toString().replace('up ', '').trim(); } catch (e) {}
 
@@ -163,7 +169,60 @@ try {
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
+  // GET/POST: Bridges
   app.get('/api/bridges', (req, res) => res.json(nexusConfig.bridges || []));
+  app.post('/api/bridges/apply', (req, res) => {
+    try {
+      nexusConfig.bridges = req.body.bridges;
+      saveConfig();
+      if (process.platform === 'linux') {
+        for (const bridge of nexusConfig.bridges) {
+          try { execSync(`ip link add name ${bridge.name} type bridge`, { stdio: 'ignore' }); } catch(e) {}
+          execSync(`ip link set ${bridge.name} up`);
+          if (bridge.ipAddress) {
+             try { execSync(`ip addr flush dev ${bridge.name}`); execSync(`ip addr add ${bridge.ipAddress}/${bridge.netmask || '24'} dev ${bridge.name}`); } catch(e) {}
+          }
+          for (const iface of bridge.interfaces) {
+             try { execSync(`ip link set ${iface} master ${bridge.name}`); execSync(`ip link set ${iface} up`); } catch(e) {}
+          }
+        }
+      }
+      res.json({ success: true, log: ['Bridge topography synchronized.'] });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
 
-  app.listen(3000, '0.0.0.0', () => { log(`Hardware Agent Active`); });
-} catch (e) { log(`Error: ${e.message}`); }
+  // POST: Apply WAN Config
+  app.post('/api/apply', (req, res) => {
+    try {
+      const { mode, wanInterfaces } = req.body;
+      nexusConfig.wanConfig = { mode, interfaces: wanInterfaces };
+      saveConfig();
+      if (process.platform === 'linux') {
+        execSync('sysctl -w net.ipv4.ip_forward=1');
+        try { execSync('ip route del default'); } catch(e) {}
+        if (mode === 'LOAD_BALANCER') {
+          let cmd = 'ip route add default ';
+          const active = wanInterfaces.filter(w => w.status === 'UP' && w.gateway && w.gateway !== 'None');
+          active.forEach(w => { cmd += `nexthop via ${w.gateway} dev ${w.interfaceName} weight ${w.weight || 1} `; });
+          if (active.length > 0) execSync(cmd);
+        } else {
+          const primary = wanInterfaces.sort((a,b) => (a.priority || 1) - (b.priority || 1))[0];
+          if (primary && primary.gateway) execSync(`ip route add default via ${primary.gateway} dev ${primary.interfaceName}`);
+        }
+      }
+      res.json({ success: true, log: ['Kernel routing table synchronized.'] });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST: System Tools
+  app.post('/api/system/fix-dns-conflict', (req, res) => {
+    try {
+      if (process.platform !== 'linux') return res.json({ success: true, log: ['Emulated: systemd-resolved stopped.'] });
+      execSync('systemctl stop systemd-resolved');
+      execSync('systemctl disable systemd-resolved');
+      res.json({ success: true, log: ['systemd-resolved DISABLED. Port 53 released.'] });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.listen(3000, '0.0.0.0', () => { log(`Hardware Agent Listening on :3000`); });
+} catch (e) { log(`Critical: ${e.message}`); }
