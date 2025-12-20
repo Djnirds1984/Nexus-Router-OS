@@ -80,7 +80,7 @@ try {
   app.get('/api/interfaces', (req, res) => {
     try {
       if (process.platform !== 'linux') {
-        return res.json([{ id: 'eth0', name: 'WAN1', interfaceName: 'eth0', status: 'UP', ipAddress: '127.0.0.1', gateway: '1.1.1.1', throughput: { rx: Math.random() * 5, tx: Math.random() * 2 } }]);
+        return res.json([{ id: 'eth0', name: 'WAN1', interfaceName: 'eth0', status: 'UP', ipAddress: '127.0.0.1', gateway: '1.1.1.1', throughput: { rx: Math.random() * 5, tx: Math.random() * 2 }, weight: 1, priority: 1 }]);
       }
       
       const gateways = {};
@@ -123,15 +123,20 @@ try {
       const ipData = JSON.parse(execSync('ip -j addr show').toString());
       const interfaces = ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth')).map(iface => {
         const addr = (iface.addr_info && iface.addr_info[0]) ? iface.addr_info[0] : {};
+        
+        // Merge persistent user settings (alias, weights) back into live data
+        const savedIface = (nexusConfig.wanConfig?.interfaces || []).find(w => w.interfaceName === iface.ifname);
+        
         return {
           id: iface.ifname,
-          name: iface.ifname.toUpperCase(),
+          name: savedIface?.name || iface.ifname.toUpperCase(),
           interfaceName: iface.ifname,
           status: iface.operstate === 'UP' || iface.flags.includes('UP') ? 'UP' : 'DOWN',
           ipAddress: addr.local || 'N/A',
           gateway: gateways[iface.ifname] || 'None',
           throughput: traffic[iface.ifname] || { rx: 0, tx: 0 },
-          weight: 1, priority: 1 
+          weight: savedIface?.weight || 1, 
+          priority: savedIface?.priority || 1 
         };
       });
       res.json(interfaces);
@@ -180,11 +185,21 @@ try {
           try { execSync(`ip link add name ${bridge.name} type bridge`, { stdio: 'ignore' }); } catch(e) {}
           execSync(`ip link set ${bridge.name} up`);
           if (bridge.ipAddress) {
-             try { execSync(`ip addr flush dev ${bridge.name}`); execSync(`ip addr add ${bridge.ipAddress}/${bridge.netmask || '24'} dev ${bridge.name}`); } catch(e) {}
+             try { 
+                // Careful with flushing to avoid nuking management access
+                execSync(`ip addr flush dev ${bridge.name}`); 
+                execSync(`ip addr add ${bridge.ipAddress}/${bridge.netmask || '24'} dev ${bridge.name}`); 
+             } catch(e) {}
           }
           for (const iface of bridge.interfaces) {
-             try { execSync(`ip link set ${iface} master ${bridge.name}`); execSync(`ip link set ${iface} up`); } catch(e) {}
+             try { 
+                // Remove existing master before assigning to new one
+                execSync(`ip link set ${iface} nomaster`, { stdio: 'ignore' });
+                execSync(`ip link set ${iface} master ${bridge.name}`); 
+                execSync(`ip link set ${iface} up`); 
+             } catch(e) {}
           }
+          // Note: Full DHCP server configuration (dnsmasq) would be generated and restarted here.
         }
       }
       res.json({ success: true, log: ['Bridge topography synchronized.'] });
@@ -195,19 +210,41 @@ try {
   app.post('/api/apply', (req, res) => {
     try {
       const { mode, wanInterfaces } = req.body;
+      
+      // Safety: Don't allow empty interface list to wipe system routes
+      if (!wanInterfaces || wanInterfaces.length === 0) {
+         return res.status(400).json({ error: "Cannot apply empty WAN interface list." });
+      }
+
       nexusConfig.wanConfig = { mode, interfaces: wanInterfaces };
       saveConfig();
+      
       if (process.platform === 'linux') {
         execSync('sysctl -w net.ipv4.ip_forward=1');
+        
+        // Remove existing default routes
         try { execSync('ip route del default'); } catch(e) {}
+        
         if (mode === 'LOAD_BALANCER') {
           let cmd = 'ip route add default ';
           const active = wanInterfaces.filter(w => w.status === 'UP' && w.gateway && w.gateway !== 'None');
           active.forEach(w => { cmd += `nexthop via ${w.gateway} dev ${w.interfaceName} weight ${w.weight || 1} `; });
           if (active.length > 0) execSync(cmd);
+          else {
+             // Fallback to first available if LB logic fails
+             const first = wanInterfaces[0];
+             if (first && first.gateway) execSync(`ip route add default via ${first.gateway} dev ${first.interfaceName}`);
+          }
         } else {
-          const primary = wanInterfaces.sort((a,b) => (a.priority || 1) - (b.priority || 1))[0];
-          if (primary && primary.gateway) execSync(`ip route add default via ${primary.gateway} dev ${primary.interfaceName}`);
+          // Priority failover
+          const activeSorted = wanInterfaces
+             .filter(w => w.status === 'UP' && w.gateway && w.gateway !== 'None')
+             .sort((a,b) => (a.priority || 1) - (b.priority || 1));
+             
+          const primary = activeSorted[0];
+          if (primary && primary.gateway) {
+             execSync(`ip route add default via ${primary.gateway} dev ${primary.interfaceName}`);
+          }
         }
       }
       res.json({ success: true, log: ['Kernel routing table synchronized.'] });
@@ -225,4 +262,4 @@ try {
   });
 
   app.listen(3000, '0.0.0.0', () => { log(`Hardware Agent Listening on :3000`); });
-} catch (e) { log(`Critical: ${e.message}`); }
+} catch (e) { log(`Critical Agent Error: ${e.message}`); }
