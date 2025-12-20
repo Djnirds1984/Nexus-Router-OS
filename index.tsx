@@ -106,28 +106,45 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
   const [smartMode, setSmartMode] = useState(true);
   const historyLimit = 60;
 
+  // Dual-Purpose Tracking Logic
   useEffect(() => {
+    // Only execute if Smart Mode is active
     if (!smartMode) return;
+    
+    // Find the port with the most traffic right now
     const activePorts = interfaces.filter(iface => (iface.throughput.rx + iface.throughput.tx) > 0.05);
     const top = activePorts.sort((a, b) => (b.throughput.rx + b.throughput.tx) - (a.throughput.rx + a.throughput.tx))[0];
+    
     if (top && selectedIface !== top.interfaceName) {
       setSelectedIface(top.interfaceName);
-      setHistory([]); 
+      setHistory([]); // Reset graph on auto-switch for clarity
     } else if (!selectedIface && interfaces.length > 0) {
       setSelectedIface(interfaces[0].interfaceName);
     }
   }, [interfaces, smartMode, selectedIface]);
 
+  // Graph Data Accumulator
   useEffect(() => {
     if (!selectedIface) return;
     const currentData = interfaces.find(i => i.interfaceName === selectedIface);
     if (!currentData) return;
+    
     setHistory(prev => {
-      const newEntry = { time: new Date().toLocaleTimeString(), rx: currentData.throughput.rx, tx: currentData.throughput.tx };
+      const newEntry = { 
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), 
+        rx: currentData.throughput.rx, 
+        tx: currentData.throughput.tx 
+      };
       const updated = [...prev, newEntry];
       return updated.length > historyLimit ? updated.slice(updated.length - historyLimit) : updated;
     });
   }, [interfaces, selectedIface]);
+
+  const handleManualSwitch = (ifaceName: string) => {
+    setSmartMode(false); // Disables auto-follow immediately
+    setSelectedIface(ifaceName);
+    setHistory([]); // Clean slate for manual focus
+  };
 
   const activeIfaceData = useMemo(() => interfaces.find(i => i.interfaceName === selectedIface), [interfaces, selectedIface]);
 
@@ -136,7 +153,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
       <header className="flex justify-between items-end mb-8">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">System Dashboard</h1>
-          <p className="text-slate-500 text-sm mt-1 uppercase tracking-wider font-mono">Uptime: {metrics.uptime || 'Reading...'}</p>
+          <p className="text-slate-500 text-sm mt-1 uppercase tracking-wider font-mono">Uptime: {metrics.uptime || 'Reading Hardware...'}</p>
         </div>
         <div className="text-right">
           <div className="text-[10px] text-slate-500 font-black tracking-widest uppercase">System Load</div>
@@ -211,15 +228,46 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-slate-900/60 p-8 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-md">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <span className="w-1.5 h-4 bg-emerald-500 rounded-sm" /> Traffic Monitor: <span className="text-blue-400 font-mono">{selectedIface.toUpperCase()}</span>
-            </h2>
-            <button onClick={() => setSmartMode(!smartMode)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border transition-all ${smartMode ? 'bg-blue-600 border-blue-400' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
-               {smartMode ? 'Smart Switch: ON' : 'Manual Lock'}
-            </button>
+        <div className="lg:col-span-2 bg-slate-900/60 p-8 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-md relative overflow-hidden">
+          {/* TRAFFIC MONITOR HEADER WITH DUAL MODE TOGGLES */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 relative z-10">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <span className="w-1.5 h-4 bg-emerald-500 rounded-sm shadow-[0_0_8px_rgba(16,185,129,0.5)]" /> 
+                Traffic Live: <span className="text-blue-400 font-mono">{selectedIface.toUpperCase()}</span>
+              </h2>
+              <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
+                MODE: {smartMode ? 
+                  <span className="text-emerald-500 flex items-center gap-1"><span className="w-1 h-1 bg-emerald-500 rounded-full animate-ping"></span> SMART FOCUSING</span> : 
+                  <span className="text-amber-500">MANUAL LOCK</span>}
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4 bg-slate-950/50 p-2 rounded-2xl border border-slate-800">
+              <button 
+                onClick={() => setSmartMode(!smartMode)} 
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2 ${smartMode ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                title="Automatically switch to the interface with highest current traffic"
+              >
+                 {smartMode ? 'AUTO ON' : 'AUTO OFF'}
+              </button>
+              
+              <div className="h-6 w-px bg-slate-800 mx-1"></div>
+
+              <select 
+                value={selectedIface}
+                onChange={(e) => handleManualSwitch(e.target.value)}
+                className="bg-slate-900 text-blue-400 border border-slate-700 rounded-xl px-4 py-2 text-xs font-bold font-mono outline-none focus:border-blue-500 cursor-pointer"
+              >
+                {interfaces.map(iface => (
+                  <option key={iface.interfaceName} value={iface.interfaceName}>
+                    {iface.interfaceName.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={history}>
@@ -230,40 +278,76 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                 <XAxis dataKey="time" hide />
                 <YAxis stroke="#475569" fontSize={10} tickFormatter={(v) => `${v}M`} />
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
+                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }} />
                 <Area name="Download" type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={3} fill="url(#colorRx)" isAnimationActive={false} />
                 <Area name="Upload" type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={3} fill="url(#colorTx)" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
+
           <div className="grid grid-cols-2 gap-4 mt-4 pt-6 border-t border-slate-800 text-center font-mono font-bold">
              <div>
-                <div className="text-[10px] text-slate-600 font-black uppercase mb-1">RX Throughput</div>
-                <div className="text-2xl text-emerald-400">{activeIfaceData?.throughput.rx.toFixed(2)} Mbps</div>
+                <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">Real-time RX</div>
+                <div className="text-3xl text-emerald-400 tracking-tighter">{activeIfaceData?.throughput.rx.toFixed(2)} <span className="text-[10px] text-slate-600">Mbps</span></div>
              </div>
              <div>
-                <div className="text-[10px] text-slate-600 font-black uppercase mb-1">TX Throughput</div>
-                <div className="text-2xl text-blue-400">{activeIfaceData?.throughput.tx.toFixed(2)} Mbps</div>
+                <div className="text-[10px] text-slate-600 font-black uppercase mb-1 tracking-widest">Real-time TX</div>
+                <div className="text-3xl text-blue-400 tracking-tighter">{activeIfaceData?.throughput.tx.toFixed(2)} <span className="text-[10px] text-slate-600">Mbps</span></div>
              </div>
           </div>
         </div>
 
-        <div className="bg-slate-900/60 rounded-3xl border border-slate-800 overflow-hidden flex flex-col">
-           <div className="p-6 border-b border-slate-800 bg-slate-800/10">
-              <h2 className="text-sm font-bold text-white uppercase tracking-widest">Interface Matrix</h2>
+        {/* INTERFACE MATRIX LIST - MANUAL SELECTOR */}
+        <div className="bg-slate-900/60 rounded-3xl border border-slate-800 overflow-hidden flex flex-col shadow-2xl backdrop-blur-md">
+           <div className="p-6 border-b border-slate-800 bg-slate-800/10 flex justify-between items-center">
+              <div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-widest">Interface Matrix</h2>
+                <p className="text-[10px] text-slate-600 mt-1 uppercase font-bold">Select any port to lock view</p>
+              </div>
+              {!smartMode && (
+                <button 
+                  onClick={() => setSmartMode(true)} 
+                  className="text-[9px] font-black text-blue-500 hover:text-blue-400 transition-colors uppercase"
+                >
+                  Unlock & Auto
+                </button>
+              )}
            </div>
-           <div className="flex-1 overflow-y-auto divide-y divide-slate-800">
-              {[...interfaces].sort((a,b) => (b.throughput.rx + b.throughput.tx) - (a.throughput.rx + a.throughput.tx)).map((wan) => (
-                <div key={wan.id} onClick={() => { setSelectedIface(wan.interfaceName); setSmartMode(false); }} className={`p-6 flex items-center justify-between cursor-pointer transition-all hover:bg-slate-800/30 ${selectedIface === wan.interfaceName ? 'bg-blue-600/5' : ''}`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${wan.status === WanStatus.UP ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500'}`} />
-                    <div className="text-sm font-bold text-white uppercase font-mono">{wan.interfaceName}</div>
+           <div className="flex-1 overflow-y-auto divide-y divide-slate-800 scrollbar-hide">
+              {[...interfaces].sort((a,b) => (b.throughput.rx + b.throughput.tx) - (a.throughput.rx + a.throughput.tx)).map((wan) => {
+                const isSelected = selectedIface === wan.interfaceName;
+                const activity = (wan.throughput.rx + wan.throughput.tx) > 0.05;
+                
+                return (
+                  <div 
+                    key={wan.id} 
+                    onClick={() => handleManualSwitch(wan.interfaceName)} 
+                    className={`p-6 flex items-center justify-between cursor-pointer transition-all hover:bg-slate-800/30 group ${isSelected ? 'bg-blue-600/5' : ''}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <div className={`w-2 h-2 rounded-full ${wan.status === WanStatus.UP ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500'}`} />
+                        {activity && isSelected && <div className="absolute inset-0 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
+                      </div>
+                      <div>
+                        <div className={`text-sm font-bold uppercase font-mono transition-colors ${isSelected ? 'text-blue-400' : 'text-white'}`}>
+                          {wan.interfaceName}
+                        </div>
+                        <div className="text-[9px] text-slate-500 font-mono tracking-tighter">{wan.ipAddress}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                       <div className={`text-xs font-mono font-bold ${activity ? 'text-emerald-400' : 'text-slate-700'}`}>
+                        {(wan.throughput.rx + wan.throughput.tx).toFixed(1)} M
+                       </div>
+                       {isSelected && <div className="text-[8px] font-bold text-blue-500/50 uppercase tracking-widest">Monitoring</div>}
+                    </div>
                   </div>
-                  <div className={`text-sm font-mono font-bold ${(wan.throughput.rx + wan.throughput.tx) > 0.1 ? 'text-emerald-400' : 'text-slate-700'}`}>
-                    {(wan.throughput.rx + wan.throughput.tx).toFixed(1)} M
-                  </div>
-                </div>
-              ))}
+                );
+              })}
+           </div>
+           <div className="p-4 bg-slate-950/50 text-center border-t border-slate-800">
+              <span className="text-[9px] text-slate-600 font-black uppercase tracking-[0.2em]">Hardware Native Link: Active</span>
            </div>
         </div>
       </div>
