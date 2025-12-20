@@ -20,7 +20,7 @@ function log(msg) {
 let systemState = {
   interfaces: [],
   metrics: { cpuUsage: 0, cores: [], memoryUsage: '0', totalMem: '0', uptime: '', activeSessions: 0, dnsResolved: true },
-  config: { mode: 'LOAD_BALANCER', wanInterfaces: [] }
+  config: { mode: 'LOAD_BALANCER', wanInterfaces: [], bridges: [] }
 };
 
 // State for calculating rates per core and per interface
@@ -197,6 +197,8 @@ app.use(express.json());
 
 app.get('/api/interfaces', (req, res) => res.json(systemState.interfaces));
 app.get('/api/metrics', (req, res) => res.json(systemState.metrics));
+app.get('/api/config', (req, res) => res.json(systemState.config));
+
 app.post('/api/apply', (req, res) => {
   try {
     systemState.config = req.body;

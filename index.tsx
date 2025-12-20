@@ -66,7 +66,7 @@ const API_BASE = getApiBase();
 /**
  * COMPONENT: BRIDGE & DHCP MANAGER
  */
-const BridgeManager = ({ config, setConfig }: { config: NetworkConfig, setConfig: any }) => {
+const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: NetworkConfig, setConfig: any, onApply: () => void, isApplying: boolean }) => {
   const addBridge = () => {
     const newBridge: BridgeConfig = {
       id: Math.random().toString(36).substr(2, 9),
@@ -100,18 +100,28 @@ const BridgeManager = ({ config, setConfig }: { config: NetworkConfig, setConfig
           <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Bridge & DHCP Fabric</h1>
           <p className="text-slate-400 mt-1 font-medium">Virtual LAN Segmentation & IP Assignment Engine</p>
         </div>
-        <button 
-          onClick={addBridge}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 px-8 rounded-2xl shadow-xl shadow-emerald-600/20 transition-all active:scale-95 uppercase tracking-widest text-xs flex items-center gap-2"
-        >
-          <span>+</span> Create Bridge
-        </button>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={onApply}
+            disabled={isApplying}
+            className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-8 rounded-2xl shadow-xl shadow-blue-600/20 disabled:opacity-50 transition-all active:scale-95 uppercase tracking-widest text-xs flex items-center gap-2"
+          >
+            {isApplying ? 'COMMITTING...' : 'SAVE CONFIGURATION'}
+          </button>
+          <button 
+            onClick={addBridge}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 px-8 rounded-2xl shadow-xl shadow-emerald-600/20 transition-all active:scale-95 uppercase tracking-widest text-xs flex items-center gap-2"
+          >
+            <span>+</span> Create Bridge
+          </button>
+        </div>
       </header>
 
       {config.bridges.length === 0 ? (
         <div className="bg-slate-900/40 p-20 rounded-[2.5rem] border border-slate-800 border-dashed text-center">
           <div className="text-4xl mb-4 opacity-20">🌉</div>
           <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No Bridges Configured</p>
+          <p className="text-slate-600 text-[10px] mt-2 uppercase">Interface definitions are pulled from nexus-config.json</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-8">
@@ -605,9 +615,10 @@ const App = () => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1500);
 
-      const [ifaceRes, metricRes] = await Promise.all([
+      const [ifaceRes, metricRes, configRes] = await Promise.all([
         fetch(`${API_BASE}/interfaces`, { signal: controller.signal }),
-        fetch(`${API_BASE}/metrics`, { signal: controller.signal })
+        fetch(`${API_BASE}/metrics`, { signal: controller.signal }),
+        fetch(`${API_BASE}/config`, { signal: controller.signal })
       ]);
       clearTimeout(timeoutId);
 
@@ -616,6 +627,16 @@ const App = () => {
         const met = await metricRes.json();
         setInterfaces(ifaces);
         setMetrics(met);
+        
+        // Load settings from config endpoint
+        if (configRes.ok) {
+          const savedConfig = await configRes.json();
+          // Initial sync of bridge/wan settings
+          if (config.bridges.length === 0 && savedConfig.bridges && savedConfig.bridges.length > 0) {
+            setConfig(prev => ({ ...prev, bridges: savedConfig.bridges }));
+          }
+        }
+
         if (config.wanInterfaces.length === 0 && ifaces.length > 0) {
           setConfig(prev => ({ ...prev, wanInterfaces: ifaces }));
         }
@@ -640,7 +661,7 @@ const App = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
       });
-      if (res.ok) alert("KERNEL SYNC: Routing tables updated successfully.");
+      if (res.ok) alert("KERNEL SYNC: Configuration tables updated successfully.");
     } catch (e) { alert("AGENT ERROR: Communication lost."); }
     finally { setIsApplying(false); }
   };
@@ -649,7 +670,7 @@ const App = () => {
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
-      {activeTab === 'bridge' && <BridgeManager config={config} setConfig={setConfig} />}
+      {activeTab === 'bridge' && <BridgeManager config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
       {activeTab === 'settings' && <SystemSettings metrics={metrics} />}
     </Layout>
