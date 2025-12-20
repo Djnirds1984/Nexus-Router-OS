@@ -765,8 +765,9 @@ const App = () => {
         }
 
         if (currentConfig.wanInterfaces.length === 0 && ifaces.length > 0) {
-          const dhcpIface = (savedConfig?.dhcp?.interfaceName) || currentConfig.dhcp?.interfaceName || '';
-          setCurrentConfig(prev => ({ ...prev, wanInterfaces: ifaces.filter((i: any) => i.interfaceName !== dhcpIface) }));
+          const dhcpIface = currentConfig?.dhcp?.interfaceName || '';
+          const wanList = dhcpIface ? ifaces.filter((i: any) => i.interfaceName !== dhcpIface) : ifaces;
+          setCurrentConfig(prev => ({ ...prev, wanInterfaces: wanList }));
         }
         setIsLive(true);
       } else {
