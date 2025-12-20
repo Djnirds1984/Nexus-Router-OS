@@ -533,7 +533,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
         <div className="p-6 mt-auto">
           <div className={`p-5 rounded-2xl border transition-all duration-500 ${isLive ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20 shadow-[0_0_20px_rgba(244,63,94,0.15)]'}`}>
             <div className="text-[10px] text-slate-500 mb-2 uppercase tracking-[0.2em] font-black">Hardware Link</div>
-            <div className="flex items-center gap-3"><div className={`w-2.5 h-2.5 rounded-full ${isLive ? 'bg-emerald-500 shadow-[0_0_12px_#10b981]' : 'bg-rose-500 animate-pulse'}`} /><span className={`text-xs font-black uppercase tracking-tighter ${isLive ? 'text-emerald-400' : 'text-rose-400'}`}>{isLive ? 'Kernel Active' : 'Agent Lost'}</span></div>
+            <div className="flex items-center gap-3"><div className={`w-2.5 h-2.5 rounded-full ${isLive ? 'bg-emerald-500 shadow-[0_0_12px_#10b981]' : 'bg-rose-500 animate-pulse shadow-[0_0_12px_#f43f5e]'}`} /><span className={`text-xs font-black uppercase tracking-tighter ${isLive ? 'text-emerald-400' : 'text-rose-400'}`}>{isLive ? 'Kernel Active' : 'Agent Lost'}</span></div>
           </div>
         </div>
       </aside>
@@ -543,7 +543,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
 };
 
 /**
- * COMPONENT: DASHBOARD
+ * COMPONENT: DASHBOARD (HIGH-FIDELITY RESTORED)
  */
 const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metrics: SystemMetrics }) => {
   const [selectedIface, setSelectedIface] = useState<string>('');
@@ -560,13 +560,23 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
     if (!selectedIface) return;
     const currentData = interfaces.find(i => i.interfaceName === selectedIface);
     if (!currentData) return;
+    
     setHistory(prev => {
-      const newEntry = { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), rx: currentData.throughput.rx, tx: currentData.throughput.tx };
+      const newEntry = { 
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), 
+        rx: currentData.throughput.rx, 
+        tx: currentData.throughput.tx 
+      };
       return [...prev, newEntry].slice(-60);
     });
   }, [interfaces, selectedIface]);
 
-  const aggregateTraffic = useMemo(() => interfaces.reduce((acc, curr) => ({ rx: acc.rx + (curr.throughput?.rx || 0), tx: acc.tx + (curr.throughput?.tx || 0) }), { rx: 0, tx: 0 }), [interfaces]);
+  const aggregateTraffic = useMemo(() => {
+    return interfaces.reduce((acc, curr) => ({
+      rx: acc.rx + (curr.throughput?.rx || 0),
+      tx: acc.tx + (curr.throughput?.tx || 0)
+    }), { rx: 0, tx: 0 });
+  }, [interfaces]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-top-4 duration-700">
@@ -575,41 +585,116 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
           <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Host Dashboard</h1>
           <div className="flex items-center gap-4 mt-2">
             <p className="text-slate-500 text-sm font-medium uppercase tracking-widest">Real-time Linux Router Telemetry</p>
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${metrics.dnsResolved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse'}`}>
+              {metrics.dnsResolved ? 'Internet: Linked' : 'Internet: Failed'}
+            </div>
           </div>
         </div>
-        <div className="text-right"><div className="text-[10px] text-slate-600 font-black tracking-widest uppercase mb-1">Host Uptime</div><div className="text-2xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.uptime || '--:--:--'}</div></div>
+        <div className="text-right">
+          <div className="text-[10px] text-slate-600 font-black tracking-widest uppercase mb-1">Session Duration</div>
+          <div className="text-2xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.uptime || '--:--:--'}</div>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 italic">RX Rate</h3>
-          <div className="text-4xl font-mono text-emerald-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.rx.toFixed(2)} <span className="text-xs">Mbps</span></div>
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Aggregate RX</h3>
+          <div className="text-4xl font-mono text-emerald-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.rx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
         </div>
         <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 italic">TX Rate</h3>
-          <div className="text-4xl font-mono text-blue-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.tx.toFixed(2)} <span className="text-xs">Mbps</span></div>
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Aggregate TX</h3>
+          <div className="text-4xl font-mono text-blue-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.tx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
         </div>
-        <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 italic">Kernel Load</h3>
-          <div className="text-4xl font-mono text-white font-bold tabular-nums tracking-tighter">{metrics.cpuUsage.toFixed(0)}%</div>
+        
+        <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md overflow-hidden">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Multi-Core Usage</h3>
+          <div className="space-y-3 custom-scrollbar max-h-40 overflow-y-auto">
+             {metrics.cores && metrics.cores.length > 0 ? metrics.cores.map((usage, idx) => (
+                <div key={idx} className="group">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest group-hover:text-blue-400 transition-colors">CPU {idx}</span>
+                    <span className="text-[10px] font-mono text-white font-bold">{usage}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-800/50">
+                    <div 
+                      className={`h-full transition-all duration-1000 ease-out ${usage > 80 ? 'bg-rose-500' : usage > 50 ? 'bg-amber-500' : 'bg-blue-500'} shadow-[0_0_8px_currentColor] opacity-90`} 
+                      style={{ width: `${usage}%`, color: usage > 80 ? '#f43f5e' : usage > 50 ? '#f59e0b' : '#3b82f6' }} 
+                    />
+                  </div>
+                </div>
+             )) : (
+                <div className="text-4xl font-mono text-white font-bold tabular-nums tracking-tighter">{metrics.cpuUsage.toFixed(0)}%</div>
+             )}
+          </div>
         </div>
+
         <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 italic">Host Memory</h3>
-          <div className="text-4xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.memoryUsage} <span className="text-xs">GB</span></div>
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Physical RAM</h3>
+          <div className="text-4xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.memoryUsage} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">GB</span></div>
+          <div className="mt-2 text-[10px] text-slate-600 font-black uppercase tracking-widest italic">Used of {metrics.totalMem} GB Host Total</div>
+          <div className="mt-3 w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-800/50">
+             <div className="h-full bg-slate-400 transition-all duration-700" style={{ width: `${(parseFloat(metrics.memoryUsage)/parseFloat(metrics.totalMem || "1"))*100}%` }} />
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl">
-          <div className="flex justify-between items-center mb-10"><h2 className="text-xl font-black text-white italic tracking-tight uppercase">Traffic monitor: <span className="text-emerald-400 font-mono italic">{selectedIface.toUpperCase()}</span></h2></div>
-          <div className="h-[350px] w-full"><ResponsiveContainer width="100%" height="100%"><AreaChart data={history}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} /><XAxis dataKey="time" hide /><YAxis stroke="#475569" fontSize={10} /><Area type="monotone" dataKey="rx" stroke="#10b981" fillOpacity={0.1} fill="#10b981" isAnimationActive={false} /><Area type="monotone" dataKey="tx" stroke="#3b82f6" fillOpacity={0.1} fill="#3b82f6" isAnimationActive={false} /></AreaChart></ResponsiveContainer></div>
+          <div className="flex justify-between items-center mb-10">
+            <h2 className="text-xl font-black text-white flex items-center gap-3 uppercase italic tracking-tight">
+              <span className="w-2 h-6 bg-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
+              Traffic Monitor: <span className="text-emerald-400 font-mono tracking-tighter">{selectedIface.toUpperCase()}</span>
+            </h2>
+            <select 
+              value={selectedIface}
+              onChange={(e) => setSelectedIface(e.target.value)}
+              className="bg-slate-950 text-blue-400 border border-slate-800 rounded-2xl px-6 py-2.5 text-xs font-black outline-none font-mono focus:border-blue-500 cursor-pointer uppercase"
+            >
+              {interfaces.map(iface => (
+                <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName}</option>
+              ))}
+            </select>
+          </div>
+          <div className="h-[350px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={history}>
+                <defs>
+                  <linearGradient id="colorRx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
+                  <linearGradient id="colorTx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="time" hide />
+                <YAxis stroke="#475569" fontSize={10} tickFormatter={(v) => `${v}M`} />
+                <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '16px' }} />
+                <Area name="Down" type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={4} fill="url(#colorRx)" isAnimationActive={false} />
+                <Area name="Up" type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={4} fill="url(#colorTx)" isAnimationActive={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
+
         <div className="bg-slate-900/40 rounded-[2.5rem] border border-slate-800 flex flex-col overflow-hidden backdrop-blur-md shadow-2xl">
-           <div className="p-8 border-b border-slate-800 flex justify-between items-center bg-slate-950/30"><h2 className="text-xs font-black text-slate-500 uppercase tracking-widest">Interfaces</h2></div>
+           <div className="p-8 border-b border-slate-800 flex justify-between items-center bg-slate-950/30">
+              <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest">Interface Matrix</h2>
+              <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded text-blue-400 font-mono border border-blue-500/20 uppercase tracking-widest font-black">Link Live</span>
+           </div>
            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
               {interfaces.map(iface => (
-                <div key={iface.id} onClick={() => setSelectedIface(iface.interfaceName)} className={`p-5 rounded-2xl border transition-all cursor-pointer ${selectedIface === iface.interfaceName ? 'bg-blue-600/10 border-blue-500/30' : 'bg-slate-950/50 border-slate-800'}`}>
-                   <div className="flex items-center gap-4"><div className={`w-2 h-2 rounded-full ${iface.internetHealth === 'HEALTHY' ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} /><div><div className="text-sm font-black text-white font-mono uppercase tracking-tighter">{iface.interfaceName}</div><div className="text-[10px] text-slate-500 font-mono">{iface.ipAddress}</div></div></div>
+                <div 
+                  key={iface.id} 
+                  onClick={() => setSelectedIface(iface.interfaceName)}
+                  className={`p-5 rounded-2xl border transition-all cursor-pointer group flex items-center justify-between ${selectedIface === iface.interfaceName ? 'bg-blue-600/10 border-blue-500/30' : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'}`}
+                >
+                   <div className="flex items-center gap-4">
+                      <div className={`w-2.5 h-2.5 rounded-full ${iface.internetHealth === 'HEALTHY' ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500 animate-pulse shadow-[0_0_8px_#f43f5e]'}`} />
+                      <div>
+                        <div className="text-sm font-black text-white font-mono uppercase tracking-tighter">{iface.interfaceName}</div>
+                        <div className="text-[10px] text-slate-500 font-mono tracking-tight tabular-nums">{iface.ipAddress}</div>
+                      </div>
+                   </div>
+                   <div className="text-right">
+                      <div className={`text-xs font-mono font-black ${iface.internetHealth === 'HEALTHY' ? 'text-emerald-400' : 'text-rose-500'}`}>{iface.latency}ms</div>
+                   </div>
                 </div>
               ))}
            </div>
@@ -634,29 +719,41 @@ const App = () => {
   });
   const [appliedConfig, setAppliedConfig] = useState<NetworkConfig>(currentConfig);
   const [isApplying, setIsApplying] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
 
   const refreshData = useCallback(async () => {
     try {
-      const [ifaceRes, metricRes, configRes] = await Promise.all([fetch(`${API_BASE}/interfaces`), fetch(`${API_BASE}/metrics`), fetch(`${API_BASE}/config`)]);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+
+      const [ifaceRes, metricRes, configRes] = await Promise.all([
+        fetch(`${API_BASE}/interfaces`, { signal: controller.signal }),
+        fetch(`${API_BASE}/metrics`, { signal: controller.signal }),
+        fetch(`${API_BASE}/config`, { signal: controller.signal })
+      ]);
+      clearTimeout(timeoutId);
+
       if (ifaceRes.ok && metricRes.ok) {
         const ifaces = await ifaceRes.json();
         const met = await metricRes.json();
         setInterfaces(ifaces);
         setMetrics(met);
+        
+        // Load settings from config endpoint
         if (configRes.ok) {
           const savedConfig = await configRes.json();
-          if (currentConfig.bridges.length === 0 && savedConfig.bridges) {
-            setCurrentConfig(prev => ({ ...prev, bridges: savedConfig.bridges, mode: savedConfig.mode || prev.mode }));
+          // Initial sync of bridge/wan settings
+          if (currentConfig.bridges.length === 0 && savedConfig.bridges && savedConfig.bridges.length > 0) {
+            setCurrentConfig(prev => ({ ...prev, bridges: savedConfig.bridges }));
           }
         }
+
         if (currentConfig.wanInterfaces.length === 0 && ifaces.length > 0) {
           setCurrentConfig(prev => ({ ...prev, wanInterfaces: ifaces }));
         }
         setIsLive(true);
-      } else setIsLive(false);
+      } else {
+        setIsLive(false);
+      }
     } catch (e) { setIsLive(false); }
   }, [currentConfig.bridges.length]);
 
@@ -669,10 +766,14 @@ const App = () => {
   const handleApplyConfig = async () => {
     setIsApplying(true);
     try {
-      const res = await fetch(`${API_BASE}/apply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(currentConfig) });
+      const res = await fetch(`${API_BASE}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentConfig)
+      });
       if (res.ok) {
         setAppliedConfig({ ...currentConfig });
-        alert("KERNEL SYNC: Tables updated successfully.");
+        alert("KERNEL SYNC: Configuration tables updated successfully.");
       }
     } catch (e) { alert("AGENT ERROR: Communication lost."); }
     finally { setIsApplying(false); }
@@ -680,6 +781,7 @@ const App = () => {
 
   const handleUpdate = async () => {
     setIsApplying(true);
+    // Simulating deployment latency
     await new Promise(r => setTimeout(r, 2000));
     setIsApplying(false);
   };
