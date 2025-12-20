@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+// Import AIAdvisor component from components directory to fix "Cannot find name 'AIAdvisor'" error.
+import AIAdvisor from './components/AIAdvisor';
 
 /**
  * TYPES & ENUMS
@@ -66,7 +68,7 @@ const API_BASE = getApiBase();
 /**
  * COMPONENT: BRIDGE & DHCP MANAGER
  */
-const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: NetworkConfig, setConfig: any, onApply: () => void, isApplying: boolean }) => {
+const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterfaces }: { config: NetworkConfig, setConfig: any, onApply: () => void, isApplying: boolean, availableInterfaces: WanInterface[] }) => {
   const addBridge = () => {
     const newBridge: BridgeConfig = {
       id: Math.random().toString(36).substr(2, 9),
@@ -93,12 +95,24 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: Net
     setConfig({ ...config, bridges: config.bridges.filter(b => b.id !== id) });
   };
 
+  const toggleInterface = (bridgeId: string, ifaceName: string) => {
+    const bridge = config.bridges.find(b => b.id === bridgeId);
+    if (!bridge) return;
+
+    const currentInterfaces = bridge.interfaces || [];
+    const newInterfaces = currentInterfaces.includes(ifaceName)
+      ? currentInterfaces.filter(i => i !== ifaceName)
+      : [...currentInterfaces, ifaceName];
+    
+    updateBridge(bridgeId, { interfaces: newInterfaces });
+  };
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-700 pb-20">
       <header className="flex justify-between items-start">
         <div>
           <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Bridge & DHCP Fabric</h1>
-          <p className="text-slate-400 mt-1 font-medium">Virtual LAN Segmentation & IP Assignment Engine</p>
+          <p className="text-slate-400 mt-1 font-medium italic">Virtual LAN Segmentation & IP Assignment Engine</p>
         </div>
         <div className="flex items-center gap-4">
           <button 
@@ -119,76 +133,113 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: Net
 
       {config.bridges.length === 0 ? (
         <div className="bg-slate-900/40 p-20 rounded-[2.5rem] border border-slate-800 border-dashed text-center">
-          <div className="text-4xl mb-4 opacity-20">🌉</div>
-          <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No Bridges Configured</p>
-          <p className="text-slate-600 text-[10px] mt-2 uppercase">Interface definitions are pulled from nexus-config.json</p>
+          <div className="text-4xl mb-4 opacity-20 text-blue-400">🌉</div>
+          <p className="text-slate-500 font-black uppercase tracking-widest text-xs">No Bridges Configured</p>
+          <p className="text-slate-600 text-[10px] mt-2 uppercase italic">Pulling current configuration from hardware agent...</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-8">
           {config.bridges.map(bridge => (
-            <div key={bridge.id} className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+            <div key={bridge.id} className="bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md relative overflow-hidden group shadow-2xl">
+              <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
                 <div className="text-8xl font-black italic uppercase tracking-tighter">{bridge.name}</div>
               </div>
               
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 relative z-10">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-10 relative z-10">
                 {/* Bridge Basics */}
-                <div className="space-y-6">
+                <div className="space-y-6 lg:col-span-1">
+                  <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">General Settings</h3>
                   <div>
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Bridge Name</label>
                     <input 
                       type="text" 
                       value={bridge.name} 
                       onChange={(e) => updateBridge(bridge.id, { name: e.target.value })}
-                      className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none focus:border-blue-500 transition-colors"
+                      className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none focus:border-blue-500 transition-colors text-sm"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Local IP Address</label>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Bridge Static IP</label>
                     <input 
                       type="text" 
                       value={bridge.ipAddress} 
                       onChange={(e) => updateBridge(bridge.id, { ipAddress: e.target.value })}
-                      className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none focus:border-blue-500 transition-colors"
+                      className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none focus:border-blue-500 transition-colors text-sm"
                     />
                   </div>
                   <button 
                     onClick={() => deleteBridge(bridge.id)}
-                    className="text-rose-500 text-[10px] font-black uppercase tracking-widest hover:text-rose-400 transition-colors"
+                    className="text-rose-500 text-[10px] font-black uppercase tracking-widest hover:text-rose-400 transition-colors flex items-center gap-2"
                   >
-                    Remove Bridge
+                    <span>🗑️</span> Remove Bridge Interface
                   </button>
                 </div>
 
+                {/* Interface Selection */}
+                <div className="lg:col-span-1 space-y-6">
+                  <h3 className="text-[10px] font-black text-emerald-500 uppercase tracking-widest border-l-2 border-emerald-500 pl-3">Member Interfaces</h3>
+                  <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                    {availableInterfaces.length > 0 ? (
+                      availableInterfaces.map(iface => (
+                        <label key={iface.interfaceName} className="flex items-center gap-3 p-3 bg-black/40 rounded-xl border border-slate-800 hover:border-slate-700 transition-all cursor-pointer group">
+                          <input 
+                            type="checkbox" 
+                            checked={bridge.interfaces?.includes(iface.interfaceName)}
+                            onChange={() => toggleInterface(bridge.id, iface.interfaceName)}
+                            className="w-4 h-4 rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-blue-500"
+                          />
+                          <div>
+                            <div className="text-[10px] font-black text-slate-200 uppercase tracking-widest group-hover:text-white">{iface.interfaceName}</div>
+                            <div className="text-[9px] text-slate-500 font-mono italic">{iface.ipAddress !== 'N/A' ? iface.ipAddress : 'UNASSIGNED'}</div>
+                          </div>
+                        </label>
+                      ))
+                    ) : (
+                      <div className="text-[10px] text-slate-600 italic uppercase">No ports discovered</div>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-slate-500 font-medium uppercase italic leading-relaxed">Warning: Bridging interfaces may interrupt active routing tables.</p>
+                </div>
+
                 {/* DHCP Settings */}
-                <div className="lg:col-span-2 space-y-6 bg-black/20 p-8 rounded-3xl border border-slate-800/50">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-black text-white uppercase tracking-widest italic">DHCP Server Configuration</h3>
+                <div className="lg:col-span-2 space-y-6 bg-slate-900/40 p-8 rounded-3xl border border-slate-800">
+                  <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4">
+                    <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-widest italic">DHCP Core Server</h3>
                     <div 
                       onClick={() => updateBridge(bridge.id, { dhcpEnabled: !bridge.dhcpEnabled })}
-                      className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${bridge.dhcpEnabled ? 'bg-emerald-600' : 'bg-slate-800'}`}
+                      className={`w-12 h-6 rounded-full relative cursor-pointer transition-all ${bridge.dhcpEnabled ? 'bg-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'bg-slate-800'}`}
                     >
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${bridge.dhcpEnabled ? 'left-7' : 'left-1'}`} />
                     </div>
                   </div>
 
-                  <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-opacity ${bridge.dhcpEnabled ? 'opacity-100' : 'opacity-20 pointer-events-none'}`}>
+                  <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-all ${bridge.dhcpEnabled ? 'opacity-100' : 'opacity-20 pointer-events-none'}`}>
                     <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Range Start</label>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Pool Start</label>
                       <input 
                         type="text" 
                         value={bridge.dhcpStart} 
                         onChange={(e) => updateBridge(bridge.id, { dhcpStart: e.target.value })}
-                        className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none"
+                        className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none text-sm"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Range End</label>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Pool End</label>
                       <input 
                         type="text" 
                         value={bridge.dhcpEnd} 
                         onChange={(e) => updateBridge(bridge.id, { dhcpEnd: e.target.value })}
-                        className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none"
+                        className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none text-sm"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Lease Duration</label>
+                       <input 
+                        type="text" 
+                        value={bridge.leaseTime} 
+                        onChange={(e) => updateBridge(bridge.id, { leaseTime: e.target.value })}
+                        placeholder="e.g. 24h"
+                        className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none text-sm"
                       />
                     </div>
                   </div>
@@ -213,7 +264,7 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
     <div className="space-y-8 animate-in fade-in duration-700">
       <header>
         <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">System Core</h1>
-        <p className="text-slate-400 mt-1 font-medium">Kernel Diagnostics & Global Optimization Control</p>
+        <p className="text-slate-400 mt-1 font-medium italic">Kernel Diagnostics & Global Optimization Control</p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -289,7 +340,7 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
       <header className="flex justify-between items-start">
         <div>
           <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Multi-WAN Orchestrator</h1>
-          <p className="text-slate-400 mt-1 font-medium">Smart Load-Balancing & Automated Failover Fabric</p>
+          <p className="text-slate-400 mt-1 font-medium italic">Smart Load-Balancing & Automated Failover Fabric</p>
         </div>
         <button 
           onClick={onApply}
@@ -366,6 +417,7 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
                   <label className="text-[10px] font-black text-slate-500 uppercase block tracking-widest mb-2">Failover Priority</label>
                   <select 
                     value={wan.priority}
+                    // Fix: Use the locally defined updateInterface to set priority to avoid "Cannot find name 'updatePriority'" error.
                     onChange={(e) => updateInterface(wan.id, { priority: parseInt(e.target.value) })}
                     className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none"
                   >
@@ -631,9 +683,11 @@ const App = () => {
         // Load settings from config endpoint
         if (configRes.ok) {
           const savedConfig = await configRes.json();
-          // Initial sync of bridge/wan settings
-          if (config.bridges.length === 0 && savedConfig.bridges && savedConfig.bridges.length > 0) {
-            setConfig(prev => ({ ...prev, bridges: savedConfig.bridges }));
+          // Force sync bridges and wan settings if we just loaded them from backend
+          if (savedConfig.bridges && JSON.stringify(config.bridges) !== JSON.stringify(savedConfig.bridges)) {
+             if (config.bridges.length === 0) {
+               setConfig(prev => ({ ...prev, bridges: savedConfig.bridges, mode: savedConfig.mode || prev.mode }));
+             }
           }
         }
 
@@ -645,7 +699,7 @@ const App = () => {
         setIsLive(false);
       }
     } catch (e) { setIsLive(false); }
-  }, [config]);
+  }, [config.bridges]);
 
   useEffect(() => {
     refreshData();
@@ -661,7 +715,9 @@ const App = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
       });
-      if (res.ok) alert("KERNEL SYNC: Configuration tables updated successfully.");
+      if (res.ok) {
+        alert("KERNEL SYNC: Configuration tables updated successfully.");
+      }
     } catch (e) { alert("AGENT ERROR: Communication lost."); }
     finally { setIsApplying(false); }
   };
@@ -670,8 +726,8 @@ const App = () => {
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
-      {activeTab === 'bridge' && <BridgeManager config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
-      {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
+      {activeTab === 'bridge' && <BridgeManager config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
+      {activeTab === 'advisor' && <AIAdvisor config={config} />}
       {activeTab === 'settings' && <SystemSettings metrics={metrics} />}
     </Layout>
   );
