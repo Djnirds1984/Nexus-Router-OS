@@ -52,11 +52,6 @@ const API_BASE = getApiBase();
  * COMPONENT: INTERFACE MANAGER (MULTI-WAN)
  */
 const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }: any) => {
-  const isDirty = useMemo(() => {
-    // Basic check for config changes
-    return true; 
-  }, [config]);
-
   const updateInterface = (id: string, updates: Partial<WanInterface>) => {
     setConfig((prev: NetworkConfig) => ({
       ...prev,
@@ -80,7 +75,6 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
         </button>
       </header>
 
-      {/* Mode Selector */}
       <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-8 backdrop-blur-md">
         <div className="flex-1">
           <h2 className="text-2xl font-black text-white tracking-tight mb-2 uppercase italic">Routing Engine Mode</h2>
@@ -208,12 +202,10 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
                 {isLive ? 'Kernel Active' : 'Agent Lost'}
               </span>
             </div>
-            {!isLive && <div className="mt-2 text-[9px] text-rose-500 font-medium leading-tight">Probing local:3000...</div>}
           </div>
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto relative bg-[#020617] scroll-smooth">
-        <div className="absolute top-0 right-0 w-2/3 h-2/3 bg-blue-600/5 blur-[160px] rounded-full -z-10 pointer-events-none" />
         <div className="max-w-7xl mx-auto p-12">{children}</div>
       </main>
     </div>
@@ -227,9 +219,13 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
   const [selectedIface, setSelectedIface] = useState<string>('');
   const [history, setHistory] = useState<any[]>([]);
   
+  // Smart selection: pick the healthiest interface if none selected
   useEffect(() => {
-    if (!selectedIface && interfaces.length > 0) setSelectedIface(interfaces[0].interfaceName);
-  }, [interfaces]);
+    if (!selectedIface && interfaces.length > 0) {
+      const primary = interfaces.find(i => i.internetHealth === 'HEALTHY') || interfaces[0];
+      setSelectedIface(primary.interfaceName);
+    }
+  }, [interfaces, selectedIface]);
 
   useEffect(() => {
     if (!selectedIface) return;
@@ -257,59 +253,65 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
     <div className="space-y-8 animate-in fade-in slide-in-from-top-4 duration-700">
       <header className="flex justify-between items-end">
         <div>
-          <h1 className="text-4xl font-black text-white tracking-tighter">Router Dashboard</h1>
+          <h1 className="text-4xl font-black text-white tracking-tighter">Hardware Dashboard</h1>
           <div className="flex items-center gap-4 mt-2">
-            <p className="text-slate-500 text-sm font-medium">Ubuntu x64 Server • Nexus Runtime Engine</p>
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase border transition-all duration-500 ${metrics.dnsResolved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse'}`}>
+            <p className="text-slate-500 text-sm font-medium uppercase tracking-widest">Real-time Linux Router Telemetry</p>
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${metrics.dnsResolved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse'}`}>
               {metrics.dnsResolved ? 'Internet: Linked' : 'Internet: Failed'}
             </div>
           </div>
         </div>
         <div className="text-right">
-          <div className="text-[10px] text-slate-600 font-black tracking-widest uppercase mb-1">Host Uptime</div>
-          <div className="text-2xl font-mono text-white font-bold tracking-tighter">{metrics.uptime || '--:--:--'}</div>
+          <div className="text-[10px] text-slate-600 font-black tracking-widest uppercase mb-1">Session Duration</div>
+          <div className="text-2xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.uptime || '--:--:--'}</div>
         </div>
       </header>
 
-      {/* Metrics Grid */}
+      {/* Real Hardware Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Downlink Total</h3>
-          <div className="text-4xl font-mono text-emerald-400 font-bold tracking-tighter">{aggregateTraffic.rx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
+        <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Aggregate RX</h3>
+          <div className="text-4xl font-mono text-emerald-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.rx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
         </div>
-        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Uplink Total</h3>
-          <div className="text-4xl font-mono text-blue-400 font-bold tracking-tighter">{aggregateTraffic.tx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
+        <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Aggregate TX</h3>
+          <div className="text-4xl font-mono text-blue-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.tx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
         </div>
-        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">CPU Core Load</h3>
-          <div className="text-4xl font-mono text-white font-bold">{metrics.cpuUsage.toFixed(1)}%</div>
-          <div className="mt-4 w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-             <div className="h-full bg-blue-500 transition-all duration-1000 shadow-[0_0_10px_#3b82f6]" style={{ width: `${metrics.cpuUsage}%` }} />
+        <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Live CPU Usage</h3>
+          <div className="text-4xl font-mono text-white font-bold tabular-nums tracking-tighter">{metrics.cpuUsage.toFixed(0)}%</div>
+          <div className="mt-4 w-full h-2 bg-slate-800 rounded-full overflow-hidden shadow-inner">
+             <div 
+               className={`h-full transition-all duration-500 ${metrics.cpuUsage > 80 ? 'bg-rose-500' : 'bg-blue-500'} shadow-[0_0_15px_rgba(59,130,246,0.5)]`} 
+               style={{ width: `${metrics.cpuUsage}%` }} 
+             />
           </div>
         </div>
-        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md">
+        <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
           <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Physical RAM</h3>
-          <div className="text-4xl font-mono text-white font-bold tracking-tighter">{metrics.memoryUsage} <span className="text-sm font-sans font-medium text-slate-500 uppercase">GB</span></div>
-          <div className="text-[10px] text-slate-600 font-black uppercase mt-1 tracking-widest">Available {metrics.totalMem}</div>
+          <div className="text-4xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.memoryUsage} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">GB</span></div>
+          <div className="mt-2 text-[10px] text-slate-600 font-black uppercase tracking-widest">Used of {metrics.totalMem} GB Total</div>
+          <div className="mt-3 w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+             <div className="h-full bg-slate-400" style={{ width: `${(parseFloat(metrics.memoryUsage)/parseFloat(metrics.totalMem))*100}%` }} />
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl">
           <div className="flex justify-between items-center mb-10">
-            <h2 className="text-xl font-bold text-white flex items-center gap-3">
+            <h2 className="text-xl font-black text-white flex items-center gap-3 uppercase italic tracking-tight">
               <span className="w-2 h-6 bg-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
-              Interface Telemetry: <span className="text-emerald-400 font-mono tracking-tighter">{selectedIface.toUpperCase()}</span>
+              Traffic Monitor: <span className="text-emerald-400 font-mono tracking-tighter">{selectedIface.toUpperCase()}</span>
             </h2>
             <select 
               value={selectedIface}
               onChange={(e) => setSelectedIface(e.target.value)}
-              className="bg-slate-950 text-blue-400 border border-slate-800 rounded-2xl px-6 py-2.5 text-xs font-bold outline-none font-mono focus:border-blue-500 cursor-pointer"
+              className="bg-slate-950 text-blue-400 border border-slate-800 rounded-2xl px-6 py-2.5 text-xs font-black outline-none font-mono focus:border-blue-500 cursor-pointer uppercase"
             >
-              {interfaces.length > 0 ? interfaces.map(iface => (
-                <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName.toUpperCase()}</option>
-              )) : <option>Scanning...</option>}
+              {interfaces.map(iface => (
+                <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName}</option>
+              ))}
             </select>
           </div>
           <div className="h-[350px] w-full">
@@ -333,7 +335,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
         <div className="bg-slate-900/40 rounded-[2.5rem] border border-slate-800 flex flex-col overflow-hidden backdrop-blur-md shadow-2xl">
            <div className="p-8 border-b border-slate-800 flex justify-between items-center bg-slate-950/30">
               <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest">Interface Matrix</h2>
-              <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded text-blue-400 font-mono border border-blue-500/20 uppercase">BBR Native</span>
+              <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded text-blue-400 font-mono border border-blue-500/20 uppercase tracking-widest font-black">Link Live</span>
            </div>
            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
               {interfaces.map(iface => (
@@ -343,14 +345,14 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
                   className={`p-5 rounded-2xl border transition-all cursor-pointer group flex items-center justify-between ${selectedIface === iface.interfaceName ? 'bg-blue-600/10 border-blue-500/30' : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'}`}
                 >
                    <div className="flex items-center gap-4">
-                      <div className={`w-2.5 h-2.5 rounded-full ${iface.status === WanStatus.UP ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500 animate-pulse'}`} />
+                      <div className={`w-2.5 h-2.5 rounded-full ${iface.internetHealth === 'HEALTHY' ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500 animate-pulse shadow-[0_0_8px_#f43f5e]'}`} />
                       <div>
-                        <div className="text-sm font-bold text-white font-mono uppercase tracking-tighter">{iface.interfaceName}</div>
-                        <div className="text-[10px] text-slate-500 font-mono tracking-tight">{iface.ipAddress}</div>
+                        <div className="text-sm font-black text-white font-mono uppercase tracking-tighter">{iface.interfaceName}</div>
+                        <div className="text-[10px] text-slate-500 font-mono tracking-tight tabular-nums">{iface.ipAddress}</div>
                       </div>
                    </div>
                    <div className="text-right">
-                      <div className="text-[10px] text-emerald-400 font-mono font-bold">{(iface.throughput.rx + iface.throughput.tx).toFixed(1)} Mbps</div>
+                      <div className={`text-xs font-mono font-black ${iface.internetHealth === 'HEALTHY' ? 'text-emerald-400' : 'text-rose-500'}`}>{iface.latency}ms</div>
                    </div>
                 </div>
               ))}
@@ -388,19 +390,14 @@ const App = () => {
         const met = await metricRes.json();
         setInterfaces(ifaces);
         setMetrics(met);
-        
-        // Sync config state with hardware state if empty
         if (config.wanInterfaces.length === 0 && ifaces.length > 0) {
           setConfig(prev => ({ ...prev, wanInterfaces: ifaces }));
         }
-        
         setIsLive(true);
       } else {
         setIsLive(false);
       }
-    } catch (e) { 
-      setIsLive(false); 
-    }
+    } catch (e) { setIsLive(false); }
   }, [config]);
 
   useEffect(() => {
@@ -418,12 +415,8 @@ const App = () => {
         body: JSON.stringify(config)
       });
       if (res.ok) alert("KERNEL SYNC: Routing tables updated successfully.");
-      else alert("SYNC FAILED: Permission error or invalid route parameters.");
-    } catch (e) {
-      alert("AGENT ERROR: Communication to kernel agent lost.");
-    } finally {
-      setIsApplying(false);
-    }
+    } catch (e) { alert("AGENT ERROR: Communication lost."); }
+    finally { setIsApplying(false); }
   };
 
   return (
