@@ -199,11 +199,50 @@ app.get('/api/interfaces', (req, res) => res.json(systemState.interfaces));
 app.get('/api/metrics', (req, res) => res.json(systemState.metrics));
 app.get('/api/config', (req, res) => res.json(systemState.config));
 
+function applyDhcp(dhcp) {
+  if (process.platform !== 'linux') return;
+  try {
+    if (!dhcp || !dhcp.enabled || !dhcp.interfaceName) return;
+    const iface = dhcp.interfaceName;
+    const start = dhcp.start || '';
+    const base = start.split('.').slice(0,3).join('.');
+    const gw = `${base}.1`;
+    execSync(`ip link set ${iface} up`);
+    execSync(`ip addr flush dev ${iface}`);
+    execSync(`ip addr add ${gw}/24 dev ${iface}`);
+    const conf = [
+      `interface=${iface}`,
+      `bind-interfaces`,
+      `port=0`,
+      `dhcp-authoritative`,
+      `dhcp-range=${dhcp.start},${dhcp.end},255.255.255.0,${dhcp.leaseTime || '24h'}`,
+      `dhcp-option=option:router,${gw}`,
+      `dhcp-option=option:dns-server,8.8.8.8,1.1.1.1`,
+      `log-dhcp`
+    ].join('\n');
+    fs.writeFileSync('/etc/dnsmasq.d/nexus-dhcp.conf', conf);
+    execSync('sysctl -w net.ipv4.ip_forward=1');
+    try { execSync('sysctl --system'); } catch (e) {}
+    let wan = '';
+    try {
+      const routes = JSON.parse(execSync('ip -j route show default').toString());
+      wan = (routes[0] || {}).dev || '';
+    } catch (e) {}
+    if (wan) {
+      execSync(`iptables -t nat -C POSTROUTING -o ${wan} -j MASQUERADE || iptables -t nat -A POSTROUTING -o ${wan} -j MASQUERADE`);
+      execSync(`iptables -C FORWARD -i ${iface} -o ${wan} -j ACCEPT || iptables -A FORWARD -i ${iface} -o ${wan} -j ACCEPT`);
+      execSync(`iptables -C FORWARD -i ${wan} -o ${iface} -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A FORWARD -i ${wan} -o ${iface} -m state --state RELATED,ESTABLISHED -j ACCEPT`);
+    }
+    execSync('systemctl restart dnsmasq');
+  } catch (e) { log(`DHCP APPLY ERROR: ${e.message}`); }
+}
+
 app.post('/api/apply', (req, res) => {
   try {
     systemState.config = req.body;
     fs.writeFileSync(configPath, JSON.stringify(systemState.config));
     applyMultiWanKernel();
+    applyDhcp(systemState.config.dhcp);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
