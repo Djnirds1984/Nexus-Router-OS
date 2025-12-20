@@ -6,6 +6,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
  * TYPES & ENUMS
  */
 enum WanStatus { UP = 'UP', DOWN = 'DOWN', STANDBY = 'STANDBY' }
+enum RouterMode { LOAD_BALANCER = 'LOAD_BALANCER', FAILOVER = 'FAILOVER' }
 
 interface WanInterface {
   id: string;
@@ -18,6 +19,7 @@ interface WanInterface {
   priority: number;
   throughput: { rx: number; tx: number; };
   latency: number;
+  internetHealth?: 'HEALTHY' | 'OFFLINE';
 }
 
 interface SystemMetrics {
@@ -31,17 +33,136 @@ interface SystemMetrics {
   ipForwarding: boolean;
 }
 
+interface NetworkConfig {
+  mode: RouterMode;
+  wanInterfaces: WanInterface[];
+}
+
 /**
  * API DISCOVERY
- * Resolves the path to the sudo Hardware Agent based on current environment.
  */
 const getApiBase = () => {
   const host = window.location.hostname || 'localhost';
-  // Always favor direct port 3000 for the Hardware Agent in local environments
   return `http://${host}:3000/api`;
 };
 
 const API_BASE = getApiBase();
+
+/**
+ * COMPONENT: INTERFACE MANAGER (MULTI-WAN)
+ */
+const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }: any) => {
+  const isDirty = useMemo(() => {
+    // Basic check for config changes
+    return true; 
+  }, [config]);
+
+  const updateInterface = (id: string, updates: Partial<WanInterface>) => {
+    setConfig((prev: NetworkConfig) => ({
+      ...prev,
+      wanInterfaces: prev.wanInterfaces.map(w => w.id === id ? { ...w, ...updates } : w)
+    }));
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-700">
+      <header className="flex justify-between items-start">
+        <div>
+          <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Multi-WAN Orchestrator</h1>
+          <p className="text-slate-400 mt-1 font-medium">Smart Load-Balancing & Automated Failover Fabric</p>
+        </div>
+        <button 
+          onClick={onApply}
+          disabled={isApplying}
+          className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-10 rounded-2xl shadow-xl shadow-blue-600/20 disabled:opacity-50 transition-all active:scale-95 uppercase tracking-widest text-xs"
+        >
+          {isApplying ? 'SYNCING KERNEL...' : 'COMMIT TO KERNEL'}
+        </button>
+      </header>
+
+      {/* Mode Selector */}
+      <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-8 backdrop-blur-md">
+        <div className="flex-1">
+          <h2 className="text-2xl font-black text-white tracking-tight mb-2 uppercase italic">Routing Engine Mode</h2>
+          <p className="text-slate-500 text-sm max-w-xl leading-relaxed">
+            {config.mode === RouterMode.LOAD_BALANCER 
+              ? "ECMP (Equal-Cost Multi-Path) enabled. Traffic is distributed across all healthy links based on weight." 
+              : "Active/Passive failover. Traffic stays on the highest priority link unless a timeout is detected."}
+          </p>
+        </div>
+        <div className="flex bg-black/40 p-2 rounded-2xl border border-slate-800 shadow-inner shrink-0">
+          <button 
+            onClick={() => setConfig({ ...config, mode: RouterMode.LOAD_BALANCER })}
+            className={`px-8 py-4 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${config.mode === RouterMode.LOAD_BALANCER ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-slate-600 hover:text-slate-300'}`}
+          >
+            Load Balance
+          </button>
+          <button 
+            onClick={() => setConfig({ ...config, mode: RouterMode.FAILOVER })}
+            className={`px-8 py-4 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${config.mode === RouterMode.FAILOVER ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-slate-600 hover:text-slate-300'}`}
+          >
+            Failover
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {config.wanInterfaces.map((wan: WanInterface) => (
+          <div key={wan.id} className={`p-8 rounded-[2.5rem] border transition-all relative overflow-hidden backdrop-blur-md ${wan.internetHealth === 'HEALTHY' ? 'bg-slate-900/40 border-slate-800 hover:border-blue-500/20' : 'bg-rose-500/5 border-rose-500/20'}`}>
+            <div className="flex justify-between items-start mb-8 relative z-10">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <h3 className="text-xl font-black text-white tracking-tight uppercase italic">{wan.interfaceName.toUpperCase()}</h3>
+                  <code className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-1 rounded font-mono border border-blue-500/10 font-bold">{wan.ipAddress}</code>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${wan.internetHealth === 'HEALTHY' ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-rose-500 animate-pulse'}`} />
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${wan.internetHealth === 'HEALTHY' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {wan.internetHealth === 'HEALTHY' ? 'INTERNET LINKED' : 'REQUEST TIMEOUT'}
+                  </span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Ping Latency</div>
+                <div className="text-2xl font-mono text-emerald-400 font-bold tracking-tighter">{wan.latency} <span className="text-xs">ms</span></div>
+              </div>
+            </div>
+
+            <div className="space-y-6 relative z-10">
+              {config.mode === RouterMode.LOAD_BALANCER ? (
+                <>
+                  <div className="flex justify-between items-end">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Load Weight</label>
+                    <span className="text-3xl font-mono text-blue-400 font-black tracking-tighter">{wan.weight}%</span>
+                  </div>
+                  <input 
+                    type="range" min="1" max="100" 
+                    value={wan.weight} 
+                    onChange={(e) => updateInterface(wan.id, { weight: parseInt(e.target.value) })}
+                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                </>
+              ) : (
+                <>
+                  <label className="text-[10px] font-black text-slate-500 uppercase block tracking-widest mb-2">Failover Priority</label>
+                  <select 
+                    value={wan.priority}
+                    onChange={(e) => updateInterface(wan.id, { priority: parseInt(e.target.value) })}
+                    className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none"
+                  >
+                    <option value={1}>1 - Primary Link</option>
+                    <option value={2}>2 - Secondary Backup</option>
+                    <option value={3}>3 - Tertiary Backup</option>
+                  </select>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 /**
  * COMPONENT: LAYOUT
@@ -241,81 +362,6 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
 };
 
 /**
- * COMPONENT: SYSTEM RECOVERY
- */
-const SystemRecovery = ({ metrics, onFixDns, onRescue, interfaces }: any) => {
-  const [logs, setLogs] = useState<string[]>([]);
-  const [isFixing, setIsFixing] = useState(false);
-
-  const handleFix = async () => {
-    setIsFixing(true);
-    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] Initiating Force-Override sequence...`]);
-    try {
-      const res = await onFixDns();
-      if (res.success) {
-        setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] SUCCESS: Port 53 cleared. NAT active.`]);
-      } else {
-        setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] KERNEL REJECTION: ${res.error}`]);
-      }
-    } catch (e) {
-      setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] AGENT ERROR: Communication lost.`]);
-    }
-    setIsFixing(false);
-  };
-
-  return (
-    <div className="space-y-8 animate-in fade-in zoom-in-95 duration-700">
-      <div className="bg-slate-900/40 p-12 rounded-[3rem] border border-slate-800 shadow-2xl backdrop-blur-xl text-center">
-        <h2 className="text-3xl font-black text-white mb-10 tracking-tighter uppercase">Kernel Operations Console</h2>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 max-w-2xl mx-auto mb-12 text-left">
-          <div className="bg-slate-950/50 p-6 rounded-3xl border border-slate-800 flex flex-col items-center">
-            <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-4">DNS State</div>
-            <div className={`text-xl font-mono font-bold ${metrics.dnsResolved ? 'text-emerald-400' : 'text-rose-500 animate-pulse'}`}>
-              {metrics.dnsResolved ? 'RESOLVED_LOCKED' : 'RESOLVE_FAILURE'}
-            </div>
-          </div>
-          <div className="bg-slate-950/50 p-6 rounded-3xl border border-slate-800 flex flex-col items-center">
-            <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-4">Kernel Forwarding</div>
-            <div className={`text-xl font-mono font-bold ${metrics.ipForwarding ? 'text-blue-400' : 'text-amber-500'}`}>
-              {metrics.ipForwarding ? 'FORWARDING_ACTIVE' : 'FORWARDING_DISABLED'}
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-rose-500/5 p-10 rounded-[2.5rem] border border-rose-500/20 max-w-3xl mx-auto space-y-6">
-          <div className="flex flex-col items-center gap-2 mb-4">
-            <div className="w-16 h-16 bg-rose-600/20 rounded-full flex items-center justify-center text-rose-500 text-4xl animate-pulse shadow-xl shadow-rose-600/10 border border-rose-500/20">⚠️</div>
-            <h3 className="text-rose-500 font-black text-sm uppercase tracking-[0.2em] mt-2 text-center">Emergency Recovery Tools</h3>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <button onClick={onRescue} className="bg-amber-600 hover:bg-amber-500 text-white px-8 py-5 rounded-2xl text-xs font-black shadow-lg shadow-amber-600/20 active:scale-95 transition-all uppercase tracking-widest">
-              RESET ROUTES & FLUSH NAT
-            </button>
-            <button 
-              onClick={handleFix} 
-              disabled={isFixing}
-              className="bg-rose-600 hover:bg-rose-500 text-white px-8 py-5 rounded-2xl text-xs font-black shadow-lg shadow-rose-600/20 active:scale-95 transition-all uppercase tracking-widest disabled:opacity-50"
-            >
-              {isFixing ? 'PATCHING...' : 'FORCE KERNEL DNS REPAIR'}
-            </button>
-          </div>
-          
-          <div className="p-6 bg-black/80 rounded-2xl border border-slate-800 shadow-inner text-left font-mono text-[10px] text-slate-400 max-h-40 overflow-y-auto custom-scrollbar">
-            {logs.length === 0 ? (
-              <p className="italic">Awaiting manual kernel repair command...</p>
-            ) : logs.map((log, i) => (
-              <p key={i} className="mb-1 leading-relaxed">{log}</p>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/**
  * MAIN APP
  */
 const App = () => {
@@ -323,7 +369,8 @@ const App = () => {
   const [isLive, setIsLive] = useState(false);
   const [metrics, setMetrics] = useState<SystemMetrics>({ cpuUsage: 0, memoryUsage: '0', totalMem: '0', temp: '0', uptime: '', activeSessions: 0, dnsResolved: true, ipForwarding: true });
   const [interfaces, setInterfaces] = useState<WanInterface[]>([]);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [config, setConfig] = useState<NetworkConfig>({ mode: RouterMode.LOAD_BALANCER, wanInterfaces: [] });
+  const [isApplying, setIsApplying] = useState(false);
 
   const refreshData = useCallback(async () => {
     try {
@@ -341,15 +388,20 @@ const App = () => {
         const met = await metricRes.json();
         setInterfaces(ifaces);
         setMetrics(met);
+        
+        // Sync config state with hardware state if empty
+        if (config.wanInterfaces.length === 0 && ifaces.length > 0) {
+          setConfig(prev => ({ ...prev, wanInterfaces: ifaces }));
+        }
+        
         setIsLive(true);
-        if (!isInitialized) setIsInitialized(true);
       } else {
         setIsLive(false);
       }
     } catch (e) { 
       setIsLive(false); 
     }
-  }, [isInitialized]);
+  }, [config]);
 
   useEffect(() => {
     refreshData();
@@ -357,37 +409,30 @@ const App = () => {
     return () => clearInterval(interval);
   }, [refreshData]);
 
-  const handleFixDns = async () => {
+  const handleApplyConfig = async () => {
+    setIsApplying(true);
     try {
-      const res = await fetch(`${API_BASE}/system/restore-dns`, { method: 'POST' });
-      const data = await res.json();
-      refreshData();
-      return { success: res.ok, error: data.error };
+      const res = await fetch(`${API_BASE}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      if (res.ok) alert("KERNEL SYNC: Routing tables updated successfully.");
+      else alert("SYNC FAILED: Permission error or invalid route parameters.");
     } catch (e) {
-      return { success: false, error: "AGENT_OFFLINE" };
+      alert("AGENT ERROR: Communication to kernel agent lost.");
+    } finally {
+      setIsApplying(false);
     }
-  };
-
-  const handleRescue = async () => {
-    if (!confirm("This will WIPE all kernel routing tables. Confirm reset?")) return;
-    try {
-       const res = await fetch(`${API_BASE}/apply`, { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify({ mode: 'FAILOVER', wanInterfaces: interfaces.map(i => ({...i, priority: 1})) }) 
-       });
-       if (res.ok) alert("RESCUE: Kernel routes reset to default.");
-       else alert("FAILED: Kernel rejected route flush.");
-    } catch(e) { alert("AGENT ERROR: Communication failed."); }
   };
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
-      {activeTab === 'wan' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">Multi-WAN Orchestration Online</div>}
-      {activeTab === 'bridge' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">Bridge & DHCP Control Layer</div>}
-      {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Neural Pipeline</div>}
-      {activeTab === 'settings' && <SystemRecovery metrics={metrics} onFixDns={handleFixDns} onRescue={handleRescue} interfaces={interfaces} />}
+      {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
+      {activeTab === 'bridge' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">Bridge & DHCP Layer Ready</div>}
+      {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Neural Pipelines Online</div>}
+      {activeTab === 'settings' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">System Core Diagnostics</div>}
     </Layout>
   );
 };
