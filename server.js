@@ -1,6 +1,6 @@
 /**
  * Nexus Router OS - Hardware Agent
- * This script must run as root to interact with the Linux kernel (iproute2).
+ * This script must run as root to interact with the Linux kernel.
  */
 
 const logFile = '/var/log/nexus-agent.log';
@@ -13,12 +13,10 @@ function log(msg) {
   console.log(msg);
   try {
     fs.appendFileSync(logFile, entry);
-  } catch (e) {
-    // Fallback if log file is unwriteable
-  }
+  } catch (e) { }
 }
 
-// Global state for precise CPU rate calculation
+// --- CPU Telemetry Engine ---
 let lastCpuStats = [];
 let cpuUsageHistory = [];
 
@@ -33,15 +31,13 @@ function getCpuStats() {
         const total = parts.reduce((a, b) => a + b, 0);
         return { idle, total };
       });
-  } catch (e) {
-    return [];
-  }
+  } catch (e) { return []; }
 }
 
-// Initialize CPU tracking
+// Initial seed
 lastCpuStats = getCpuStats();
 
-// Background loop to keep CPU metrics "Hot" (1 second interval)
+// Background tick every 1 second for precise deltas
 setInterval(() => {
   const currentStats = getCpuStats();
   if (lastCpuStats.length === currentStats.length) {
@@ -57,34 +53,18 @@ setInterval(() => {
   lastCpuStats = currentStats;
 }, 1000);
 
-// Global state for traffic rate calculation
+// --- Traffic Telemetry Engine ---
 let prevTraffic = {};
 let lastTrafficPollTime = Date.now();
 
-// Load persisted configuration
 let nexusConfig = { bridges: [], wanConfig: { mode: 'LOAD_BALANCER', interfaces: [] } };
 if (fs.existsSync(configFile)) {
-  try {
-    nexusConfig = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-    log('Configuration loaded from disk.');
-  } catch (e) {
-    log('Failed to load config file: ' + e.message);
-  }
-}
-
-function saveConfig() {
-  try {
-    fs.writeFileSync(configFile, JSON.stringify(nexusConfig, null, 2));
-    log('Configuration saved to disk.');
-  } catch (e) {
-    log('Failed to save config file: ' + e.message);
-  }
+  try { nexusConfig = JSON.parse(fs.readFileSync(configFile, 'utf8')); } catch (e) { }
 }
 
 try {
   const express = require('express');
   const cors = require('cors');
-
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -92,7 +72,7 @@ try {
   app.get('/api/interfaces', (req, res) => {
     try {
       if (process.platform !== 'linux') {
-        return res.json([{ id: 'eth0', name: 'WAN1', interfaceName: 'eth0', status: 'UP', ipAddress: '127.0.0.1', gateway: '1.1.1.1', throughput: { rx: Math.random() * 5, tx: Math.random() * 2 }, weight: 1, priority: 1 }]);
+        return res.json([{ id: 'eth0', name: 'WAN1', interfaceName: 'eth0', status: 'UP', ipAddress: '127.0.0.1', gateway: '1.1.1.1', throughput: { rx: Math.random() * 5, tx: Math.random() * 2 } }]);
       }
       
       const gateways = {};
@@ -118,7 +98,6 @@ try {
             const name = parts[0].replace(':', '');
             const rxBytes = parseInt(parts[1]);
             const txBytes = parseInt(parts[9]);
-
             if (prevTraffic[name]) {
               const rxDelta = rxBytes - prevTraffic[name].rx;
               const txDelta = txBytes - prevTraffic[name].tx;
@@ -126,16 +105,15 @@ try {
                 rx: Math.max(0, (rxDelta * 8) / 1000000 / timeDelta), 
                 tx: Math.max(0, (txDelta * 8) / 1000000 / timeDelta) 
               };
-            } else {
-              traffic[name] = { rx: 0, tx: 0 };
-            }
+            } else { traffic[name] = { rx: 0, tx: 0 }; }
             prevTraffic[name] = { rx: rxBytes, tx: txBytes };
           }
         });
       } catch (e) {}
       lastTrafficPollTime = currentTime;
 
-      const ipData = JSON.parse(execSync('ip -j addr show').toString());
+      const ipOutput = execSync('ip -j addr show').toString();
+      const ipData = JSON.parse(ipOutput);
       const interfaces = ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth')).map(iface => {
         const addr = (iface.addr_info && iface.addr_info[0]) ? iface.addr_info[0] : {};
         return {
@@ -150,29 +128,25 @@ try {
         };
       });
       res.json(interfaces);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
   app.get('/api/metrics', (req, res) => {
     try {
       if (process.platform !== 'linux') {
-        return res.json({ cpuUsage: 15, cores: [10, 20, 30, 40], memoryUsage: '2.4', totalMem: '16.0', temp: '45.0°C', uptime: 'Up 1 hour', activeSessions: 42 });
+        return res.json({ cpuUsage: 12, cores: [10, 15, 8, 20], memoryUsage: '2.4', totalMem: '16.0', temp: '42°C', uptime: '1 hour', activeSessions: 42 });
       }
       
-      // Memory Logic
       const memLines = fs.readFileSync('/proc/meminfo', 'utf8').split('\n');
-      const getMemKB = (key) => parseInt((memLines.find(l => l.startsWith(key)) || "0").replace(/\D/g, ''));
-      const totalMem = getMemKB('MemTotal:');
-      const availableMem = getMemKB('MemAvailable:');
+      const getKB = (key) => parseInt((memLines.find(l => l.startsWith(key)) || "0").replace(/\D/g, ''));
+      const totalMem = getKB('MemTotal:');
+      const availableMem = getKB('MemAvailable:');
       const usedMem = totalMem - availableMem;
 
-      // Temp Logic
       let temp = 'N/A';
       try {
         if (fs.existsSync('/sys/class/thermal/thermal_zone0/temp')) {
-          temp = (parseInt(fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8')) / 1000).toFixed(1) + '°C';
+          temp = (parseInt(fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8')) / 1000).toFixed(0) + '°C';
         }
       } catch (e) {}
 
@@ -184,19 +158,12 @@ try {
         cores: cpuUsageHistory,
         memoryUsage: (usedMem / 1024 / 1024).toFixed(1), 
         totalMem: (totalMem / 1024 / 1024).toFixed(1),
-        temp, 
-        uptime, 
-        activeSessions: 124 
+        temp, uptime, activeSessions: 124 
       });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
-  const PORT = 3000;
-  app.listen(PORT, '0.0.0.0', () => { log(`Nexus Agent Active on Port ${PORT}`); });
+  app.get('/api/bridges', (req, res) => res.json(nexusConfig.bridges || []));
 
-} catch (globalError) {
-  log(`CRITICAL STARTUP ERROR: ${globalError.message}`);
-  process.exit(1);
-}
+  app.listen(3000, '0.0.0.0', () => { log(`Hardware Agent Active`); });
+} catch (e) { log(`Error: ${e.message}`); }
