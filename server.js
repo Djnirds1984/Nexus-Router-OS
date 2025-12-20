@@ -249,6 +249,7 @@ function applyDhcp(dhcp) {
     execSync(`ip link set ${iface} up`);
     execSync(`ip addr flush dev ${iface}`);
     execSync(`ip addr add ${gw}/24 dev ${iface}`);
+    const dnsOpt = (dhcp.dnsServers && (Array.isArray(dhcp.dnsServers) ? dhcp.dnsServers.join(',') : dhcp.dnsServers)) || '8.8.8.8,1.1.1.1';
     const conf = [
       `interface=${iface}`,
       `bind-interfaces`,
@@ -256,7 +257,7 @@ function applyDhcp(dhcp) {
       `dhcp-authoritative`,
       `dhcp-range=${dhcp.start},${dhcp.end},255.255.255.0,${dhcp.leaseTime || '24h'}`,
       `dhcp-option=option:router,${gw}`,
-      `dhcp-option=option:dns-server,8.8.8.8,1.1.1.1`,
+      `dhcp-option=option:dns-server,${dnsOpt}`,
       `log-dhcp`
     ].join('\n');
     fs.writeFileSync('/etc/dnsmasq.d/nexus-dhcp.conf', conf);

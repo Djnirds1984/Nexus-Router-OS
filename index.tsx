@@ -40,6 +40,7 @@ interface DhcpConfig {
   start: string;
   end: string;
   leaseTime: string;
+  dnsServers?: string; // comma-separated
 }
 
 interface SystemMetrics {
@@ -276,7 +277,7 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterf
           const st = await res.json();
           setDhcpStatus(st);
           if (st.running && st.interfaceName) {
-            setConfig({ ...config, dhcp: { interfaceName: st.interfaceName, enabled: true, start: st.start || '', end: st.end || '', leaseTime: st.leaseTime || '24h' } });
+            setConfig({ ...config, dhcp: { interfaceName: st.interfaceName, enabled: true, start: st.start || '', end: st.end || '', leaseTime: st.leaseTime || '24h', dnsServers: (st.dnsServers || []).join(',') } });
           }
         }
       } catch (e) {}
@@ -284,7 +285,7 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterf
   }, []);
 
   const selectedIface = config.dhcp?.interfaceName || (availableInterfaces[0]?.interfaceName || '');
-  const dhcp = config.dhcp || { interfaceName: selectedIface, enabled: false, start: '', end: '', leaseTime: '24h' };
+  const dhcp = config.dhcp || { interfaceName: selectedIface, enabled: false, start: '', end: '', leaseTime: '24h', dnsServers: '8.8.8.8,1.1.1.1' };
   const setDhcp = (updates: Partial<DhcpConfig>) => {
     setConfig({ ...config, dhcp: { ...dhcp, ...updates } });
   };
@@ -348,9 +349,13 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterf
               <input type="text" value={dhcp.end} onChange={(e) => setDhcp({ end: e.target.value })} className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-white font-mono text-xs w-full" placeholder="e.g. 192.168.100.250" />
             </div>
             <div className="col-span-2">
-               <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-1">Lease Time</label>
-               <input type="text" value={dhcp.leaseTime} onChange={(e) => setDhcp({ leaseTime: e.target.value })} className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-white font-mono text-xs w-full" placeholder="e.g. 24h" />
-            </div>
+                       <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-1">Lease Time</label>
+                       <input type="text" value={dhcp.leaseTime} onChange={(e) => setDhcp({ leaseTime: e.target.value })} className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-white font-mono text-xs w-full" placeholder="e.g. 24h" />
+                    </div>
+                    <div className="col-span-2">
+                       <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-1">DNS Servers</label>
+                       <input type="text" value={dhcp.dnsServers || ''} onChange={(e) => setDhcp({ dnsServers: e.target.value })} className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-white font-mono text-xs w-full" placeholder="e.g. 8.8.8.8,1.1.1.1" />
+                    </div>
           </div>
         </div>
 
