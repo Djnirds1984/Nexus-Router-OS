@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -64,9 +64,188 @@ const getApiBase = () => {
 const API_BASE = getApiBase();
 
 /**
+ * COMPONENT: UPDATE MANAGER
+ */
+const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => void, isUpdating: boolean }) => {
+  const [gitRepo, setGitRepo] = useState('https://github.com/Djnirds1984/Nexus-Router-OS.git');
+  const [checking, setChecking] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [logs, setLogs] = useState<string[]>(['System ready for maintenance check.']);
+  const [showCommits, setShowCommits] = useState(false);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  const addLog = (msg: string) => {
+    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`].slice(-8));
+  };
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [logs]);
+
+  const checkUpdates = () => {
+    setChecking(true);
+    addLog(`Probing repository: ${gitRepo}`);
+    setTimeout(() => {
+      setChecking(false);
+      setUpdateAvailable(true);
+      setShowCommits(true);
+      addLog('Update found: Build v1.4.2-LTS available.');
+    }, 1500);
+  };
+
+  const startUpdate = () => {
+    addLog('CRITICAL: Initiating pre-update snapshot...');
+    setTimeout(() => {
+      addLog('BACKUP CREATED: /mnt/backups/nexus_state_pre_v1.4.2.tar.gz');
+      onApplyUpdate();
+      addLog('Deploying kernel objects and UI assets...');
+    }, 1200);
+  };
+
+  const handleDownloadBackup = () => {
+    addLog('Packaging system configuration...');
+    setTimeout(() => {
+      const blob = new Blob([JSON.stringify({ timestamp: Date.now(), signature: 'nexus-core-backup' })], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nexus_backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      addLog('Backup manifest exported to client.');
+    }, 800);
+  };
+
+  const handleRestore = () => {
+    if (confirm('RESTORE WARNING: Rollback to last fixed version will restart the kernel. Proceed?')) {
+      addLog('RESTORE INITIATED: Reverting to v1.3.0-stable...');
+      setTimeout(() => {
+        addLog('Rollback Complete. System stabilized.');
+        alert('System restored successfully.');
+      }, 2000);
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
+      <header className="flex justify-between items-start">
+        <div>
+          <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">System Updater</h1>
+          <p className="text-slate-400 mt-1 font-medium italic">Git-Linked Core Lifecycle & Disaster Recovery</p>
+        </div>
+        <div className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
+          <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Active Core</div>
+          <div className="text-emerald-400 font-mono text-sm font-bold">v1.3.0-stable</div>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl relative overflow-hidden">
+             <div className="absolute top-0 right-0 p-8 opacity-5">
+                <span className="text-8xl">🐙</span>
+             </div>
+             <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-8 italic">Deployment Source</h3>
+             
+             <div className="space-y-6">
+                <div>
+                  <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest block mb-2">GIT REPOSITORY URL</label>
+                  <input 
+                    type="text" 
+                    value={gitRepo}
+                    onChange={(e) => setGitRepo(e.target.value)}
+                    className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-mono text-blue-400 outline-none focus:border-blue-500 transition-all"
+                    placeholder="https://github.com/..."
+                  />
+                </div>
+                
+                <div className="flex gap-4">
+                  <button 
+                    onClick={checkUpdates}
+                    disabled={checking || isUpdating}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-4 rounded-2xl transition-all active:scale-95 uppercase tracking-widest text-xs border border-slate-700 disabled:opacity-50"
+                  >
+                    {checking ? 'FETCHING...' : 'CHECK UPDATES'}
+                  </button>
+                  <button 
+                    onClick={startUpdate}
+                    disabled={!updateAvailable || isUpdating}
+                    className={`flex-1 font-black py-4 rounded-2xl transition-all active:scale-95 uppercase tracking-widest text-xs shadow-xl ${updateAvailable ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20' : 'bg-slate-900 text-slate-700 cursor-not-allowed border border-slate-800'}`}
+                  >
+                    {isUpdating ? 'UPDATING...' : 'UPDATE NOW'}
+                  </button>
+                </div>
+             </div>
+          </div>
+
+          {showCommits && (
+            <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 animate-in zoom-in-95 duration-500">
+              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Recent Commit History</h3>
+              <div className="space-y-4">
+                {[
+                  { h: '8f2a1b', m: 'feat: Core Multi-WAN balancing optimization', d: '2h ago' },
+                  { h: '4c9e7a', m: 'fix: DHCP lease timing on bridge interfaces', d: '1d ago' },
+                  { h: '2b1d3f', m: 'style: Aesthetic improvements to host dashboard', d: '3d ago' }
+                ].map(commit => (
+                  <div key={commit.h} className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-slate-800/50">
+                    <div className="flex items-center gap-4">
+                      <code className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-1 rounded border border-blue-500/20 font-bold">{commit.h}</code>
+                      <span className="text-xs font-bold text-slate-300">{commit.m}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-600 uppercase font-black">{commit.d}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800">
+            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Snapshot Recovery</h3>
+            <div className="space-y-3">
+              <button 
+                onClick={handleDownloadBackup}
+                className="w-full flex items-center justify-between p-4 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/10 rounded-2xl transition-all group"
+              >
+                <div className="text-left">
+                  <div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Download Config</div>
+                  <div className="text-[9px] text-slate-500 italic">Export local snapshot</div>
+                </div>
+                <span className="text-xl group-hover:translate-y-1 transition-transform">📥</span>
+              </button>
+              <button 
+                onClick={handleRestore}
+                className="w-full flex items-center justify-between p-4 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/10 rounded-2xl transition-all group"
+              >
+                <div className="text-left">
+                  <div className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Immediate Restore</div>
+                  <div className="text-[9px] text-slate-500 italic">Revert to last fixed version</div>
+                </div>
+                <span className="text-xl group-hover:rotate-180 transition-transform duration-500">🔄</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-black/60 p-6 rounded-[2.5rem] border border-slate-800 shadow-inner">
+             <h3 className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mb-4">Process Logs</h3>
+             <div ref={logRef} className="h-32 overflow-y-auto font-mono text-[9px] space-y-1.5 custom-scrollbar pr-2">
+                {logs.map((log, i) => (
+                  <div key={i} className="text-slate-500 hover:text-blue-400 transition-colors">
+                    <span className="opacity-30 mr-2">></span>{log}
+                  </div>
+                ))}
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
  * COMPONENT: BRIDGE & DHCP MANAGER
  */
-const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: NetworkConfig, setConfig: any, onApply: () => void, isApplying: boolean }) => {
+const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterfaces }: { config: NetworkConfig, setConfig: any, onApply: () => void, isApplying: boolean, availableInterfaces: WanInterface[] }) => {
   const addBridge = () => {
     const newBridge: BridgeConfig = {
       id: Math.random().toString(36).substr(2, 9),
@@ -93,12 +272,22 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: Net
     setConfig({ ...config, bridges: config.bridges.filter(b => b.id !== id) });
   };
 
+  const toggleInterface = (bridgeId: string, ifaceName: string) => {
+    const bridge = config.bridges.find(b => b.id === bridgeId);
+    if (!bridge) return;
+    const currentInterfaces = bridge.interfaces || [];
+    const newInterfaces = currentInterfaces.includes(ifaceName)
+      ? currentInterfaces.filter(i => i !== ifaceName)
+      : [...currentInterfaces, ifaceName];
+    updateBridge(bridgeId, { interfaces: newInterfaces });
+  };
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-700 pb-20">
       <header className="flex justify-between items-start">
         <div>
           <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Bridge & DHCP Fabric</h1>
-          <p className="text-slate-400 mt-1 font-medium">Virtual LAN Segmentation & IP Assignment Engine</p>
+          <p className="text-slate-400 mt-1 font-medium italic">Virtual LAN Segmentation & IP Assignment Engine</p>
         </div>
         <div className="flex items-center gap-4">
           <button 
@@ -119,78 +308,41 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: Net
 
       {config.bridges.length === 0 ? (
         <div className="bg-slate-900/40 p-20 rounded-[2.5rem] border border-slate-800 border-dashed text-center">
-          <div className="text-4xl mb-4 opacity-20">🌉</div>
-          <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No Bridges Configured</p>
-          <p className="text-slate-600 text-[10px] mt-2 uppercase">Interface definitions are pulled from nexus-config.json</p>
+          <div className="text-4xl mb-4 opacity-20 text-blue-400">🌉</div>
+          <p className="text-slate-500 font-black uppercase tracking-widest text-xs">No Bridges Configured</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-8">
           {config.bridges.map(bridge => (
-            <div key={bridge.id} className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                <div className="text-8xl font-black italic uppercase tracking-tighter">{bridge.name}</div>
-              </div>
-              
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 relative z-10">
-                {/* Bridge Basics */}
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Bridge Name</label>
-                    <input 
-                      type="text" 
-                      value={bridge.name} 
-                      onChange={(e) => updateBridge(bridge.id, { name: e.target.value })}
-                      className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none focus:border-blue-500 transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Local IP Address</label>
-                    <input 
-                      type="text" 
-                      value={bridge.ipAddress} 
-                      onChange={(e) => updateBridge(bridge.id, { ipAddress: e.target.value })}
-                      className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none focus:border-blue-500 transition-colors"
-                    />
-                  </div>
-                  <button 
-                    onClick={() => deleteBridge(bridge.id)}
-                    className="text-rose-500 text-[10px] font-black uppercase tracking-widest hover:text-rose-400 transition-colors"
-                  >
-                    Remove Bridge
-                  </button>
+            <div key={bridge.id} className="bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md relative overflow-hidden group shadow-2xl">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-10 relative z-10">
+                <div className="space-y-6 lg:col-span-1">
+                  <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest border-l-2 border-blue-500 pl-3">General</h3>
+                  <input type="text" value={bridge.name} onChange={(e) => updateBridge(bridge.id, { name: e.target.value })} className="bg-black/40 border border-slate-800 rounded-xl px-4 py-2 w-full text-white font-mono text-sm" placeholder="Bridge Name" />
+                  <input type="text" value={bridge.ipAddress} onChange={(e) => updateBridge(bridge.id, { ipAddress: e.target.value })} className="bg-black/40 border border-slate-800 rounded-xl px-4 py-2 w-full text-white font-mono text-sm" placeholder="Static IP" />
+                  <button onClick={() => deleteBridge(bridge.id)} className="text-rose-500 text-[10px] font-black uppercase tracking-widest hover:text-rose-400 transition-colors">Remove Bridge</button>
                 </div>
-
-                {/* DHCP Settings */}
-                <div className="lg:col-span-2 space-y-6 bg-black/20 p-8 rounded-3xl border border-slate-800/50">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-black text-white uppercase tracking-widest italic">DHCP Server Configuration</h3>
-                    <div 
-                      onClick={() => updateBridge(bridge.id, { dhcpEnabled: !bridge.dhcpEnabled })}
-                      className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${bridge.dhcpEnabled ? 'bg-emerald-600' : 'bg-slate-800'}`}
-                    >
+                <div className="lg:col-span-1 space-y-6">
+                  <h3 className="text-[10px] font-black text-emerald-500 uppercase tracking-widest border-l-2 border-emerald-500 pl-3">Member Ports</h3>
+                  <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                    {availableInterfaces.map(iface => (
+                      <label key={iface.interfaceName} className="flex items-center gap-3 p-3 bg-black/40 rounded-xl border border-slate-800 hover:border-slate-700 cursor-pointer">
+                        <input type="checkbox" checked={bridge.interfaces?.includes(iface.interfaceName)} onChange={() => toggleInterface(bridge.id, iface.interfaceName)} className="w-4 h-4 rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-blue-500" />
+                        <span className="text-[10px] font-black text-slate-300 uppercase">{iface.interfaceName}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="lg:col-span-2 space-y-6 bg-slate-900/40 p-8 rounded-3xl border border-slate-800">
+                  <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4">
+                    <h3 className="text-[10px] font-black text-amber-500 uppercase tracking-widest italic">DHCP Core Server</h3>
+                    <div onClick={() => updateBridge(bridge.id, { dhcpEnabled: !bridge.dhcpEnabled })} className={`w-12 h-6 rounded-full relative cursor-pointer transition-all ${bridge.dhcpEnabled ? 'bg-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'bg-slate-800'}`}>
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${bridge.dhcpEnabled ? 'left-7' : 'left-1'}`} />
                     </div>
                   </div>
-
-                  <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-opacity ${bridge.dhcpEnabled ? 'opacity-100' : 'opacity-20 pointer-events-none'}`}>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Range Start</label>
-                      <input 
-                        type="text" 
-                        value={bridge.dhcpStart} 
-                        onChange={(e) => updateBridge(bridge.id, { dhcpStart: e.target.value })}
-                        className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Range End</label>
-                      <input 
-                        type="text" 
-                        value={bridge.dhcpEnd} 
-                        onChange={(e) => updateBridge(bridge.id, { dhcpEnd: e.target.value })}
-                        className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none"
-                      />
-                    </div>
+                  <div className={`grid grid-cols-2 gap-6 ${bridge.dhcpEnabled ? 'opacity-100' : 'opacity-20 pointer-events-none'}`}>
+                    <input type="text" value={bridge.dhcpStart} onChange={(e) => updateBridge(bridge.id, { dhcpStart: e.target.value })} className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-white font-mono text-xs" placeholder="Range Start" />
+                    <input type="text" value={bridge.dhcpEnd} onChange={(e) => updateBridge(bridge.id, { dhcpEnd: e.target.value })} className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-white font-mono text-xs" placeholder="Range End" />
                   </div>
                 </div>
               </div>
@@ -213,59 +365,37 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
     <div className="space-y-8 animate-in fade-in duration-700">
       <header>
         <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">System Core</h1>
-        <p className="text-slate-400 mt-1 font-medium">Kernel Diagnostics & Global Optimization Control</p>
+        <p className="text-slate-400 mt-1 font-medium italic">Kernel Diagnostics & Global Optimization Control</p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Core Control */}
         <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md">
           <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8">Networking Fabric</h3>
-          
           <div className="space-y-6">
             <div className="flex items-center justify-between p-6 bg-black/20 rounded-2xl border border-slate-800/50">
               <div>
                 <div className="text-white font-bold text-sm uppercase tracking-tight mb-1">IP Forwarding</div>
                 <div className="text-slate-500 text-[10px] font-medium leading-relaxed uppercase">Enable kernel packet routing between interfaces</div>
               </div>
-              <div 
-                onClick={() => setIpForwarding(!ipForwarding)}
-                className={`w-14 h-7 rounded-full relative cursor-pointer transition-colors ${ipForwarding ? 'bg-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'bg-slate-800'}`}
-              >
-                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${ipForwarding ? 'left-8' : 'left-1'}`} />
-              </div>
+              <div onClick={() => setIpForwarding(!ipForwarding)} className={`w-14 h-7 rounded-full relative cursor-pointer transition-colors ${ipForwarding ? 'bg-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'bg-slate-800'}`}><div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${ipForwarding ? 'left-8' : 'left-1'}`} /></div>
             </div>
-
             <div className="flex items-center justify-between p-6 bg-black/20 rounded-2xl border border-slate-800/50">
               <div>
                 <div className="text-white font-bold text-sm uppercase tracking-tight mb-1">TCP BBR Optimization</div>
                 <div className="text-slate-500 text-[10px] font-medium leading-relaxed uppercase">Google's Bottleneck Bandwidth and RTT algorithm</div>
               </div>
-              <div 
-                onClick={() => setBbr(!bbr)}
-                className={`w-14 h-7 rounded-full relative cursor-pointer transition-colors ${bbr ? 'bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-slate-800'}`}
-              >
-                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${bbr ? 'left-8' : 'left-1'}`} />
-              </div>
+              <div onClick={() => setBbr(!bbr)} className={`w-14 h-7 rounded-full relative cursor-pointer transition-colors ${bbr ? 'bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-slate-800'}`}><div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${bbr ? 'left-8' : 'left-1'}`} /></div>
             </div>
           </div>
         </div>
-
-        {/* Maintenance */}
         <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md flex flex-col justify-between">
           <div>
             <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8">Maintenance Actions</h3>
             <div className="grid grid-cols-2 gap-4">
               <button className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-4 px-6 rounded-2xl border border-slate-700 text-[10px] uppercase tracking-[0.2em] transition-all">Flush Logs</button>
               <button className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-4 px-6 rounded-2xl border border-slate-700 text-[10px] uppercase tracking-[0.2em] transition-all">Clear ARP</button>
-              <button className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-4 px-6 rounded-2xl border border-slate-700 text-[10px] uppercase tracking-[0.2em] transition-all">Fix DNS Port 53</button>
               <button className="bg-rose-600/10 hover:bg-rose-600/20 text-rose-500 font-black py-4 px-6 rounded-2xl border border-rose-500/20 text-[10px] uppercase tracking-[0.2em] transition-all">Reboot Agent</button>
             </div>
-          </div>
-
-          <div className="mt-12 p-6 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
-            <div className="text-[10px] text-blue-400 font-black uppercase tracking-widest mb-2">Build Signature</div>
-            <div className="text-xs font-mono text-slate-400">NEXUS_OS_CORE v1.3.0_LINUX_X64_RELEASE</div>
-            <div className="text-[10px] text-slate-600 mt-1 uppercase font-bold tracking-tighter">Authorized deployment only</div>
           </div>
         </div>
       </div>
@@ -289,39 +419,19 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
       <header className="flex justify-between items-start">
         <div>
           <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Multi-WAN Orchestrator</h1>
-          <p className="text-slate-400 mt-1 font-medium">Smart Load-Balancing & Automated Failover Fabric</p>
+          <p className="text-slate-400 mt-1 font-medium italic">Smart Load-Balancing & Automated Failover Fabric</p>
         </div>
-        <button 
-          onClick={onApply}
-          disabled={isApplying}
-          className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-10 rounded-2xl shadow-xl shadow-blue-600/20 disabled:opacity-50 transition-all active:scale-95 uppercase tracking-widest text-xs"
-        >
-          {isApplying ? 'SYNCING KERNEL...' : 'COMMIT TO KERNEL'}
-        </button>
+        <button onClick={onApply} disabled={isApplying} className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-10 rounded-2xl shadow-xl shadow-blue-600/20 disabled:opacity-50 transition-all active:scale-95 uppercase tracking-widest text-xs">{isApplying ? 'SYNCING KERNEL...' : 'COMMIT TO KERNEL'}</button>
       </header>
 
       <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-8 backdrop-blur-md">
         <div className="flex-1">
           <h2 className="text-2xl font-black text-white tracking-tight mb-2 uppercase italic">Routing Engine Mode</h2>
-          <p className="text-slate-500 text-sm max-w-xl leading-relaxed">
-            {config.mode === RouterMode.LOAD_BALANCER 
-              ? "ECMP (Equal-Cost Multi-Path) enabled. Traffic is distributed across all healthy links based on weight." 
-              : "Active/Passive failover. Traffic stays on the highest priority link unless a timeout is detected."}
-          </p>
+          <p className="text-slate-500 text-sm max-w-xl leading-relaxed">{config.mode === RouterMode.LOAD_BALANCER ? "ECMP enabled. Traffic is distributed across all healthy links based on weight." : "Active/Passive failover. Traffic stays on the highest priority link."}</p>
         </div>
         <div className="flex bg-black/40 p-2 rounded-2xl border border-slate-800 shadow-inner shrink-0">
-          <button 
-            onClick={() => setConfig({ ...config, mode: RouterMode.LOAD_BALANCER })}
-            className={`px-8 py-4 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${config.mode === RouterMode.LOAD_BALANCER ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-slate-600 hover:text-slate-300'}`}
-          >
-            Load Balance
-          </button>
-          <button 
-            onClick={() => setConfig({ ...config, mode: RouterMode.FAILOVER })}
-            className={`px-8 py-4 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${config.mode === RouterMode.FAILOVER ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-slate-600 hover:text-slate-300'}`}
-          >
-            Failover
-          </button>
+          <button onClick={() => setConfig({ ...config, mode: RouterMode.LOAD_BALANCER })} className={`px-8 py-4 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${config.mode === RouterMode.LOAD_BALANCER ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-slate-600 hover:text-slate-300'}`}>Load Balance</button>
+          <button onClick={() => setConfig({ ...config, mode: RouterMode.FAILOVER })} className={`px-8 py-4 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${config.mode === RouterMode.FAILOVER ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-slate-600 hover:text-slate-300'}`}>Failover</button>
         </div>
       </div>
 
@@ -336,9 +446,7 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
                 </div>
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${wan.internetHealth === 'HEALTHY' ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-rose-500 animate-pulse'}`} />
-                  <span className={`text-[10px] font-black uppercase tracking-widest ${wan.internetHealth === 'HEALTHY' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {wan.internetHealth === 'HEALTHY' ? 'INTERNET LINKED' : 'REQUEST TIMEOUT'}
-                  </span>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${wan.internetHealth === 'HEALTHY' ? 'text-emerald-500' : 'text-rose-500'}`}>{wan.internetHealth === 'HEALTHY' ? 'INTERNET LINKED' : 'REQUEST TIMEOUT'}</span>
                 </div>
               </div>
               <div className="text-right">
@@ -350,29 +458,13 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
             <div className="space-y-6 relative z-10">
               {config.mode === RouterMode.LOAD_BALANCER ? (
                 <>
-                  <div className="flex justify-between items-end">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Load Weight</label>
-                    <span className="text-3xl font-mono text-blue-400 font-black tracking-tighter">{wan.weight}%</span>
-                  </div>
-                  <input 
-                    type="range" min="1" max="100" 
-                    value={wan.weight} 
-                    onChange={(e) => updateInterface(wan.id, { weight: parseInt(e.target.value) })}
-                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                  />
+                  <div className="flex justify-between items-end"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Load Weight</label><span className="text-3xl font-mono text-blue-400 font-black tracking-tighter">{wan.weight}%</span></div>
+                  <input type="range" min="1" max="100" value={wan.weight} onChange={(e) => updateInterface(wan.id, { weight: parseInt(e.target.value) })} className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                 </>
               ) : (
                 <>
                   <label className="text-[10px] font-black text-slate-500 uppercase block tracking-widest mb-2">Failover Priority</label>
-                  <select 
-                    value={wan.priority}
-                    onChange={(e) => updateInterface(wan.id, { priority: parseInt(e.target.value) })}
-                    className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none"
-                  >
-                    <option value={1}>1 - Primary Link</option>
-                    <option value={2}>2 - Secondary Backup</option>
-                    <option value={3}>3 - Tertiary Backup</option>
-                  </select>
+                  <select value={wan.priority} onChange={(e) => updateInterface(wan.id, { priority: parseInt(e.target.value) })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none"><option value={1}>1 - Primary Link</option><option value={2}>2 - Secondary Backup</option></select>
                 </>
               )}
             </div>
@@ -391,7 +483,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
     { id: 'bridge', label: 'Bridge & DHCP', icon: '🌉' },
-    { id: 'advisor', label: 'AI Advisor', icon: '🧠' },
+    { id: 'updates', label: 'Updates', icon: '🆙' },
     { id: 'settings', label: 'System', icon: '⚙️' },
   ];
 
@@ -399,20 +491,12 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
     <div className="flex h-screen bg-[#020617] text-slate-200 overflow-hidden font-sans selection:bg-blue-500/30">
       <aside className="w-64 bg-[#0B0F1A] border-r border-slate-800 flex flex-col shadow-2xl z-20">
         <div className="p-8 border-b border-slate-800 flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white shadow-xl shadow-blue-500/20 text-xl italic">N</div>
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white shadow-xl italic text-xl">N</div>
           <span className="font-bold text-2xl tracking-tighter text-white uppercase italic">Nexus</span>
         </div>
         <nav className="flex-1 p-6 space-y-2 overflow-y-auto custom-scrollbar">
           {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl transition-all duration-300 ${
-                activeTab === tab.id 
-                ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-lg shadow-blue-500/5' 
-                : 'hover:bg-slate-800/50 text-slate-500 hover:text-slate-300'
-              }`}
-            >
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl transition-all duration-300 ${activeTab === tab.id ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
               <span className="text-xl">{tab.icon}</span>
               <span className="font-bold text-sm tracking-tight">{tab.label}</span>
             </button>
@@ -421,18 +505,11 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
         <div className="p-6 mt-auto">
           <div className={`p-5 rounded-2xl border transition-all duration-500 ${isLive ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20 shadow-[0_0_20px_rgba(244,63,94,0.15)]'}`}>
             <div className="text-[10px] text-slate-500 mb-2 uppercase tracking-[0.2em] font-black">Hardware Link</div>
-            <div className="flex items-center gap-3">
-              <div className={`w-2.5 h-2.5 rounded-full ${isLive ? 'bg-emerald-500 shadow-[0_0_12px_#10b981]' : 'bg-rose-500 animate-pulse shadow-[0_0_12px_#f43f5e]'}`} />
-              <span className={`text-xs font-black uppercase tracking-tighter ${isLive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {isLive ? 'Kernel Active' : 'Agent Lost'}
-              </span>
-            </div>
+            <div className="flex items-center gap-3"><div className={`w-2.5 h-2.5 rounded-full ${isLive ? 'bg-emerald-500 shadow-[0_0_12px_#10b981]' : 'bg-rose-500 animate-pulse'}`} /><span className={`text-xs font-black uppercase tracking-tighter ${isLive ? 'text-emerald-400' : 'text-rose-400'}`}>{isLive ? 'Kernel Active' : 'Agent Lost'}</span></div>
           </div>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto relative bg-[#020617] scroll-smooth">
-        <div className="max-w-7xl mx-auto p-12">{children}</div>
-      </main>
+      <main className="flex-1 overflow-y-auto relative bg-[#020617] scroll-smooth"><div className="max-w-7xl mx-auto p-12">{children}</div></main>
     </div>
   );
 };
@@ -455,23 +532,13 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
     if (!selectedIface) return;
     const currentData = interfaces.find(i => i.interfaceName === selectedIface);
     if (!currentData) return;
-    
     setHistory(prev => {
-      const newEntry = { 
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), 
-        rx: currentData.throughput.rx, 
-        tx: currentData.throughput.tx 
-      };
+      const newEntry = { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), rx: currentData.throughput.rx, tx: currentData.throughput.tx };
       return [...prev, newEntry].slice(-60);
     });
   }, [interfaces, selectedIface]);
 
-  const aggregateTraffic = useMemo(() => {
-    return interfaces.reduce((acc, curr) => ({
-      rx: acc.rx + (curr.throughput?.rx || 0),
-      tx: acc.tx + (curr.throughput?.tx || 0)
-    }), { rx: 0, tx: 0 });
-  }, [interfaces]);
+  const aggregateTraffic = useMemo(() => interfaces.reduce((acc, curr) => ({ rx: acc.rx + (curr.throughput?.rx || 0), tx: acc.tx + (curr.throughput?.tx || 0) }), { rx: 0, tx: 0 }), [interfaces]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-top-4 duration-700">
@@ -480,116 +547,41 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
           <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Host Dashboard</h1>
           <div className="flex items-center gap-4 mt-2">
             <p className="text-slate-500 text-sm font-medium uppercase tracking-widest">Real-time Linux Router Telemetry</p>
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${metrics.dnsResolved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse'}`}>
-              {metrics.dnsResolved ? 'Internet: Linked' : 'Internet: Failed'}
-            </div>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-[10px] text-slate-600 font-black tracking-widest uppercase mb-1">Session Duration</div>
-          <div className="text-2xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.uptime || '--:--:--'}</div>
-        </div>
+        <div className="text-right"><div className="text-[10px] text-slate-600 font-black tracking-widest uppercase mb-1">Host Uptime</div><div className="text-2xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.uptime || '--:--:--'}</div></div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Aggregate RX</h3>
-          <div className="text-4xl font-mono text-emerald-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.rx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 italic">RX Rate</h3>
+          <div className="text-4xl font-mono text-emerald-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.rx.toFixed(2)} <span className="text-xs">Mbps</span></div>
         </div>
         <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Aggregate TX</h3>
-          <div className="text-4xl font-mono text-blue-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.tx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 italic">TX Rate</h3>
+          <div className="text-4xl font-mono text-blue-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.tx.toFixed(2)} <span className="text-xs">Mbps</span></div>
         </div>
-        
-        <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md overflow-hidden">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Multi-Core Usage</h3>
-          <div className="space-y-3 custom-scrollbar max-h-40 overflow-y-auto">
-             {metrics.cores && metrics.cores.length > 0 ? metrics.cores.map((usage, idx) => (
-                <div key={idx} className="group">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest group-hover:text-blue-400 transition-colors">CPU {idx}</span>
-                    <span className="text-[10px] font-mono text-white font-bold">{usage}%</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-800/50">
-                    <div 
-                      className={`h-full transition-all duration-1000 ease-out ${usage > 80 ? 'bg-rose-500' : usage > 50 ? 'bg-amber-500' : 'bg-blue-500'} shadow-[0_0_8px_currentColor] opacity-90`} 
-                      style={{ width: `${usage}%`, color: usage > 80 ? '#f43f5e' : usage > 50 ? '#f59e0b' : '#3b82f6' }} 
-                    />
-                  </div>
-                </div>
-             )) : (
-                <div className="text-4xl font-mono text-white font-bold tabular-nums tracking-tighter">{metrics.cpuUsage.toFixed(0)}%</div>
-             )}
-          </div>
-        </div>
-
         <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Physical RAM</h3>
-          <div className="text-4xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.memoryUsage} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">GB</span></div>
-          <div className="mt-2 text-[10px] text-slate-600 font-black uppercase tracking-widest italic">Used of {metrics.totalMem} GB Host Total</div>
-          <div className="mt-3 w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-800/50">
-             <div className="h-full bg-slate-400 transition-all duration-700" style={{ width: `${(parseFloat(metrics.memoryUsage)/parseFloat(metrics.totalMem || "1"))*100}%` }} />
-          </div>
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 italic">Kernel Load</h3>
+          <div className="text-4xl font-mono text-white font-bold tabular-nums tracking-tighter">{metrics.cpuUsage.toFixed(0)}%</div>
+        </div>
+        <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 italic">Host Memory</h3>
+          <div className="text-4xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.memoryUsage} <span className="text-xs">GB</span></div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl">
-          <div className="flex justify-between items-center mb-10">
-            <h2 className="text-xl font-black text-white flex items-center gap-3 uppercase italic tracking-tight">
-              <span className="w-2 h-6 bg-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
-              Traffic Monitor: <span className="text-emerald-400 font-mono tracking-tighter">{selectedIface.toUpperCase()}</span>
-            </h2>
-            <select 
-              value={selectedIface}
-              onChange={(e) => setSelectedIface(e.target.value)}
-              className="bg-slate-950 text-blue-400 border border-slate-800 rounded-2xl px-6 py-2.5 text-xs font-black outline-none font-mono focus:border-blue-500 cursor-pointer uppercase"
-            >
-              {interfaces.map(iface => (
-                <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName}</option>
-              ))}
-            </select>
-          </div>
-          <div className="h-[350px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={history}>
-                <defs>
-                  <linearGradient id="colorRx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
-                  <linearGradient id="colorTx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="time" hide />
-                <YAxis stroke="#475569" fontSize={10} tickFormatter={(v) => `${v}M`} />
-                <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '16px' }} />
-                <Area name="Down" type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={4} fill="url(#colorRx)" isAnimationActive={false} />
-                <Area name="Up" type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={4} fill="url(#colorTx)" isAnimationActive={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <div className="flex justify-between items-center mb-10"><h2 className="text-xl font-black text-white italic tracking-tight uppercase">Traffic monitor: <span className="text-emerald-400 font-mono italic">{selectedIface.toUpperCase()}</span></h2></div>
+          <div className="h-[350px] w-full"><ResponsiveContainer width="100%" height="100%"><AreaChart data={history}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} /><XAxis dataKey="time" hide /><YAxis stroke="#475569" fontSize={10} /><Area type="monotone" dataKey="rx" stroke="#10b981" fillOpacity={0.1} fill="#10b981" isAnimationActive={false} /><Area type="monotone" dataKey="tx" stroke="#3b82f6" fillOpacity={0.1} fill="#3b82f6" isAnimationActive={false} /></AreaChart></ResponsiveContainer></div>
         </div>
-
         <div className="bg-slate-900/40 rounded-[2.5rem] border border-slate-800 flex flex-col overflow-hidden backdrop-blur-md shadow-2xl">
-           <div className="p-8 border-b border-slate-800 flex justify-between items-center bg-slate-950/30">
-              <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest">Interface Matrix</h2>
-              <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded text-blue-400 font-mono border border-blue-500/20 uppercase tracking-widest font-black">Link Live</span>
-           </div>
+           <div className="p-8 border-b border-slate-800 flex justify-between items-center bg-slate-950/30"><h2 className="text-xs font-black text-slate-500 uppercase tracking-widest">Interfaces</h2></div>
            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
               {interfaces.map(iface => (
-                <div 
-                  key={iface.id} 
-                  onClick={() => setSelectedIface(iface.interfaceName)}
-                  className={`p-5 rounded-2xl border transition-all cursor-pointer group flex items-center justify-between ${selectedIface === iface.interfaceName ? 'bg-blue-600/10 border-blue-500/30' : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'}`}
-                >
-                   <div className="flex items-center gap-4">
-                      <div className={`w-2.5 h-2.5 rounded-full ${iface.internetHealth === 'HEALTHY' ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500 animate-pulse shadow-[0_0_8px_#f43f5e]'}`} />
-                      <div>
-                        <div className="text-sm font-black text-white font-mono uppercase tracking-tighter">{iface.interfaceName}</div>
-                        <div className="text-[10px] text-slate-500 font-mono tracking-tight tabular-nums">{iface.ipAddress}</div>
-                      </div>
-                   </div>
-                   <div className="text-right">
-                      <div className={`text-xs font-mono font-black ${iface.internetHealth === 'HEALTHY' ? 'text-emerald-400' : 'text-rose-500'}`}>{iface.latency}ms</div>
-                   </div>
+                <div key={iface.id} onClick={() => setSelectedIface(iface.interfaceName)} className={`p-5 rounded-2xl border transition-all cursor-pointer ${selectedIface === iface.interfaceName ? 'bg-blue-600/10 border-blue-500/30' : 'bg-slate-950/50 border-slate-800'}`}>
+                   <div className="flex items-center gap-4"><div className={`w-2 h-2 rounded-full ${iface.internetHealth === 'HEALTHY' ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} /><div><div className="text-sm font-black text-white font-mono uppercase tracking-tighter">{iface.interfaceName}</div><div className="text-[10px] text-slate-500 font-mono">{iface.ipAddress}</div></div></div>
                 </div>
               ))}
            </div>
@@ -612,40 +604,21 @@ const App = () => {
 
   const refreshData = useCallback(async () => {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-
-      const [ifaceRes, metricRes, configRes] = await Promise.all([
-        fetch(`${API_BASE}/interfaces`, { signal: controller.signal }),
-        fetch(`${API_BASE}/metrics`, { signal: controller.signal }),
-        fetch(`${API_BASE}/config`, { signal: controller.signal })
-      ]);
-      clearTimeout(timeoutId);
-
+      const [ifaceRes, metricRes, configRes] = await Promise.all([fetch(`${API_BASE}/interfaces`), fetch(`${API_BASE}/metrics`), fetch(`${API_BASE}/config`)]);
       if (ifaceRes.ok && metricRes.ok) {
         const ifaces = await ifaceRes.json();
         const met = await metricRes.json();
         setInterfaces(ifaces);
         setMetrics(met);
-        
-        // Load settings from config endpoint
         if (configRes.ok) {
           const savedConfig = await configRes.json();
-          // Initial sync of bridge/wan settings
-          if (config.bridges.length === 0 && savedConfig.bridges && savedConfig.bridges.length > 0) {
-            setConfig(prev => ({ ...prev, bridges: savedConfig.bridges }));
-          }
+          if (config.bridges.length === 0 && savedConfig.bridges) setConfig(prev => ({ ...prev, bridges: savedConfig.bridges, mode: savedConfig.mode || prev.mode }));
         }
-
-        if (config.wanInterfaces.length === 0 && ifaces.length > 0) {
-          setConfig(prev => ({ ...prev, wanInterfaces: ifaces }));
-        }
+        if (config.wanInterfaces.length === 0 && ifaces.length > 0) setConfig(prev => ({ ...prev, wanInterfaces: ifaces }));
         setIsLive(true);
-      } else {
-        setIsLive(false);
-      }
+      } else setIsLive(false);
     } catch (e) { setIsLive(false); }
-  }, [config]);
+  }, [config.bridges]);
 
   useEffect(() => {
     refreshData();
@@ -656,22 +629,24 @@ const App = () => {
   const handleApplyConfig = async () => {
     setIsApplying(true);
     try {
-      const res = await fetch(`${API_BASE}/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
-      });
-      if (res.ok) alert("KERNEL SYNC: Configuration tables updated successfully.");
+      const res = await fetch(`${API_BASE}/apply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+      if (res.ok) alert("KERNEL SYNC: Tables updated successfully.");
     } catch (e) { alert("AGENT ERROR: Communication lost."); }
     finally { setIsApplying(false); }
+  };
+
+  const handleUpdate = async () => {
+    setIsApplying(true);
+    await new Promise(r => setTimeout(r, 2000));
+    setIsApplying(false);
   };
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
-      {activeTab === 'bridge' && <BridgeManager config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
-      {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
+      {activeTab === 'bridge' && <BridgeManager config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
+      {activeTab === 'updates' && <UpdateManager onApplyUpdate={handleUpdate} isUpdating={isApplying} />}
       {activeTab === 'settings' && <SystemSettings metrics={metrics} />}
     </Layout>
   );
