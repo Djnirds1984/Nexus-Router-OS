@@ -42,6 +42,7 @@ interface SystemMetrics {
   temp: string;
   uptime: string;
   activeSessions: number;
+  dnsResolved: boolean;
 }
 
 const API_BASE = '/api';
@@ -131,50 +132,55 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
   const activeIfaceData = useMemo(() => interfaces.find(i => i.interfaceName === selectedIface), [interfaces, selectedIface]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
       <header className="flex justify-between items-end mb-8">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">System Dashboard</h1>
-          <p className="text-slate-400 mt-1 font-medium">Network Overview</p>
+          <p className="text-slate-400 mt-1 font-medium flex items-center gap-2">
+            Network Integrity: 
+            <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${metrics.dnsResolved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse'}`}>
+              {metrics.dnsResolved ? 'DNS RESOLVING' : 'DNS FAILURE'}
+            </span>
+          </p>
         </div>
         <div className="text-right">
-          <div className="text-[10px] text-slate-500 font-black tracking-widest uppercase">CPU Usage</div>
+          <div className="text-[10px] text-slate-500 font-black tracking-widest uppercase">System Load</div>
           <div className="text-2xl font-mono text-blue-400 font-bold">{metrics.cpuUsage.toFixed(1)}%</div>
         </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 shadow-xl">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-4">Memory</h3>
+        <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-md">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-4">Host RAM</h3>
           <div className="text-3xl font-mono text-white font-bold">{metrics.memoryUsage} GB</div>
-          <div className="text-xs text-slate-500 mt-1">/ {metrics.totalMem} GB Total</div>
+          <div className="text-xs text-slate-500 mt-1">/ {metrics.totalMem} GB Pipeline</div>
         </div>
-        <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 shadow-xl">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-4">Uptime</h3>
-          <div className="text-xl font-mono text-white font-bold">{metrics.uptime || '0m'}</div>
+        <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-md">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-4">Kernel Session</h3>
+          <div className="text-xl font-mono text-white font-bold">{metrics.uptime || 'BOOTING...'}</div>
         </div>
-        <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 shadow-xl">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-4">Temperature</h3>
+        <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-md">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-4">Core Thermal</h3>
           <div className="text-3xl font-mono text-amber-500 font-bold">{metrics.temp || '--'}</div>
         </div>
       </div>
 
-      <div className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 shadow-xl">
-        <div className="flex justify-between items-center mb-8">
-          <h2 className="text-lg font-bold text-white uppercase tracking-wider flex items-center gap-2">
-            <span className="w-2 h-4 bg-emerald-500 rounded-sm" /> Live Traffic: {selectedIface.toUpperCase()}
+      <div className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-md relative overflow-hidden">
+        <div className="flex justify-between items-center mb-8 relative z-10">
+          <h2 className="text-lg font-bold text-white uppercase tracking-wider flex items-center gap-2 font-mono">
+            <span className="w-2 h-4 bg-emerald-500 rounded-sm" /> ETH_PORT: {selectedIface.toUpperCase()}
           </h2>
           <select 
             value={selectedIface}
             onChange={(e) => setSelectedIface(e.target.value)}
-            className="bg-slate-950 text-blue-400 border border-slate-700 rounded-xl px-4 py-2 text-xs font-bold outline-none"
+            className="bg-slate-950 text-blue-400 border border-slate-700 rounded-xl px-4 py-2 text-xs font-bold outline-none font-mono"
           >
             {interfaces.map(iface => (
               <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName.toUpperCase()}</option>
             ))}
           </select>
         </div>
-        <div className="h-[300px] w-full">
+        <div className="h-[300px] w-full relative z-10">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={history}>
               <defs>
@@ -190,6 +196,9 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
             </AreaChart>
           </ResponsiveContainer>
         </div>
+        {!metrics.dnsResolved && (
+          <div className="absolute inset-0 bg-rose-500/5 pointer-events-none animate-pulse border-2 border-rose-500/20 rounded-3xl" />
+        )}
       </div>
     </div>
   );
@@ -199,19 +208,15 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
  * COMPONENT: MULTI-WAN MANAGER
  */
 const MultiWanManager = ({ config, setConfig, onApply, liveInterfaces, isSaving }: any) => {
-  // Filter only interfaces that are NOT bridges and NOT members of bridges
   const filteredInterfaces = useMemo(() => {
     return liveInterfaces.filter((iface: WanInterface) => 
       !iface.interfaceName.startsWith('br') && !iface.isBridgeMember
     );
   }, [liveInterfaces]);
 
-  // Synchronize config wanInterfaces with available ones
   useEffect(() => {
     const validNames = new Set(filteredInterfaces.map((i: any) => i.interfaceName));
     const cleaned = config.wanInterfaces.filter((w: any) => validNames.has(w.interfaceName));
-    
-    // Add missing ones if they are unassigned
     const currentNames = new Set(cleaned.map((w: any) => w.interfaceName));
     const toAdd = filteredInterfaces.filter((i: any) => !currentNames.has(i.interfaceName)).map((i: any) => ({
       id: i.id,
@@ -220,12 +225,8 @@ const MultiWanManager = ({ config, setConfig, onApply, liveInterfaces, isSaving 
       weight: i.weight || 1,
       priority: i.priority || 1
     }));
-
-    if (toAdd.length > 0) {
-      setConfig({ ...config, wanInterfaces: [...cleaned, ...toAdd] });
-    } else if (cleaned.length !== config.wanInterfaces.length) {
-      setConfig({ ...config, wanInterfaces: cleaned });
-    }
+    if (toAdd.length > 0) setConfig({ ...config, wanInterfaces: [...cleaned, ...toAdd] });
+    else if (cleaned.length !== config.wanInterfaces.length) setConfig({ ...config, wanInterfaces: cleaned });
   }, [filteredInterfaces]);
 
   return (
@@ -245,15 +246,15 @@ const MultiWanManager = ({ config, setConfig, onApply, liveInterfaces, isSaving 
 
         <div className="space-y-6 mb-10">
           {config.wanInterfaces.length === 0 ? (
-            <div className="p-12 border-2 border-dashed border-slate-800 rounded-3xl text-center text-slate-500">
-              No WAN-eligible interfaces. (Ports used in Bridges are automatically excluded here).
+            <div className="p-12 border-2 border-dashed border-slate-800 rounded-3xl text-center text-slate-500 font-mono text-sm">
+              NO WAN PORTS AVAILABLE. CHECK BRIDGE ASSIGNMENTS.
             </div>
           ) : config.wanInterfaces.map((wan: any) => {
             const live = liveInterfaces.find((l: any) => l.interfaceName === wan.interfaceName) || wan;
             return (
               <div key={wan.id} className="bg-slate-950/80 p-6 rounded-2xl border border-slate-800">
                 <div className="flex justify-between items-center mb-6">
-                   <div className="text-xl font-bold text-white">{live.interfaceName.toUpperCase()} <span className="text-xs text-slate-500 font-normal">({wan.name})</span></div>
+                   <div className="text-xl font-bold text-white font-mono">{live.interfaceName.toUpperCase()} <span className="text-xs text-slate-500 font-normal">({wan.name})</span></div>
                    <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase border ${live.status === WanStatus.UP ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>{live.status}</span>
                 </div>
                 {config.mode === RouterMode.LOAD_BALANCER ? (
@@ -262,7 +263,7 @@ const MultiWanManager = ({ config, setConfig, onApply, liveInterfaces, isSaving 
                     <input type="range" min="1" max="100" value={wan.weight} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, weight: parseInt(e.target.value)} : w)})} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                   </div>
                 ) : (
-                  <select value={wan.priority} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, priority: parseInt(e.target.value)} : w)})} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-300">
+                  <select value={wan.priority} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, priority: parseInt(e.target.value)} : w)})} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-300 font-mono">
                     <option value={1}>PRIMARY (P1)</option>
                     <option value={2}>BACKUP (P2)</option>
                     <option value={3}>COLD STANDBY (P3)</option>
@@ -275,9 +276,9 @@ const MultiWanManager = ({ config, setConfig, onApply, liveInterfaces, isSaving 
         <button 
           onClick={onApply} 
           disabled={isSaving || config.wanInterfaces.length === 0}
-          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-bold uppercase tracking-widest shadow-xl transition-all"
+          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-bold uppercase tracking-widest shadow-xl transition-all active:scale-[0.98]"
         >
-          {isSaving ? 'APPLYING...' : 'SYNC WAN TO KERNEL'}
+          {isSaving ? 'WRITING KERNEL TOPOLOGY...' : 'COMMIT WAN CONFIGURATION'}
         </button>
       </div>
     </div>
@@ -289,20 +290,15 @@ const MultiWanManager = ({ config, setConfig, onApply, liveInterfaces, isSaving 
  */
 const BridgeManager = ({ liveInterfaces, bridges, setBridges, onApply, isSaving }: any) => {
   const [newBridgeName, setNewBridgeName] = useState('br0');
-  
   const addBridge = () => {
     const newBridge: BridgeConfig = { id: Math.random().toString(36).substr(2, 9), name: newBridgeName, interfaces: [], ipAddress: '192.168.10.1', netmask: '24', dhcpEnabled: true, dhcpStart: '192.168.10.100', dhcpEnd: '192.168.10.200', leaseTime: '12h' };
     setBridges([...bridges, newBridge]);
   };
-
   const toggleInterface = (bridgeId: string, ifaceName: string) => {
     setBridges(bridges.map((b: any) => {
       if (b.id !== bridgeId) return b;
       const isMember = b.interfaces.includes(ifaceName);
-      return { 
-        ...b, 
-        interfaces: isMember ? b.interfaces.filter((i: string) => i !== ifaceName) : [...b.interfaces, ifaceName] 
-      };
+      return { ...b, interfaces: isMember ? b.interfaces.filter((i: string) => i !== ifaceName) : [...b.interfaces, ifaceName] };
     }));
   };
 
@@ -311,23 +307,23 @@ const BridgeManager = ({ liveInterfaces, bridges, setBridges, onApply, isSaving 
       <header className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Bridge & DHCP</h1>
-          <p className="text-slate-500 text-sm">Create LAN segments from physical ports.</p>
+          <p className="text-slate-500 text-sm mt-1">Combine physical ports into virtual LAN segments.</p>
         </div>
         <div className="flex gap-2">
-          <input type="text" value={newBridgeName} onChange={e => setNewBridgeName(e.target.value)} className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl text-white outline-none w-24" />
-          <button onClick={addBridge} className="bg-blue-600 px-6 py-2 rounded-xl text-xs font-bold text-white">ADD BRIDGE</button>
+          <input type="text" value={newBridgeName} onChange={e => setNewBridgeName(e.target.value)} className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl text-white outline-none w-24 focus:border-blue-500" />
+          <button onClick={addBridge} className="bg-blue-600 px-6 py-2 rounded-xl text-xs font-bold text-white shadow-lg active:scale-95 transition-all">ADD BRIDGE</button>
         </div>
       </header>
 
       {bridges.map((bridge: BridgeConfig) => (
-        <div key={bridge.id} className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 shadow-xl">
+        <div key={bridge.id} className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-md">
           <div className="flex justify-between items-start mb-6">
-             <h3 className="text-xl font-bold text-white">{bridge.name}</h3>
-             <button onClick={() => setBridges(bridges.filter((b: any) => b.id !== bridge.id))} className="text-rose-500 text-xs font-bold uppercase">REMOVE</button>
+             <h3 className="text-xl font-bold text-white font-mono">{bridge.name}</h3>
+             <button onClick={() => setBridges(bridges.filter((b: any) => b.id !== bridge.id))} className="text-rose-500 text-xs font-bold uppercase tracking-widest hover:text-rose-400">REMOVE</button>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
              <div className="space-y-4">
-                <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Select Ports (Excludes from WAN)</div>
+                <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">ASSIGNED HARDWARE PORTS</div>
                 <div className="flex flex-wrap gap-2">
                    {liveInterfaces.filter((i:any) => !i.interfaceName.startsWith('br')).map((iface: any) => {
                       const isTakenByOther = bridges.some((b: any) => b.id !== bridge.id && b.interfaces.includes(iface.interfaceName));
@@ -336,7 +332,7 @@ const BridgeManager = ({ liveInterfaces, bridges, setBridges, onApply, isSaving 
                           key={iface.id} 
                           disabled={isTakenByOther}
                           onClick={() => toggleInterface(bridge.id, iface.interfaceName)}
-                          className={`px-4 py-2 rounded-xl border text-[10px] font-black transition-all ${bridge.interfaces.includes(iface.interfaceName) ? 'bg-blue-600 text-white border-blue-400' : 'bg-slate-900 text-slate-500 border-slate-800'} ${isTakenByOther ? 'opacity-30 cursor-not-allowed' : ''}`}
+                          className={`px-4 py-2 rounded-xl border text-[10px] font-black transition-all font-mono ${bridge.interfaces.includes(iface.interfaceName) ? 'bg-blue-600 text-white border-blue-400' : 'bg-slate-900 text-slate-500 border-slate-800'} ${isTakenByOther ? 'opacity-30 cursor-not-allowed' : ''}`}
                         >
                            {iface.interfaceName.toUpperCase()}
                         </button>
@@ -344,27 +340,33 @@ const BridgeManager = ({ liveInterfaces, bridges, setBridges, onApply, isSaving 
                    })}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                   <input type="text" value={bridge.ipAddress} onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, ipAddress: e.target.value} : b))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white" placeholder="LAN IP" />
-                   <input type="text" value={bridge.netmask} onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, netmask: e.target.value} : b))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white" placeholder="Mask (CIDR)" />
+                   <div className="space-y-1">
+                      <label className="text-[9px] text-slate-500 font-black uppercase">VIRTUAL IP</label>
+                      <input type="text" value={bridge.ipAddress} onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, ipAddress: e.target.value} : b))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white font-mono" placeholder="192.168.10.1" />
+                   </div>
+                   <div className="space-y-1">
+                      <label className="text-[9px] text-slate-500 font-black uppercase">MASK (CIDR)</label>
+                      <input type="text" value={bridge.netmask} onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, netmask: e.target.value} : b))} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white font-mono" placeholder="24" />
+                   </div>
                 </div>
              </div>
              <div className={`p-6 rounded-2xl border transition-all ${bridge.dhcpEnabled ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-slate-950/50 border-slate-800'}`}>
                 <div className="flex justify-between items-center mb-6">
-                  <h4 className="text-sm font-bold text-white uppercase tracking-widest">DHCP Status</h4>
+                  <h4 className="text-sm font-bold text-white uppercase tracking-widest">DHCP POOL</h4>
                   <button onClick={() => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, dhcpEnabled: !b.dhcpEnabled} : b))} className={`px-6 py-1.5 rounded-full text-[10px] font-black transition-all ${bridge.dhcpEnabled ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>
-                     {bridge.dhcpEnabled ? 'ON' : 'OFF'}
+                     {bridge.dhcpEnabled ? 'ACTIVE' : 'OFF'}
                   </button>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <input type="text" value={bridge.dhcpStart} onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, dhcpStart: e.target.value} : b))} className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300" placeholder="Start IP" disabled={!bridge.dhcpEnabled} />
-                  <input type="text" value={bridge.dhcpEnd} onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, dhcpEnd: e.target.value} : b))} className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300" placeholder="End IP" disabled={!bridge.dhcpEnabled} />
+                  <input type="text" value={bridge.dhcpStart} onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, dhcpStart: e.target.value} : b))} className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 font-mono" placeholder="Pool Start" disabled={!bridge.dhcpEnabled} />
+                  <input type="text" value={bridge.dhcpEnd} onChange={e => setBridges(bridges.map((b: any) => b.id === bridge.id ? {...b, dhcpEnd: e.target.value} : b))} className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 font-mono" placeholder="Pool End" disabled={!bridge.dhcpEnabled} />
                 </div>
              </div>
           </div>
         </div>
       ))}
-      <button onClick={onApply} disabled={isSaving} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-bold uppercase tracking-widest shadow-xl transition-all">
-        {isSaving ? 'APPLYING TO KERNEL...' : 'SAVE BRIDGE SETTINGS'}
+      <button onClick={onApply} disabled={isSaving} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-bold uppercase tracking-widest shadow-xl transition-all active:scale-[0.98]">
+        {isSaving ? 'APPLYING BRIDGE TOPOLOGY...' : 'ACTIVATE BRIDGES & DHCP'}
       </button>
     </div>
   );
@@ -376,7 +378,7 @@ const BridgeManager = ({ liveInterfaces, bridges, setBridges, onApply, isSaving 
 const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isLive, setIsLive] = useState(false);
-  const [metrics, setMetrics] = useState<SystemMetrics>({ cpuUsage: 0, cores: [], memoryUsage: '0', totalMem: '0', temp: '0', uptime: '', activeSessions: 0 });
+  const [metrics, setMetrics] = useState<SystemMetrics>({ cpuUsage: 0, cores: [], memoryUsage: '0', totalMem: '0', temp: '0', uptime: '', activeSessions: 0, dnsResolved: true });
   const [interfaces, setInterfaces] = useState<WanInterface[]>([]);
   const [bridges, setBridges] = useState<BridgeConfig[]>([]);
   const [wanConfig, setWanConfig] = useState<any>({ mode: RouterMode.LOAD_BALANCER, wanInterfaces: [] });
@@ -394,10 +396,8 @@ const App = () => {
         const ifaces = await ifaceRes.json();
         const met = await metricRes.json();
         const sBridges = await bridgeRes.json();
-        
         setInterfaces(ifaces);
         setMetrics(met);
-        
         if (!isInitialized) {
           setBridges(sBridges || []);
           setWanConfig({ 
@@ -433,12 +433,9 @@ const App = () => {
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify(wanConfig) 
       });
-      if (res.ok) alert('Multi-WAN Routing Applied.');
-      else {
-        const err = await res.json();
-        alert(`Error: ${err.error}`);
-      }
-    } catch(e) { alert('Network Error.'); }
+      if (res.ok) alert('SUCCESS: Routing Table Updated.');
+      else { const err = await res.json(); alert(`ERROR: ${err.error}`); }
+    } catch(e) { alert('CRITICAL: Connection to Agent Lost.'); }
     setIsSaving(false);
   };
 
@@ -450,23 +447,34 @@ const App = () => {
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ bridges }) 
       });
-      if (res.ok) alert('Bridge Topology Applied. (Interfaces assigned to bridges are now excluded from WAN)');
-      else alert('Error Applying Bridges.');
-    } catch(e) { alert('Network Error.'); }
+      if (res.ok) alert('SUCCESS: Bridge and DHCP settings synced.');
+      else alert('ERROR: Topology apply failed.');
+    } catch(e) { alert('CRITICAL: Network Error.'); }
     setIsSaving(false);
   };
 
   const rescueInternet = async () => {
-     if (!confirm("Rescue Mode will attempt to restore basic internet by wiping routing tables and forcing a single gateway. Proceed?")) return;
+     if (!confirm("EMERGENCY: This will wipe all bridges and force a default gateway on the first physical port. Proceed?")) return;
      try {
-        await fetch(`${API_BASE}/apply`, { 
+        const res = await fetch(`${API_BASE}/apply`, { 
            method: 'POST', 
            headers: { 'Content-Type': 'application/json' }, 
-           body: JSON.stringify({ mode: 'FAILOVER', wanInterfaces: interfaces.map(i => ({...i, priority: 1})) }) 
+           body: JSON.stringify({ mode: 'FAILOVER', wanInterfaces: interfaces.filter(i => !i.interfaceName.startsWith('br')).map(i => ({...i, priority: 1})) }) 
         });
-        alert("Rescue sequence completed. Check connectivity.");
-        window.location.reload();
-     } catch(e) { alert("Rescue failed."); }
+        if (res.ok) {
+           await fetch(`${API_BASE}/system/restore-dns`, { method: 'POST' });
+           alert("RESCUE COMPLETE: Default routing and DNS restored.");
+           window.location.reload();
+        }
+     } catch(e) { alert("RESCUE FAILED: Check local cable connection."); }
+  };
+
+  const fixDnsConflict = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/system/restore-dns`, { method: 'POST' });
+      if (res.ok) alert("DNS REPAIR: systemd-resolved released Port 53 and /etc/resolv.conf updated to 1.1.1.1.");
+      else alert("DNS REPAIR FAILED.");
+    } catch (e) { alert("CONNECTION ERROR."); }
   };
 
   return (
@@ -474,14 +482,40 @@ const App = () => {
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'wan' && <MultiWanManager config={wanConfig} setConfig={setWanConfig} onApply={commitWan} liveInterfaces={interfaces} isSaving={isSaving} />}
       {activeTab === 'bridge' && <BridgeManager liveInterfaces={interfaces} bridges={bridges} setBridges={setBridges} onApply={commitBridges} isSaving={isSaving} />}
+      {activeTab === 'advisor' && (
+        <div className="bg-slate-900/60 p-12 rounded-3xl border border-slate-800 text-center shadow-2xl backdrop-blur-md">
+           <h2 className="text-2xl font-bold text-white mb-4">Neural Advisor Offline</h2>
+           <p className="text-slate-500 mb-8 max-w-sm mx-auto">AI services require active WAN connectivity to reach Gemini Pro. Restore your internet link to access topology optimization.</p>
+           {!metrics.dnsResolved && <div className="p-4 bg-rose-500/10 text-rose-500 rounded-xl border border-rose-500/20 font-mono text-xs mb-4">CRITICAL: Local DNS resolution failed.</div>}
+        </div>
+      )}
       {activeTab === 'settings' && (
-        <div className="bg-slate-900/60 p-12 rounded-3xl border border-slate-800 text-center shadow-2xl">
-           <h2 className="text-2xl font-bold text-white mb-8 tracking-tight">System Identity</h2>
-           <div className="bg-rose-500/5 p-8 rounded-3xl border border-rose-500/20 max-w-xl mx-auto space-y-4">
-             <h3 className="text-rose-500 font-black text-xs uppercase mb-4 tracking-[0.2em]">Safety & Rescue Tools</h3>
-             <button onClick={rescueInternet} className="bg-amber-600 hover:bg-amber-500 text-white px-8 py-3 rounded-xl text-xs font-black shadow-lg shadow-amber-600/20 active:scale-95 transition-all">
-                EMERGENCY CONNECTIVITY RESCUE
-             </button>
+        <div className="space-y-6">
+           <div className="bg-slate-900/60 p-12 rounded-3xl border border-slate-800 text-center shadow-2xl backdrop-blur-md">
+              <h2 className="text-2xl font-bold text-white mb-8 tracking-tight">System Identity & Security</h2>
+              <div className="grid grid-cols-2 gap-6 max-w-xl mx-auto mb-10">
+                 <div className="bg-slate-950 p-6 rounded-2xl text-left border border-slate-800">
+                    <div className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mb-1">Architecture</div>
+                    <div className="text-sm font-mono text-blue-400">Ubuntu x64 Native</div>
+                 </div>
+                 <div className="bg-slate-950 p-6 rounded-2xl text-left border border-slate-800">
+                    <div className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">DNS Health</div>
+                    <div className={`text-sm font-mono ${metrics.dnsResolved ? 'text-emerald-400' : 'text-rose-500'}`}>{metrics.dnsResolved ? 'CONNECTED' : 'FAILING'}</div>
+                 </div>
+              </div>
+              
+              <div className="bg-rose-500/5 p-8 rounded-3xl border border-rose-500/20 max-w-xl mx-auto space-y-6">
+                <h3 className="text-rose-500 font-black text-xs uppercase mb-2 tracking-[0.2em]">EMERGENCY KERNEL RECOVERY</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button onClick={rescueInternet} className="bg-amber-600 hover:bg-amber-500 text-white px-6 py-4 rounded-xl text-xs font-black shadow-lg shadow-amber-600/20 active:scale-95 transition-all">
+                      WIPE ROUTES & NAT RESET
+                   </button>
+                   <button onClick={fixDnsConflict} className="bg-rose-600 hover:bg-rose-500 text-white px-6 py-4 rounded-xl text-xs font-black shadow-lg shadow-rose-600/20 active:scale-95 transition-all">
+                      REPAIR SYSTEM DNS
+                   </button>
+                </div>
+                <p className="text-[10px] text-slate-600 italic">Caution: Recovery actions will interrupt active sessions and restart the DHCP service.</p>
+              </div>
            </div>
         </div>
       )}

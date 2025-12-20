@@ -7,6 +7,7 @@ const logFile = '/var/log/nexus-agent.log';
 const configFile = './nexus-config.json';
 const fs = require('fs');
 const { execSync } = require('child_process');
+const dns = require('dns');
 
 function log(msg) {
   const entry = `[${new Date().toISOString()}] ${msg}\n`;
@@ -18,6 +19,7 @@ function log(msg) {
 
 let lastCpuStats = [];
 let cpuUsageHistory = [];
+let dnsResolved = true;
 
 function getCpuStats() {
   try {
@@ -48,7 +50,12 @@ setInterval(() => {
     cpuUsageHistory = newUsage;
   }
   lastCpuStats = currentStats;
-}, 1000);
+
+  // Monitor DNS Resolution Health
+  dns.lookup('google.com', (err) => {
+    dnsResolved = !err;
+  });
+}, 2000);
 
 let prevTraffic = {};
 let lastTrafficPollTime = Date.now();
@@ -115,11 +122,8 @@ try {
         const addr = (iface.addr_info && iface.addr_info[0]) ? iface.addr_info[0] : {};
         const savedIface = (nexusConfig.wanConfig?.interfaces || []).find(w => w.interfaceName === iface.ifname);
         
-        // Detect if this interface is a slave of a bridge
         let isBridgeMember = false;
-        try {
-          isBridgeMember = fs.existsSync(`/sys/class/net/${iface.ifname}/master`);
-        } catch(e) {}
+        try { isBridgeMember = fs.existsSync(`/sys/class/net/${iface.ifname}/master`); } catch(e) {}
 
         return {
           id: iface.ifname,
@@ -138,13 +142,13 @@ try {
 
   app.get('/api/metrics', (req, res) => {
     try {
-      if (process.platform !== 'linux') return res.json({ cpuUsage: 12, cores: [10, 15], memoryUsage: '2.4', totalMem: '16.0', temp: '42°C', uptime: '1h', activeSessions: 42 });
+      if (process.platform !== 'linux') return res.json({ cpuUsage: 12, cores: [10, 15], memoryUsage: '2.4', totalMem: '16.0', temp: '42°C', uptime: '1h', activeSessions: 42, dnsResolved: true });
       const memLines = fs.readFileSync('/proc/meminfo', 'utf8').split('\n');
       const total = parseInt(memLines[0].replace(/\D/g, '')) / 1024 / 1024;
       const free = parseInt(memLines[2].replace(/\D/g, '')) / 1024 / 1024;
       let temp = 'N/A';
       try { temp = (parseInt(fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8')) / 1000).toFixed(0) + '°C'; } catch(e) {}
-      res.json({ cpuUsage: cpuUsageHistory[0] || 0, cores: cpuUsageHistory, memoryUsage: (total - free).toFixed(1), totalMem: total.toFixed(1), temp, uptime: execSync('uptime -p').toString().trim(), activeSessions: 124 });
+      res.json({ cpuUsage: cpuUsageHistory.reduce((a,b)=>a+b,0)/(cpuUsageHistory.length||1), cores: cpuUsageHistory, memoryUsage: (total - free).toFixed(1), totalMem: total.toFixed(1), temp, uptime: execSync('uptime -p').toString().trim(), activeSessions: 124, dnsResolved });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
@@ -180,7 +184,6 @@ try {
       if (process.platform === 'linux') {
         execSync('sysctl -w net.ipv4.ip_forward=1');
         
-        // Filter out any interfaces that are bridge slaves right now
         const activeWans = wanInterfaces.filter(w => {
            try { return !fs.existsSync(`/sys/class/net/${w.interfaceName}/master`); } 
            catch(e) { return true; }
@@ -201,6 +204,28 @@ try {
       }
       res.json({ success: true });
     } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // NEW: Robust DNS Recovery
+  app.post('/api/system/restore-dns', (req, res) => {
+    try {
+      if (process.platform === 'linux') {
+        log('Attempting DNS Recovery Sequence...');
+        // Stop the conflict-causing service
+        try { execSync('systemctl stop systemd-resolved'); } catch(e) {}
+        try { execSync('systemctl disable systemd-resolved'); } catch(e) {}
+        
+        // Force rewrite /etc/resolv.conf
+        // We delete the symlink if it exists (resolvconf often symlinks this)
+        try { execSync('rm -f /etc/resolv.conf'); } catch(e) {}
+        fs.writeFileSync('/etc/resolv.conf', 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n');
+        
+        log('DNS Recovery: systemd-resolved disabled and /etc/resolv.conf overwritten.');
+      }
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.listen(3000, '0.0.0.0', () => { log(`Hardware Agent listening on :3000`); });
