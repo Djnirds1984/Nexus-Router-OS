@@ -24,6 +24,7 @@ interface WanInterface {
 
 interface SystemMetrics {
   cpuUsage: number;
+  cores?: number[];
   memoryUsage: string; 
   totalMem: string; 
   temp: string;
@@ -253,7 +254,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
     <div className="space-y-8 animate-in fade-in slide-in-from-top-4 duration-700">
       <header className="flex justify-between items-end">
         <div>
-          <h1 className="text-4xl font-black text-white tracking-tighter">Hardware Dashboard</h1>
+          <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Host Dashboard</h1>
           <div className="flex items-center gap-4 mt-2">
             <p className="text-slate-500 text-sm font-medium uppercase tracking-widest">Real-time Linux Router Telemetry</p>
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${metrics.dnsResolved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse'}`}>
@@ -277,22 +278,35 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
           <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Aggregate TX</h3>
           <div className="text-4xl font-mono text-blue-400 font-bold tracking-tighter tabular-nums">{aggregateTraffic.tx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
         </div>
-        <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Live CPU Usage</h3>
-          <div className="text-4xl font-mono text-white font-bold tabular-nums tracking-tighter">{metrics.cpuUsage.toFixed(0)}%</div>
-          <div className="mt-4 w-full h-2 bg-slate-800 rounded-full overflow-hidden shadow-inner">
-             <div 
-               className={`h-full transition-all duration-500 ${metrics.cpuUsage > 80 ? 'bg-rose-500' : 'bg-blue-500'} shadow-[0_0_15px_rgba(59,130,246,0.5)]`} 
-               style={{ width: `${metrics.cpuUsage}%` }} 
-             />
+        
+        <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md overflow-hidden">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Multi-Core Usage</h3>
+          <div className="space-y-3 custom-scrollbar max-h-40 overflow-y-auto">
+             {metrics.cores && metrics.cores.length > 0 ? metrics.cores.map((usage, idx) => (
+                <div key={idx} className="group">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest group-hover:text-blue-400 transition-colors">CPU {idx}</span>
+                    <span className="text-[10px] font-mono text-white font-bold">{usage}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-800/50">
+                    <div 
+                      className={`h-full transition-all duration-1000 ease-out ${usage > 80 ? 'bg-rose-500' : usage > 50 ? 'bg-amber-500' : 'bg-blue-500'} shadow-[0_0_8px_currentColor] opacity-90`} 
+                      style={{ width: `${usage}%`, color: usage > 80 ? '#f43f5e' : usage > 50 ? '#f59e0b' : '#3b82f6' }} 
+                    />
+                  </div>
+                </div>
+             )) : (
+                <div className="text-4xl font-mono text-white font-bold tabular-nums tracking-tighter">{metrics.cpuUsage.toFixed(0)}%</div>
+             )}
           </div>
         </div>
+
         <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md">
           <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Physical RAM</h3>
           <div className="text-4xl font-mono text-white font-bold tracking-tighter tabular-nums">{metrics.memoryUsage} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">GB</span></div>
-          <div className="mt-2 text-[10px] text-slate-600 font-black uppercase tracking-widest">Used of {metrics.totalMem} GB Total</div>
-          <div className="mt-3 w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-             <div className="h-full bg-slate-400" style={{ width: `${(parseFloat(metrics.memoryUsage)/parseFloat(metrics.totalMem))*100}%` }} />
+          <div className="mt-2 text-[10px] text-slate-600 font-black uppercase tracking-widest italic">Used of {metrics.totalMem} GB Host Total</div>
+          <div className="mt-3 w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-800/50">
+             <div className="h-full bg-slate-400 transition-all duration-700" style={{ width: `${(parseFloat(metrics.memoryUsage)/parseFloat(metrics.totalMem || "1"))*100}%` }} />
           </div>
         </div>
       </div>
@@ -402,7 +416,7 @@ const App = () => {
 
   useEffect(() => {
     refreshData();
-    const interval = setInterval(refreshData, 2000); 
+    const interval = setInterval(refreshData, 1000); 
     return () => clearInterval(interval);
   }, [refreshData]);
 
@@ -424,8 +438,8 @@ const App = () => {
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'bridge' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">Bridge & DHCP Layer Ready</div>}
-      {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Neural Pipelines Online</div>}
-      {activeTab === 'settings' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">System Core Diagnostics</div>}
+      {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
+      {activeTab === 'settings' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">System Diagnostics</div>}
     </Layout>
   );
 };

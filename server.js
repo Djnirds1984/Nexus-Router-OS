@@ -19,13 +19,12 @@ function log(msg) {
 
 let systemState = {
   interfaces: [],
-  metrics: { cpuUsage: 0, memoryUsage: '0', totalMem: '0', uptime: '', activeSessions: 0, dnsResolved: true },
+  metrics: { cpuUsage: 0, cores: [], memoryUsage: '0', totalMem: '0', uptime: '', activeSessions: 0, dnsResolved: true },
   config: { mode: 'LOAD_BALANCER', wanInterfaces: [] }
 };
 
-// State for calculating rates
-let lastCpuTotal = 0;
-let lastCpuIdle = 0;
+// State for calculating rates per core and per interface
+let lastCpuData = {}; // { coreId: { total, idle } }
 let lastNetStats = {}; // { iface: { rx, tx, time } }
 
 // Load existing config if available
@@ -53,7 +52,7 @@ async function checkInternetHealth(ifaceName) {
 }
 
 /**
- * REAL THROUGHPUT FETCH (Mbps)
+ * REAL THROUGHPUT FETCH (Mbps) from /proc/net/dev
  */
 function getThroughputMbps(iface) {
   try {
@@ -114,16 +113,16 @@ function applyMultiWanKernel() {
   } catch (e) { log(`KERNEL SYNC ERROR: ${e.message}`); }
 }
 
-// Frequent Polling for "Moving" Dashboard (1s interval)
+// 1s Polling for Real-Time Hardware Statistics
 setInterval(async () => {
   if (process.platform !== 'linux') {
     systemState.interfaces = [{ id: 'eth0', name: 'WAN1', interfaceName: 'eth0', status: 'UP', ipAddress: '192.168.1.10', gateway: '192.168.1.1', internetHealth: 'HEALTHY', latency: 12, throughput: { rx: 5.2, tx: 1.5 } }];
-    systemState.metrics = { cpuUsage: 12 + Math.random()*2, memoryUsage: '4.4', totalMem: '16.0', uptime: '1h 22m', activeSessions: 42, dnsResolved: true };
+    systemState.metrics = { cpuUsage: 15, cores: [10, 15, 20, 12], memoryUsage: '4.4', totalMem: '16.0', uptime: '1h 22m', activeSessions: 42, dnsResolved: true };
     return;
   }
 
   try {
-    // 1. Physical Interfaces & Real Throughput
+    // 1. Interfaces & Real Throughput
     const ipData = JSON.parse(execSync('ip -j addr show').toString());
     const routes = JSON.parse(execSync('ip -j route show').toString());
     const newInterfaces = await Promise.all(ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth') && !iface.ifname.startsWith('br')).map(async (iface) => {
@@ -148,16 +147,31 @@ setInterval(async () => {
     systemState.interfaces = newInterfaces;
     if (healthChanged) applyMultiWanKernel();
 
-    // 2. Real Moving CPU Stats
-    const statsStr = fs.readFileSync('/proc/stat', 'utf8').split('\n')[0];
-    const stats = statsStr.split(/\s+/).slice(1).map(Number);
-    const total = stats.reduce((a, b) => a + b, 0);
-    const idle = stats[3];
-    const diffTotal = total - lastCpuTotal;
-    const diffIdle = idle - lastCpuIdle;
-    const cpu = diffTotal === 0 ? 0 : Math.floor((1 - diffIdle / diffTotal) * 100);
-    lastCpuTotal = total;
-    lastCpuIdle = idle;
+    // 2. Real Per-Core CPU Stats
+    const statsLines = fs.readFileSync('/proc/stat', 'utf8').split('\n');
+    const coreMetrics = [];
+    let aggregateUsage = 0;
+
+    statsLines.forEach(line => {
+      if (line.startsWith('cpu')) {
+        const parts = line.trim().split(/\s+/);
+        const coreId = parts[0];
+        const stats = parts.slice(1).map(Number);
+        const total = stats.reduce((a, b) => a + b, 0);
+        const idle = stats[3];
+
+        if (lastCpuData[coreId]) {
+          const prev = lastCpuData[coreId];
+          const diffTotal = total - prev.total;
+          const diffIdle = idle - prev.idle;
+          const usage = diffTotal === 0 ? 0 : Math.floor((1 - diffIdle / diffTotal) * 100);
+          
+          if (coreId === 'cpu') aggregateUsage = usage;
+          else coreMetrics.push(usage);
+        }
+        lastCpuData[coreId] = { total, idle };
+      }
+    });
 
     // 3. Real RAM Usage Stats
     const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
@@ -166,11 +180,12 @@ setInterval(async () => {
     const memUsed = memTotal - memAvailable;
 
     systemState.metrics = {
-      cpuUsage: Math.max(0, Math.min(100, cpu)),
+      cpuUsage: aggregateUsage,
+      cores: coreMetrics,
       memoryUsage: memUsed.toFixed(2),
       totalMem: memTotal.toFixed(2),
       uptime: execSync('uptime -p').toString().trim(),
-      activeSessions: Math.floor(Math.random() * 20) + 100, // Simulated active conntrack count
+      activeSessions: 0, // In real scenario, parse /proc/net/nf_conntrack_count
       dnsResolved: true
     };
   } catch (e) { log(`Poll Error: ${e.message}`); }
