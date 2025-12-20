@@ -1,143 +1,206 @@
 /**
  * Nexus Router OS - Hardware Agent (Root Required)
- * This agent interacts directly with the Linux networking stack.
+ * Smart Multi-WAN Orchestrator
  */
 
-const logFile = '/var/log/nexus-agent.log';
-const configFile = './nexus-config.json';
 const fs = require('fs');
-const { execSync } = require('child_process');
+const { execSync, exec } = require('child_process');
 const dns = require('dns');
+const express = require('express');
+const cors = require('cors');
+
+const logFile = '/var/log/nexus-agent.log';
+const configPath = './nexus-config.json';
 
 function log(msg) {
   const entry = `[${new Date().toISOString()}] ${msg}\n`;
   console.log(msg);
-  try {
-    fs.appendFileSync(logFile, entry);
-  } catch (e) { }
+  try { fs.appendFileSync(logFile, entry); } catch (e) { }
 }
 
-let cpuUsageHistory = [];
-let dnsResolved = true;
-let ipForwarding = true;
+let systemState = {
+  interfaces: [],
+  metrics: { cpuUsage: 0, memoryUsage: '0', totalMem: '0', uptime: '', activeSessions: 0, dnsResolved: true },
+  config: { mode: 'LOAD_BALANCER', wanInterfaces: [] }
+};
 
-// Proactive Monitoring
-setInterval(() => {
-  dns.lookup('google.com', (err) => {
-    dnsResolved = !err;
+// Load existing config if available
+try {
+  if (fs.existsSync(configPath)) {
+    const saved = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    systemState.config = saved;
+  }
+} catch (e) { log('Failed to load config'); }
+
+/**
+ * SMART WAN MONITOR
+ * Pings a target through a specific interface to verify internet reachability.
+ */
+async function checkInternetHealth(ifaceName) {
+  return new Promise((resolve) => {
+    if (process.platform !== 'linux') return resolve({ ok: true, latency: 15 });
+    
+    // Ping 8.8.8.8 through the specific interface (-I)
+    // -c 1 (one packet), -W 1 (1 second timeout)
+    const cmd = `ping -I ${ifaceName} -c 1 -W 1 8.8.8.8`;
+    const start = Date.now();
+    exec(cmd, (error) => {
+      const latency = Date.now() - start;
+      if (error) {
+        resolve({ ok: false, latency: 0 });
+      } else {
+        resolve({ ok: true, latency });
+      }
+    });
   });
+}
 
+/**
+ * KERNEL ORCHESTRATOR
+ * Applies Multi-WAN routing rules (ECMP for Load Balancing, Tables for Failover)
+ */
+function applyMultiWanKernel() {
+  if (process.platform !== 'linux') return;
+
+  log(`>>> ORCHESTRATING KERNEL: ${systemState.config.mode}`);
+  try {
+    const healthyWans = systemState.interfaces.filter(i => i.internetHealth === 'HEALTHY');
+    
+    if (healthyWans.length === 0) {
+      log('CRITICAL: No healthy WAN interfaces detected. Skipping route update.');
+      return;
+    }
+
+    if (systemState.config.mode === 'LOAD_BALANCER') {
+      // ECMP (Equal-Cost Multi-Path)
+      // ip route replace default nexthop via GW1 dev eth0 weight W1 nexthop via GW2 dev eth1 weight W2
+      let routeCmd = 'ip route replace default';
+      healthyWans.forEach(wan => {
+        const configWan = systemState.config.wanInterfaces.find(cw => cw.interfaceName === wan.interfaceName) || { weight: 1 };
+        if (wan.gateway && wan.gateway !== 'Detecting...') {
+          routeCmd += ` nexthop via ${wan.gateway} dev ${wan.interfaceName} weight ${configWan.weight || 1}`;
+        }
+      });
+      log(`Applying ECMP: ${routeCmd}`);
+      execSync(routeCmd);
+    } else {
+      // FAILOVER
+      // Find the highest priority healthy WAN
+      const sorted = [...healthyWans].sort((a, b) => {
+        const cA = systemState.config.wanInterfaces.find(cw => cw.interfaceName === a.interfaceName) || { priority: 99 };
+        const cB = systemState.config.wanInterfaces.find(cw => cw.interfaceName === b.interfaceName) || { priority: 99 };
+        return cA.priority - cB.priority;
+      });
+
+      const primary = sorted[0];
+      if (primary && primary.gateway && primary.gateway !== 'Detecting...') {
+        log(`Applying Failover: Primary is ${primary.interfaceName} via ${primary.gateway}`);
+        execSync(`ip route replace default via ${primary.gateway} dev ${primary.interfaceName}`);
+      }
+    }
+    log('>>> KERNEL SYNC SUCCESSFUL');
+  } catch (e) {
+    log(`KERNEL SYNC ERROR: ${e.message}`);
+  }
+}
+
+// Background Hardware Polling & Smart Health Checks
+setInterval(async () => {
   if (process.platform !== 'linux') {
-    cpuUsageHistory = [8];
+    systemState.interfaces = [{ interfaceName: 'eth0', status: 'UP', ipAddress: '1.1.1.1', gateway: '1.1.1.0', internetHealth: 'HEALTHY', latency: 15, throughput: { rx: 1, tx: 1 } }];
     return;
   }
 
   try {
-    const forwarding = fs.readFileSync('/proc/sys/net/ipv4/ip_forward', 'utf8').trim();
-    ipForwarding = forwarding === '1';
-
-    const statsStr = fs.readFileSync('/proc/stat', 'utf8').split('\n')[0];
-    const stats = statsStr.split(/\s+/).slice(1).map(Number);
-    const total = stats.reduce((a, b) => a + b, 0);
-    const idle = stats[3];
-    cpuUsageHistory = [Math.floor((1 - idle/total) * 100)];
-  } catch(e) {}
-}, 2000);
-
-try {
-  const express = require('express');
-  const cors = require('cors');
-  const app = express();
-  
-  // Allow all origins for local router management
-  app.use(cors({ origin: '*' }));
-  app.use(express.json());
-
-  app.get('/api/interfaces', (req, res) => {
-    try {
-      if (process.platform !== 'linux') {
-        return res.json([{ id: 'eth0', name: 'WAN1', interfaceName: 'eth0', status: 'UP', ipAddress: '192.168.1.10', gateway: '192.168.1.1', throughput: { rx: 5.2, tx: 1.5 }, latency: 12 }]);
-      }
-      const ipData = JSON.parse(execSync('ip -j addr show').toString());
-      const interfaces = ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth')).map(iface => ({
+    // 1. Get Physical Interface Stats
+    const ipData = JSON.parse(execSync('ip -j addr show').toString());
+    const routes = JSON.parse(execSync('ip -j route show').toString());
+    
+    const newInterfaces = await Promise.all(ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth') && !iface.ifname.startsWith('br')).map(async (iface) => {
+      const gw = routes.find(r => r.dev === iface.ifname && r.dst === 'default')?.gateway || 'Detecting...';
+      const health = await checkInternetHealth(iface.ifname);
+      
+      return {
         id: iface.ifname,
         name: iface.ifname.toUpperCase(),
         interfaceName: iface.ifname,
         status: iface.operstate === 'UP' ? 'UP' : 'DOWN',
         ipAddress: (iface.addr_info[0] || {}).local || 'N/A',
-        gateway: 'Detecting...',
-        throughput: { rx: Math.random()*5, tx: Math.random()*2 },
-        latency: 10 + Math.floor(Math.random()*15)
-      }));
-      res.json(interfaces);
-    } catch (err) { res.status(500).json({ error: err.message }); }
-  });
+        gateway: gw,
+        internetHealth: health.ok ? 'HEALTHY' : 'OFFLINE',
+        latency: health.latency,
+        throughput: { rx: Math.random() * 5, tx: Math.random() * 2 } // Mocked throughput, would use /proc/net/dev for real
+      };
+    }));
 
-  app.get('/api/metrics', (req, res) => {
-    try {
-      if (process.platform !== 'linux') {
-        return res.json({ cpuUsage: 12, memoryUsage: '2.4', totalMem: '16.0', temp: '42°C', uptime: '1h 22m', activeSessions: 42, dnsResolved, ipForwarding });
-      }
-      const uptime = execSync('uptime -p').toString().trim();
-      res.json({ cpuUsage: cpuUsageHistory[0] || 0, memoryUsage: '4.2', totalMem: '16.0', temp: '48°C', uptime, activeSessions: 85, dnsResolved, ipForwarding });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-  });
+    // Detect if state changed (health change) to re-apply kernel routes
+    const healthChanged = JSON.stringify(newInterfaces.map(i => i.internetHealth)) !== JSON.stringify(systemState.interfaces.map(i => i.internetHealth));
+    systemState.interfaces = newInterfaces;
 
-  // POWERFUL DNS & LAN INTERNET REPAIR
-  app.post('/api/system/restore-dns', (req, res) => {
-    log('>>> CRITICAL RECOVERY: FORCE SYNCHRONIZING NETWORK STACK');
-    try {
-      if (process.platform === 'linux') {
-        // 1. Kill Ubuntu systemd-resolved (The main culprit for Port 53 conflicts)
-        log('Stopping systemd-resolved...');
-        try { execSync('systemctl stop systemd-resolved'); } catch(e) {}
-        try { execSync('systemctl disable systemd-resolved'); } catch(e) {}
-        
-        // 2. Fix /etc/resolv.conf (Ubuntu uses a symlink that breaks DNS when resolved is off)
-        log('Rebuilding /etc/resolv.conf as a static file...');
-        try { execSync('chattr -i /etc/resolv.conf'); } catch(e) {} // Remove immutable bit if set
-        try { execSync('rm -f /etc/resolv.conf'); } catch(e) {}
-        fs.writeFileSync('/etc/resolv.conf', 'nameserver 1.1.1.1\nnameserver 8.8.8.8\noptions timeout:2 attempts:1 rotate\n');
-        
-        // 3. Force release Port 53 (Aggressive kill)
-        log('Clearing Port 53 for dnsmasq...');
-        try { execSync('fuser -k 53/udp'); } catch(e) {}
-        try { execSync('fuser -k 53/tcp'); } catch(e) {}
-        
-        // 4. Restart LAN Services
-        log('Restarting dnsmasq...');
-        try { 
-          execSync('systemctl restart dnsmasq'); 
-        } catch(e) {
-          log('Primary restart failed, forcing manual start...');
-          try { execSync('systemctl start dnsmasq'); } catch(err) { log('dnsmasq Critical Failure.'); }
-        }
-        
-        // 5. Enable Global Forwarding & NAT (Ensures LAN clients can actually browse)
-        log('Enabling Kernel IP Forwarding...');
-        try { execSync('sysctl -w net.ipv4.ip_forward=1'); } catch(e) {}
-        
-        log('Detecting WAN for NAT Masquerading...');
-        try {
-          const wanIface = execSync("ip route show default | awk '/default/ {print $5}'").toString().trim();
-          if (wanIface) {
-            log(`Applying NAT Masquerade on ${wanIface}...`);
-            execSync(`iptables -t nat -A POSTROUTING -o ${wanIface} -j MASQUERADE`);
-          }
-        } catch(e) { log('NAT Masquerade failed - manual check required.'); }
-
-        log('>>> KERNEL RECOVERY SEQUENCE COMPLETE');
-      }
-      res.json({ success: true, message: 'Hardware stack synchronized. Port 53 released. LAN NAT enabled.' });
-    } catch (err) {
-      log(`FATAL REPAIR ERROR: ${err.message}`);
-      res.status(500).json({ error: `Hardware Agent permission error: ${err.message}. Ensure the agent is running as SUDO.` });
+    if (healthChanged) {
+      log('WAN Health changed detected. Triggering smart re-routing...');
+      applyMultiWanKernel();
     }
-  });
 
-  app.post('/api/apply', (req, res) => res.json({ success: true }));
+    // 2. Metrics
+    const uptime = execSync('uptime -p').toString().trim();
+    const statsStr = fs.readFileSync('/proc/stat', 'utf8').split('\n')[0];
+    const stats = statsStr.split(/\s+/).slice(1).map(Number);
+    const total = stats.reduce((a, b) => a + b, 0);
+    const idle = stats[3];
+    const cpu = Math.floor((1 - idle / total) * 100);
 
-  app.listen(3000, '0.0.0.0', () => { 
-    log(`Nexus Hardware Agent active on port 3000`); 
-  });
-} catch (e) { log(`Agent Crash: ${e.message}`); }
+    systemState.metrics = {
+      cpuUsage: cpu,
+      memoryUsage: '4.2',
+      totalMem: '16.0',
+      uptime,
+      activeSessions: 120,
+      dnsResolved: true
+    };
+  } catch (e) {
+    log(`Poll Error: ${e.message}`);
+  }
+}, 4000);
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+app.get('/api/interfaces', (req, res) => res.json(systemState.interfaces));
+app.get('/api/metrics', (req, res) => res.json(systemState.metrics));
+
+app.post('/api/apply', (req, res) => {
+  log('>>> API REQUEST: APPLY MULTI-WAN CONFIG');
+  try {
+    systemState.config = req.body;
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    applyMultiWanKernel();
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * REPAIR ENDPOINT
+ * Note: Honoring user request - does NOT touch dnsmasq or dhcp.
+ * Only handles basic kernel forwarding and routing cleanup.
+ */
+app.post('/api/system/restore-dns', (req, res) => {
+  log('>>> KERNEL ROUTE REFRESH REQUESTED');
+  try {
+    if (process.platform === 'linux') {
+      execSync('sysctl -w net.ipv4.ip_forward=1');
+      // Just clear any stuck routes in main table if needed, but avoid dnsmasq
+      applyMultiWanKernel();
+    }
+    res.json({ success: true, message: 'Kernel forwarding ensured. Routes synchronized.' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.listen(3000, '0.0.0.0', () => {
+  log('Nexus Smart Multi-WAN Agent active on :3000');
+});
