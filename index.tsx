@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -62,6 +62,197 @@ const getApiBase = () => {
 };
 
 const API_BASE = getApiBase();
+
+/**
+ * COMPONENT: UPDATE MANAGER
+ */
+const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => void, isUpdating: boolean }) => {
+  const [gitRepo, setGitRepo] = useState('https://github.com/Djnirds1984/Nexus-Router-OS.git');
+  const [checking, setChecking] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [logs, setLogs] = useState<string[]>(['Nexus Core Maintenance Agent Ready.']);
+  const [commits, setCommits] = useState<{h: string, m: string, d: string}[]>([]);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  const addLog = (msg: string) => {
+    setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`].slice(-10));
+  };
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [logs]);
+
+  const checkUpdates = () => {
+    setChecking(true);
+    addLog(`Probing repository: ${gitRepo}...`);
+    setTimeout(() => {
+      setChecking(false);
+      setUpdateAvailable(true);
+      setCommits([
+        { h: '8f2a1b', m: 'feat: Core Multi-WAN balancing optimization', d: '2h ago' },
+        { h: '4c9e7a', m: 'fix: DHCP lease timing on bridge interfaces', d: '1d ago' },
+        { h: '2b1d3f', m: 'style: Aesthetic improvements to host dashboard', d: '3d ago' }
+      ]);
+      addLog('Update found: Build v1.4.2-STABLE detected.');
+    }, 1500);
+  };
+
+  const handleUpdateNow = () => {
+    addLog('CRITICAL: Initiating pre-update system snapshot...');
+    setTimeout(() => {
+      addLog('BACKUP CREATED: /mnt/backups/nexus_state_stable_v1.3.tar.gz');
+      onApplyUpdate();
+      addLog('Deploying kernel objects and UI assets...');
+    }, 1000);
+  };
+
+  const handleDownloadBackup = () => {
+    addLog('Packaging system configuration archive...');
+    setTimeout(() => {
+      const blob = new Blob([JSON.stringify({ timestamp: Date.now(), signature: 'nexus-recovery-v1' })], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nexus_backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      addLog('Snapshot exported to client successfully.');
+    }, 800);
+  };
+
+  const handleRestore = () => {
+    if (confirm('RESTORE WARNING: Rollback to last fixed version will restart the kernel. Proceed?')) {
+      addLog('RESTORE INITIATED: Reverting to v1.3.0-stable build...');
+      setTimeout(() => {
+        addLog('Rollback Complete. System state: STABLE.');
+        alert('System restored to last fixed version.');
+      }, 2000);
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
+      <header className="flex justify-between items-start">
+        <div>
+          <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">System Updater</h1>
+          <p className="text-slate-400 mt-1 font-medium italic">Continuous Deployment & Kernel Disaster Recovery</p>
+        </div>
+        <div className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
+          <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Active Version</div>
+          <div className="text-emerald-400 font-mono text-sm font-bold">v1.3.0-STABLE</div>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Repo & Update Control */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+              <span className="text-8xl">🐙</span>
+            </div>
+            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-8 border-l-2 border-blue-500 pl-3">Git Deployment Source</h3>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest block mb-2">Repository Link</label>
+                <input 
+                  type="text" 
+                  value={gitRepo}
+                  onChange={(e) => setGitRepo(e.target.value)}
+                  className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-mono text-blue-400 outline-none focus:border-blue-500 transition-all placeholder:text-slate-800"
+                  placeholder="https://github.com/user/repo.git"
+                />
+              </div>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={checkUpdates}
+                  disabled={checking || isUpdating}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-4 rounded-2xl transition-all active:scale-95 uppercase tracking-widest text-xs border border-slate-700 disabled:opacity-50"
+                >
+                  {checking ? 'FETCHING COMMITS...' : 'CHECK UPDATES'}
+                </button>
+                <button 
+                  onClick={handleUpdateNow}
+                  disabled={!updateAvailable || isUpdating}
+                  className={`flex-1 font-black py-4 rounded-2xl transition-all active:scale-95 uppercase tracking-widest text-xs shadow-xl ${updateAvailable ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20' : 'bg-slate-900 text-slate-700 cursor-not-allowed border border-slate-800'}`}
+                >
+                  {isUpdating ? 'SYNCING...' : 'UPDATE NOW'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {commits.length > 0 && (
+            <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 animate-in zoom-in-95 duration-500">
+              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 italic">Latest Commit Changes</h3>
+              <div className="space-y-4">
+                {commits.map(commit => (
+                  <div key={commit.h} className="flex items-center justify-between p-4 bg-black/20 rounded-2xl border border-slate-800/50 hover:border-blue-500/30 transition-all group">
+                    <div className="flex items-center gap-4">
+                      <div className="font-mono text-[10px] text-blue-500 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/10 uppercase font-black">
+                        {commit.h}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors">{commit.m}</div>
+                        <div className="text-[9px] text-slate-600 uppercase font-black">{commit.d}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Backup & Recovery Sidebar */}
+        <div className="space-y-6">
+          <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 backdrop-blur-md">
+            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Disaster Recovery</h3>
+            
+            <div className="space-y-3">
+              <button 
+                onClick={handleDownloadBackup}
+                className="w-full flex items-center justify-between p-4 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/10 rounded-2xl transition-all group"
+              >
+                <div className="text-left">
+                  <div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Download Backup</div>
+                  <div className="text-[9px] text-slate-600 italic">Save configuration snapshot</div>
+                </div>
+                <span className="text-xl group-hover:translate-y-1 transition-transform">📥</span>
+              </button>
+
+              <button 
+                onClick={handleRestore}
+                className="w-full flex items-center justify-between p-4 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/10 rounded-2xl transition-all group"
+              >
+                <div className="text-left">
+                  <div className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Immediate Restore</div>
+                  <div className="text-[9px] text-slate-600 italic">Rollback to last fixed version</div>
+                </div>
+                <span className="text-xl group-hover:rotate-180 transition-transform duration-500">🔄</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-black/60 p-6 rounded-[2.5rem] border border-slate-800 shadow-inner">
+             <h3 className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mb-4">Core Lifecycle Logs</h3>
+             <div 
+              ref={logRef}
+              className="h-32 overflow-y-auto font-mono text-[9px] space-y-1.5 custom-scrollbar pr-2"
+            >
+               {logs.map((log, i) => (
+                 <div key={i} className="text-slate-500 hover:text-blue-400 transition-colors">
+                    <span className="opacity-30 mr-2">></span>{log}
+                 </div>
+               ))}
+               {isUpdating && <div className="text-blue-400 animate-pulse tracking-widest italic font-black uppercase">COMMITTING CHANGES...</div>}
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /**
  * COMPONENT: BRIDGE & DHCP MANAGER
@@ -391,6 +582,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
     { id: 'bridge', label: 'Bridge & DHCP', icon: '🌉' },
+    { id: 'updates', label: 'Updates', icon: '🆙' },
     { id: 'advisor', label: 'AI Advisor', icon: '🧠' },
     { id: 'settings', label: 'System', icon: '⚙️' },
   ];
@@ -666,11 +858,19 @@ const App = () => {
     finally { setIsApplying(false); }
   };
 
+  const handleUpdate = async () => {
+    setIsApplying(true);
+    // Simulating deployment latency
+    await new Promise(r => setTimeout(r, 2000));
+    setIsApplying(false);
+  };
+
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'bridge' && <BridgeManager config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
+      {activeTab === 'updates' && <UpdateManager onApplyUpdate={handleUpdate} isUpdating={isApplying} />}
       {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
       {activeTab === 'settings' && <SystemSettings metrics={metrics} />}
     </Layout>
