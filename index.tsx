@@ -148,6 +148,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
       <header className="flex justify-between items-end mb-8">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">System Dashboard</h1>
+          <p className="text-slate-400 mt-1">Ubuntu x64 Router Runtime • Stable Version 1.3.0</p>
           <p className="text-slate-500 text-sm mt-1 uppercase tracking-wider font-mono">Uptime: {metrics.uptime || 'Reading Hardware...'}</p>
         </div>
         <div className="text-right">
@@ -329,51 +330,57 @@ const MultiWanManager = ({ config, setConfig, onApply, liveInterfaces, isSaving 
         </div>
 
         <div className="space-y-6 mb-10">
-          {config.wanInterfaces.map((wan: any) => {
-            const live = liveInterfaces.find((l: any) => l.interfaceName === wan.interfaceName) || wan;
-            return (
-              <div key={wan.id} className="bg-slate-950/80 p-6 rounded-2xl border border-slate-800 transition-all hover:border-slate-700">
-                <div className="flex justify-between items-center mb-6">
-                   <div>
-                      <label className="text-[10px] text-slate-500 font-black uppercase mb-1 block">Alias / Label</label>
-                      <input type="text" value={wan.name} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, name: e.target.value} : w)})} className="bg-transparent border-b border-slate-800 focus:border-blue-500 outline-none text-xl font-bold text-white w-64" />
-                   </div>
-                   <div className="flex items-center gap-3">
-                      <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase border ${live.status === WanStatus.UP ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>{live.status}</span>
-                      <span className="text-[10px] bg-slate-900 px-3 py-1 rounded border border-slate-800 text-blue-400 font-mono">{live.interfaceName}</span>
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 font-mono text-[10px] mb-6 text-slate-400">
-                  <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800"><span className="text-slate-600">IP:</span> {live.ipAddress}</div>
-                  <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800"><span className="text-slate-600">GW:</span> {live.gateway}</div>
-                  <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800 text-emerald-500"><span className="text-slate-600">RX:</span> {live.throughput?.rx.toFixed(1)}M</div>
-                  <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800 text-blue-500"><span className="text-slate-600">TX:</span> {live.throughput?.tx.toFixed(1)}M</div>
-                </div>
-                {config.mode === RouterMode.LOAD_BALANCER ? (
-                  <div className="space-y-2 bg-blue-600/5 p-4 rounded-xl border border-blue-500/10">
-                    <div className="flex justify-between">
-                       <div className="text-[10px] text-blue-500 font-black uppercase">Traffic Weight</div>
-                       <div className="text-[10px] text-blue-300 font-mono font-bold">{wan.weight || 1}% Share</div>
+          {config.wanInterfaces.length === 0 ? (
+            <div className="p-12 border-2 border-dashed border-slate-800 rounded-3xl text-center text-slate-600 font-mono text-sm">
+              No WAN-eligible interfaces detected. Ensure bridges are configured and at least one physical port is unassigned.
+            </div>
+          ) : (
+            config.wanInterfaces.map((wan: any) => {
+              const live = liveInterfaces.find((l: any) => l.interfaceName === wan.interfaceName) || wan;
+              return (
+                <div key={wan.id} className="bg-slate-950/80 p-6 rounded-2xl border border-slate-800 transition-all hover:border-slate-700">
+                  <div className="flex justify-between items-center mb-6">
+                     <div>
+                        <label className="text-[10px] text-slate-500 font-black uppercase mb-1 block">Alias / Label</label>
+                        <input type="text" value={wan.name} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, name: e.target.value} : w)})} className="bg-transparent border-b border-slate-800 focus:border-blue-500 outline-none text-xl font-bold text-white w-64" />
+                     </div>
+                     <div className="flex items-center gap-3">
+                        <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase border ${live.status === WanStatus.UP ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>{live.status}</span>
+                        <span className="text-[10px] bg-slate-900 px-3 py-1 rounded border border-slate-800 text-blue-400 font-mono">{live.interfaceName}</span>
+                     </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 font-mono text-[10px] mb-6 text-slate-400">
+                    <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800"><span className="text-slate-600">IP:</span> {live.ipAddress}</div>
+                    <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800"><span className="text-slate-600">GW:</span> {live.gateway}</div>
+                    <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800 text-emerald-500"><span className="text-slate-600">RX:</span> {live.throughput?.rx.toFixed(1)}M</div>
+                    <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800 text-blue-500"><span className="text-slate-600">TX:</span> {live.throughput?.tx.toFixed(1)}M</div>
+                  </div>
+                  {config.mode === RouterMode.LOAD_BALANCER ? (
+                    <div className="space-y-2 bg-blue-600/5 p-4 rounded-xl border border-blue-500/10">
+                      <div className="flex justify-between">
+                         <div className="text-[10px] text-blue-500 font-black uppercase">Traffic Weight</div>
+                         <div className="text-[10px] text-blue-300 font-mono font-bold">{wan.weight || 1}% Share</div>
+                      </div>
+                      <input type="range" min="1" max="100" value={wan.weight || 1} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, weight: parseInt(e.target.value)} : w)})} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                     </div>
-                    <input type="range" min="1" max="100" value={wan.weight || 1} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, weight: parseInt(e.target.value)} : w)})} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
-                  </div>
-                ) : (
-                  <div className="space-y-2 bg-purple-600/5 p-4 rounded-xl border border-purple-500/10">
-                     <label className="text-[10px] text-purple-500 font-black uppercase mb-1 block">Failover Priority</label>
-                     <select value={wan.priority || 1} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, priority: parseInt(e.target.value)} : w)})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 outline-none hover:border-slate-700 transition-all">
-                        <option value={1}>PRIMARY (P1)</option>
-                        <option value={2}>BACKUP (P2)</option>
-                        <option value={3}>COLD STANDBY (P3)</option>
-                     </select>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  ) : (
+                    <div className="space-y-2 bg-purple-600/5 p-4 rounded-xl border border-purple-500/10">
+                       <label className="text-[10px] text-purple-500 font-black uppercase mb-1 block">Failover Priority</label>
+                       <select value={wan.priority || 1} onChange={(e) => setConfig({...config, wanInterfaces: config.wanInterfaces.map((w: any) => w.id === wan.id ? {...w, priority: parseInt(e.target.value)} : w)})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-300 outline-none hover:border-slate-700 transition-all">
+                          <option value={1}>PRIMARY (P1)</option>
+                          <option value={2}>BACKUP (P2)</option>
+                          <option value={3}>COLD STANDBY (P3)</option>
+                       </select>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
         <button 
           onClick={onApply} 
-          disabled={isSaving}
+          disabled={isSaving || config.wanInterfaces.length === 0}
           className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white py-5 rounded-2xl font-bold uppercase tracking-widest shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3"
         >
           {isSaving ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> SYNCHRONIZING...</> : 'SAVE MULTI-WAN TOPOLOGY'}
@@ -549,11 +556,18 @@ const App = () => {
         
         // Initial state synchronization from server truth
         if (!isInitialized) {
-          // Preserve custom alias/weights from server (which should be merging these now)
           setBridges(sBridges || []);
+          
+          // Filter WAN-eligible interfaces: Not a bridge, and not a member of a bridge
+          const bridgeMemberNames = (sBridges || []).flatMap((b:any) => b.interfaces);
+          const wanOnlyIfaces = ifaces.filter((i:any) => 
+            !i.interfaceName.startsWith('br') && 
+            !bridgeMemberNames.includes(i.interfaceName)
+          );
+
           setWanConfig({ 
              mode: RouterMode.LOAD_BALANCER, 
-             wanInterfaces: ifaces.map((i:any) => ({
+             wanInterfaces: wanOnlyIfaces.map((i:any) => ({
                 id: i.id,
                 name: i.name,
                 interfaceName: i.interfaceName,
@@ -570,6 +584,45 @@ const App = () => {
     } catch (e) { setIsLive(false); }
   }, [isInitialized]);
 
+  // Effect to automatically synchronize Multi-WAN interfaces when bridges change
+  useEffect(() => {
+    if (!isInitialized || interfaces.length === 0) return;
+    
+    const assignedToBridge = new Set(bridges.flatMap(b => b.interfaces));
+    
+    setWanConfig(prev => {
+      // Filter out interfaces that are now bridge members or are bridge themselves
+      const stillEligible = prev.wanInterfaces.filter(wan => 
+        !assignedToBridge.has(wan.interfaceName) && 
+        !wan.interfaceName.startsWith('br') &&
+        interfaces.some(i => i.interfaceName === wan.interfaceName)
+      );
+
+      // Add newly detected unassigned interfaces
+      const currentNames = new Set(stillEligible.map(w => w.interfaceName));
+      const newEligible = interfaces.filter(i => 
+        !assignedToBridge.has(i.interfaceName) && 
+        !i.interfaceName.startsWith('br') &&
+        !currentNames.has(i.interfaceName)
+      ).map(i => ({
+        id: i.id,
+        name: i.name,
+        interfaceName: i.interfaceName,
+        weight: i.weight || 1,
+        priority: i.priority || 1
+      }));
+
+      if (newEligible.length === 0 && stillEligible.length === prev.wanInterfaces.length) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        wanInterfaces: [...stillEligible, ...newEligible]
+      };
+    });
+  }, [interfaces, bridges, isInitialized]);
+
   useEffect(() => {
     refreshData();
     const interval = setInterval(refreshData, 1500); 
@@ -578,7 +631,7 @@ const App = () => {
 
   const commitWan = async () => {
     if (wanConfig.wanInterfaces.length === 0) {
-       alert("Safety Block: Cannot apply an empty WAN configuration. Ensure interfaces are detected.");
+       alert("Safety Block: Cannot apply an empty WAN configuration. Ensure physical interfaces are unassigned from bridges.");
        return;
     }
     setIsSaving(true);
@@ -591,7 +644,6 @@ const App = () => {
       const data = await res.json();
       if (data.success) {
          alert('Success: Multi-WAN Routing Synchronized.');
-         setIsInitialized(false); // Trigger re-sync from server state
       } else alert(`Kernel Error: ${data.error || 'Check server logs.'}`);
     } catch(e) { alert('Network Error: Could not reach Nexus Agent.'); }
     setIsSaving(false);
@@ -608,7 +660,6 @@ const App = () => {
       const data = await res.json();
       if (data.success) {
          alert('Success: Bridge Topography Synchronized.');
-         setIsInitialized(false); // Re-trigger initialization to match server
       } else alert(`Kernel Error: ${data.error || 'Check bridge configuration.'}`);
     } catch(e) { alert('Network Error: Could not reach Nexus Agent.'); }
     setIsSaving(false);
