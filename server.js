@@ -199,6 +199,45 @@ app.get('/api/interfaces', (req, res) => res.json(systemState.interfaces));
 app.get('/api/metrics', (req, res) => res.json(systemState.metrics));
 app.get('/api/config', (req, res) => res.json(systemState.config));
 
+function parseDhcpConfig() {
+  try {
+    const path = fs.existsSync('/etc/dnsmasq.d/nexus-dhcp.conf')
+      ? '/etc/dnsmasq.d/nexus-dhcp.conf'
+      : (fs.existsSync('/etc/dnsmasq.conf') ? '/etc/dnsmasq.conf' : null);
+    if (!path) return { interfaceName: '', start: '', end: '', leaseTime: '', dnsServers: [], dhcpOnly: false, confPath: '' };
+    const txt = fs.readFileSync(path, 'utf8');
+    const iface = (txt.match(/^interface=(.+)$/m) || [])[1] || '';
+    const range = (txt.match(/^dhcp-range=([^\n]+)$/m) || [])[1] || '';
+    const dns = (txt.match(/^dhcp-option=option:dns-server,([^\n]+)$/m) || [])[1] || '';
+    const parts = range ? range.split(',') : [];
+    const start = parts[0] || '';
+    const end = parts[1] || '';
+    const lease = parts[3] || '';
+    const dhcpOnly = /port=0/.test(txt);
+    const dnsServers = dns ? dns.split(',').map(s => s.trim()) : [];
+    return { interfaceName: iface, start, end, leaseTime: lease, dnsServers, dhcpOnly, confPath: path };
+  } catch (e) { return { interfaceName: '', start: '', end: '', leaseTime: '', dnsServers: [], dhcpOnly: false, confPath: '' }; }
+}
+
+function getDhcpStatus() {
+  let running = false;
+  try { running = execSync('systemctl is-active dnsmasq').toString().trim() === 'active'; } catch (e) {}
+  const parsed = parseDhcpConfig();
+  let gateway = '';
+  if (parsed.interfaceName) {
+    try {
+      const ipj = JSON.parse(execSync(`ip -j addr show ${parsed.interfaceName}`).toString());
+      const addr = ((ipj[0] || {}).addr_info || []).find(a => a.family === 'inet');
+      gateway = (addr || {}).local || '';
+    } catch (e) {}
+  }
+  return { running, ...parsed, gateway };
+}
+
+app.get('/api/dhcp/status', (req, res) => {
+  res.json(getDhcpStatus());
+});
+
 function applyDhcp(dhcp) {
   if (process.platform !== 'linux') return;
   try {

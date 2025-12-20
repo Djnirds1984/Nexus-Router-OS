@@ -267,6 +267,22 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
  * COMPONENT: BRIDGE & DHCP MANAGER
  */
 const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterfaces }: { config: NetworkConfig, setConfig: any, onApply: () => void, isApplying: boolean, availableInterfaces: WanInterface[] }) => {
+  const [dhcpStatus, setDhcpStatus] = useState<any>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/dhcp/status`);
+        if (res.ok) {
+          const st = await res.json();
+          setDhcpStatus(st);
+          if (st.running && st.interfaceName) {
+            setConfig({ ...config, dhcp: { interfaceName: st.interfaceName, enabled: true, start: st.start || '', end: st.end || '', leaseTime: st.leaseTime || '24h' } });
+          }
+        }
+      } catch (e) {}
+    })();
+  }, []);
+
   const selectedIface = config.dhcp?.interfaceName || (availableInterfaces[0]?.interfaceName || '');
   const dhcp = config.dhcp || { interfaceName: selectedIface, enabled: false, start: '', end: '', leaseTime: '24h' };
   const setDhcp = (updates: Partial<DhcpConfig>) => {
@@ -281,6 +297,11 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterf
         <div>
           <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">DHCP Server</h1>
           <p className="text-slate-400 mt-1 font-medium italic">Assign IP addresses on a selected physical interface</p>
+          {dhcpStatus && (
+            <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${dhcpStatus.running ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>
+              {dhcpStatus.running ? `Running on ${dhcpStatus.interfaceName}` : 'No DHCP server detected'}
+            </div>
+          )}
         </div>
         <button 
           onClick={onApply} 
@@ -297,7 +318,8 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterf
           <select 
             value={dhcp.interfaceName}
             onChange={(e) => setDhcp({ interfaceName: e.target.value })}
-            className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-3 text-xs font-bold text-slate-300 outline-none"
+            disabled={dhcpStatus?.running}
+            className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-3 text-xs font-bold text-slate-300 outline-none disabled:opacity-50"
           >
             {availableInterfaces.map(iface => (
               <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName}</option>
