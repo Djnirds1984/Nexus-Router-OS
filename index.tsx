@@ -433,6 +433,19 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
     }));
   };
 
+  const dhcpIface = config?.dhcp?.interfaceName;
+  const displayWanInterfaces: WanInterface[] = (config.wanInterfaces || []).filter((w: WanInterface) => w.interfaceName !== dhcpIface);
+  const autoLabelWans = () => {
+    let n = 1;
+    setConfig((prev: NetworkConfig) => ({
+      ...prev,
+      wanInterfaces: prev.wanInterfaces.map((w: WanInterface) => {
+        if (w.interfaceName === dhcpIface) return w;
+        return { ...w, name: `WAN${n++}` };
+      })
+    }));
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       <header className="flex justify-between items-start">
@@ -440,7 +453,10 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
           <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Multi-WAN Orchestrator</h1>
           <p className="text-slate-400 mt-1 font-medium italic">Smart Load-Balancing & Automated Failover Fabric</p>
         </div>
-        <button onClick={onApply} disabled={isApplying} className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-10 rounded-2xl shadow-xl shadow-blue-600/20 disabled:opacity-50 transition-all active:scale-95 uppercase tracking-widest text-xs">{isApplying ? 'SYNCING KERNEL...' : 'COMMIT TO KERNEL'}</button>
+        <div className="flex items-center gap-3">
+          <button onClick={autoLabelWans} className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-3 px-6 rounded-2xl border border-slate-700 text-[10px] uppercase tracking-[0.2em] transition-all">Auto-Number Ports</button>
+          <button onClick={onApply} disabled={isApplying} className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-10 rounded-2xl shadow-xl shadow-blue-600/20 disabled:opacity-50 transition-all active:scale-95 uppercase tracking-widest text-xs">{isApplying ? 'SYNCING KERNEL...' : 'COMMIT TO KERNEL'}</button>
+        </div>
       </header>
 
       <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-8 backdrop-blur-md">
@@ -455,12 +471,18 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {config.wanInterfaces.map((wan: WanInterface) => (
+        {displayWanInterfaces.map((wan: WanInterface) => (
           <div key={wan.id} className={`p-8 rounded-[2.5rem] border transition-all relative overflow-hidden backdrop-blur-md ${wan.internetHealth === 'HEALTHY' ? 'bg-slate-900/40 border-slate-800 hover:border-blue-500/20' : 'bg-rose-500/5 border-rose-500/20'}`}>
             <div className="flex justify-between items-start mb-8 relative z-10">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-xl font-black text-white tracking-tight uppercase italic">{wan.interfaceName.toUpperCase()}</h3>
+                  <input 
+                    type="text"
+                    value={wan.name || `WAN-${wan.interfaceName.toUpperCase()}`}
+                    onChange={(e) => updateInterface(wan.id, { name: e.target.value })}
+                    className="bg-black/40 border border-slate-800 rounded-xl px-3 py-2 text-sm font-bold text-white outline-none w-40"
+                  />
+                  <span className="text-xs text-slate-500 font-black uppercase tracking-widest">{wan.interfaceName.toUpperCase()}</span>
                   <code className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-1 rounded font-mono border border-blue-500/10 font-bold">{wan.ipAddress}</code>
                 </div>
                 <div className="flex items-center gap-2">
@@ -743,7 +765,8 @@ const App = () => {
         }
 
         if (currentConfig.wanInterfaces.length === 0 && ifaces.length > 0) {
-          setCurrentConfig(prev => ({ ...prev, wanInterfaces: ifaces }));
+          const dhcpIface = (savedConfig?.dhcp?.interfaceName) || currentConfig.dhcp?.interfaceName || '';
+          setCurrentConfig(prev => ({ ...prev, wanInterfaces: ifaces.filter((i: any) => i.interfaceName !== dhcpIface) }));
         }
         setIsLive(true);
       } else {
