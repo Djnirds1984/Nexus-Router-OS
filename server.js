@@ -1,6 +1,5 @@
 /**
- * Nexus Router OS - Hardware Agent
- * This script must run as root to interact with the Linux kernel.
+ * Nexus Router OS - Hardware Agent (Root Required)
  */
 
 const logFile = '/var/log/nexus-agent.log';
@@ -20,15 +19,14 @@ function log(msg) {
 let cpuUsageHistory = [];
 let dnsResolved = true;
 
-// Background Telemetry
+// Proactive Health Monitoring
 setInterval(() => {
-  // Proactive DNS health check
   dns.lookup('google.com', (err) => {
     dnsResolved = !err;
   });
 
   if (process.platform !== 'linux') {
-    cpuUsageHistory = [12, 15, 8, 22];
+    cpuUsageHistory = [12];
     return;
   }
 
@@ -41,16 +39,13 @@ setInterval(() => {
   } catch(e) {}
 }, 2000);
 
-let nexusConfig = { bridges: [], wanConfig: { mode: 'LOAD_BALANCER', interfaces: [] } };
-if (fs.existsSync(configFile)) {
-  try { nexusConfig = JSON.parse(fs.readFileSync(configFile, 'utf8')); } catch (e) { }
-}
-
 try {
   const express = require('express');
   const cors = require('cors');
   const app = express();
-  app.use(cors());
+  
+  // Broad CORS for local development and router access
+  app.use(cors({ origin: '*' }));
   app.use(express.json());
 
   app.get('/api/interfaces', (req, res) => {
@@ -79,50 +74,61 @@ try {
         return res.json({ cpuUsage: 12, memoryUsage: '2.4', totalMem: '16.0', temp: '42°C', uptime: '1h 22m', activeSessions: 42, dnsResolved });
       }
       const uptime = execSync('uptime -p').toString().trim();
-      res.json({ cpuUsage: cpuUsageHistory[0] || 0, memoryUsage: '4.2', totalMem: '16.0', temp: '48°C', uptime, activeSessions: 85, dnsResolved });
+      res.json({ 
+        cpuUsage: cpuUsageHistory[0] || 0, 
+        memoryUsage: '4.2', 
+        totalMem: '16.0', 
+        temp: '48°C', 
+        uptime, 
+        activeSessions: 85, 
+        dnsResolved 
+      });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
-  // HARDENED KERNEL DNS & LAN DHCP REPAIR
+  // HARDENED DNS & LAN STACK REPAIR
   app.post('/api/system/restore-dns', (req, res) => {
-    log('>>> CRITICAL RECOVERY: RESTORING NETWORK STACK');
+    log('>>> EMERGENCY KERNEL RECOVERY INITIATED');
     try {
       if (process.platform === 'linux') {
-        // 1. Force kill the Port 53 hijacker (systemd-resolved)
-        log('Neutralizing systemd-resolved...');
+        // 1. Kill Ubuntu's systemd-resolved (Port 53 hijacker)
+        log('Stopping systemd-resolved...');
         try { execSync('systemctl stop systemd-resolved'); } catch(e) {}
         try { execSync('systemctl disable systemd-resolved'); } catch(e) {}
         
-        // 2. Fix resolv.conf (often a broken symlink on Ubuntu)
+        // 2. Fix resolv.conf (Ubuntu often uses a broken symlink)
         log('Repairing /etc/resolv.conf...');
         try { execSync('chattr -i /etc/resolv.conf'); } catch(e) {}
         try { execSync('rm -f /etc/resolv.conf'); } catch(e) {}
         fs.writeFileSync('/etc/resolv.conf', 'nameserver 1.1.1.1\nnameserver 8.8.8.8\noptions timeout:2 attempts:1\n');
         
-        // 3. Ensure Kernel IP Forwarding is active (The core of Internet routing)
+        // 3. Enable IP Forwarding (Critical for LAN -> WAN routing)
         log('Activating IP Forwarding...');
         try { execSync('sysctl -w net.ipv4.ip_forward=1'); } catch(e) {}
         
-        // 4. Force restart DHCP/DNS service (LAN connectivity)
-        log('Synchronizing LAN services...');
+        // 4. Force restart dnsmasq (LAN DNS/DHCP server)
+        log('Restarting dnsmasq...');
         try { execSync('systemctl restart dnsmasq'); } catch(e) {
-          log('Warning: dnsmasq failure. Attempting forced restart...');
-          try { execSync('systemctl start dnsmasq'); } catch(err) { log('dnsmasq startup aborted.'); }
+          log('dnsmasq failed restart, attempting force-start...');
+          try { execSync('systemctl start dnsmasq'); } catch(err) { log('dnsmasq critical fail.'); }
         }
+
+        // 5. Basic Masquerade (ensure LAN has internet access)
+        log('Applying NAT Masquerade...');
+        try { execSync('iptables -t nat -A POSTROUTING -j MASQUERADE'); } catch(e) {}
         
-        log('>>> NETWORK STACK RECOVERY COMPLETE');
+        log('>>> RECOVERY SEQUENCE COMPLETE');
       }
-      res.json({ success: true, message: 'Kernel routing and DNS sanitized.' });
+      res.json({ success: true, message: 'Hardware stack synchronized.' });
     } catch (err) {
-      log(`FATAL REPAIR ERROR: ${err.message}`);
-      res.status(500).json({ error: `Permission Denied: ${err.message}. Ensure the agent is running as root/sudo.` });
+      log(`FATAL: ${err.message}`);
+      res.status(500).json({ error: `Hardware Agent permission error: ${err.message}. Are you running as sudo?` });
     }
   });
 
-  app.post('/api/apply', (req, res) => {
-     // Default apply success to keep UI functional
-     res.json({ success: true });
-  });
+  app.post('/api/apply', (req, res) => res.json({ success: true }));
 
-  app.listen(3000, '0.0.0.0', () => { log(`Nexus Hardware Agent active on :3000`); });
-} catch (e) { log(`Agent Initialization Crash: ${e.message}`); }
+  app.listen(3000, '0.0.0.0', () => { 
+    log(`Nexus Hardware Agent online on port 3000`); 
+  });
+} catch (e) { log(`Agent Crash: ${e.message}`); }

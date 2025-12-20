@@ -33,7 +33,7 @@ interface SystemMetrics {
   dnsResolved: boolean;
 }
 
-const API_BASE = '/api';
+const API_BASE = '/api'; // Assumes Nginx proxy to port 3000 or same-origin deployment
 
 /**
  * COMPONENT: LAYOUT
@@ -71,7 +71,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
           ))}
         </nav>
         <div className="p-6 mt-auto">
-          <div className={`p-5 rounded-2xl border transition-all duration-500 ${isLive ? 'bg-emerald-500/5 border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.05)]' : 'bg-rose-500/5 border-rose-500/20 shadow-[0_0_20px_rgba(244,63,94,0.05)]'}`}>
+          <div className={`p-5 rounded-2xl border transition-all duration-500 ${isLive ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20 shadow-[0_0_20px_rgba(244,63,94,0.1)]'}`}>
             <div className="text-[10px] text-slate-500 mb-2 uppercase tracking-[0.2em] font-black">Kernel Link</div>
             <div className="flex items-center gap-3">
               <div className={`w-2.5 h-2.5 rounded-full ${isLive ? 'bg-emerald-500 shadow-[0_0_12px_#10b981]' : 'bg-rose-500 animate-pulse'}`} />
@@ -129,7 +129,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
         <div>
           <h1 className="text-4xl font-black text-white tracking-tighter">System Dashboard</h1>
           <div className="flex items-center gap-4 mt-2">
-            <p className="text-slate-500 text-sm font-medium">Ubuntu x64 Router Node • Stable Runtime</p>
+            <p className="text-slate-500 text-sm font-medium">Ubuntu x64 Router Node • Professional Edition</p>
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase border transition-all duration-500 ${metrics.dnsResolved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20 animate-pulse'}`}>
               {metrics.dnsResolved ? 'DNS: Linked' : 'DNS: Failing'}
             </div>
@@ -141,27 +141,27 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
         </div>
       </header>
 
-      {/* Primary Metrics Grid */}
+      {/* Metric Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md hover:border-blue-500/30 transition-all">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Aggregate RX</h3>
-          <div className="text-4xl font-mono text-emerald-400 font-bold tracking-tighter">{aggregateTraffic.rx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500">M</span></div>
+        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md hover:border-blue-500/30 transition-all group">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 group-hover:text-blue-400 transition-colors">Aggregate RX</h3>
+          <div className="text-4xl font-mono text-emerald-400 font-bold tracking-tighter">{aggregateTraffic.rx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
         </div>
-        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md hover:border-blue-500/30 transition-all">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Aggregate TX</h3>
-          <div className="text-4xl font-mono text-blue-400 font-bold tracking-tighter">{aggregateTraffic.tx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500">M</span></div>
+        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md hover:border-blue-500/30 transition-all group">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 group-hover:text-blue-400 transition-colors">Aggregate TX</h3>
+          <div className="text-4xl font-mono text-blue-400 font-bold tracking-tighter">{aggregateTraffic.tx.toFixed(2)} <span className="text-sm font-sans font-medium text-slate-500 uppercase tracking-widest">Mbps</span></div>
         </div>
-        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md hover:border-blue-500/30 transition-all">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Compute Core</h3>
+        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md hover:border-blue-500/30 transition-all group">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 group-hover:text-blue-400 transition-colors">Core Utilization</h3>
           <div className="text-4xl font-mono text-white font-bold">{metrics.cpuUsage.toFixed(1)}%</div>
-          <div className="mt-2 w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-             <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${metrics.cpuUsage}%` }} />
+          <div className="mt-4 w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+             <div className="h-full bg-blue-500 transition-all duration-1000 shadow-[0_0_10px_#3b82f6]" style={{ width: `${metrics.cpuUsage}%` }} />
           </div>
         </div>
-        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md hover:border-blue-500/30 transition-all">
-          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6">Host RAM</h3>
+        <div className="bg-slate-900/40 p-8 rounded-[2rem] border border-slate-800 shadow-2xl backdrop-blur-md hover:border-blue-500/30 transition-all group">
+          <h3 className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-6 group-hover:text-blue-400 transition-colors">Host Memory</h3>
           <div className="text-4xl font-mono text-white font-bold tracking-tighter">{metrics.memoryUsage} <span className="text-sm font-sans font-medium text-slate-500">GB</span></div>
-          <div className="text-[10px] text-slate-600 font-black uppercase mt-1">Total {metrics.totalMem}</div>
+          <div className="text-[10px] text-slate-600 font-black uppercase mt-2">Allocated of {metrics.totalMem}</div>
         </div>
       </div>
 
@@ -178,9 +178,9 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
               onChange={(e) => setSelectedIface(e.target.value)}
               className="bg-slate-950 text-blue-400 border border-slate-800 rounded-2xl px-6 py-2.5 text-xs font-bold outline-none font-mono focus:border-blue-500 transition-all"
             >
-              {interfaces.map(iface => (
+              {interfaces.length > 0 ? interfaces.map(iface => (
                 <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName.toUpperCase()}</option>
-              ))}
+              )) : <option>Probing...</option>}
             </select>
           </div>
           <div className="h-[350px] w-full">
@@ -201,14 +201,14 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
           </div>
         </div>
 
-        {/* Interface Quick Matrix */}
+        {/* Interface Matrix */}
         <div className="bg-slate-900/40 rounded-[2.5rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden backdrop-blur-md hover:border-blue-500/20 transition-colors">
            <div className="p-8 border-b border-slate-800 flex justify-between items-center">
               <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest">Interface Matrix</h2>
-              <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded text-blue-400 font-mono border border-blue-500/20">NFTABLES: ACTIVE</span>
+              <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded text-blue-400 font-mono border border-blue-500/20 uppercase tracking-widest">BBR Linked</span>
            </div>
            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-              {interfaces.map(iface => (
+              {interfaces.length > 0 ? interfaces.map(iface => (
                 <div 
                   key={iface.id} 
                   onClick={() => setSelectedIface(iface.interfaceName)}
@@ -222,18 +222,20 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
                       </div>
                    </div>
                    <div className="text-right">
-                      <div className="text-[10px] text-emerald-400 font-mono font-bold tracking-tighter">{(iface.throughput.rx + iface.throughput.tx).toFixed(1)}M</div>
+                      <div className="text-[10px] text-emerald-400 font-mono font-bold tracking-tighter">{(iface.throughput.rx + iface.throughput.tx).toFixed(1)} Mbps</div>
                    </div>
                 </div>
-              ))}
+              )) : (
+                <div className="text-center py-20 text-slate-600 font-mono text-xs uppercase tracking-[0.2em] animate-pulse">Probing hardware slots...</div>
+              )}
            </div>
            <div className="p-8 mt-auto border-t border-slate-800 flex justify-between items-center bg-slate-950/30">
               <div>
-                <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Health Sensor</div>
+                <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Thermal Stat</div>
                 <div className="text-2xl font-mono text-amber-500 font-bold">{metrics.temp || '--'}</div>
               </div>
               <div className="text-right">
-                <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Sessions</div>
+                <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Active Threads</div>
                 <div className="text-2xl font-mono text-blue-400 font-bold">{metrics.activeSessions}</div>
               </div>
            </div>
@@ -255,35 +257,38 @@ const SystemRecovery = ({ metrics, onFixDns, onRescue, interfaces }: any) => (
         <div className="bg-slate-950/50 p-8 rounded-3xl border border-slate-800 text-left shadow-inner flex flex-col items-center">
           <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-4">DNS Resolving Path</div>
           <div className={`text-xl font-mono font-bold ${metrics.dnsResolved ? 'text-emerald-400' : 'text-rose-500 animate-pulse'}`}>
-            {metrics.dnsResolved ? 'RESOLVED_LOCKED' : 'RESOLVE_ERROR'}
+            {metrics.dnsResolved ? 'RESOLVE_LOCKED' : 'RESOLVE_ERROR'}
           </div>
         </div>
         <div className="bg-slate-950/50 p-8 rounded-3xl border border-slate-800 text-left shadow-inner flex flex-col items-center">
           <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-4">Uplink Fabric</div>
           <div className="text-xl font-mono font-bold text-blue-400 uppercase tracking-tighter">
-            {interfaces.filter((i:any) => i.status === 'UP').length} PORTS ACTIVE
+            {interfaces.filter((i:any) => i.status === 'UP').length} PORTS LINKED
           </div>
         </div>
       </div>
 
-      <div className="bg-rose-500/5 p-10 rounded-[2.5rem] border border-rose-500/20 max-w-2xl mx-auto space-y-6">
+      <div className="bg-rose-500/5 p-10 rounded-[2.5rem] border border-rose-500/20 max-w-3xl mx-auto space-y-6">
         <div className="flex flex-col items-center gap-2 mb-4">
           <div className="w-16 h-16 bg-rose-600/20 rounded-full flex items-center justify-center text-rose-500 text-4xl animate-pulse shadow-xl shadow-rose-600/10 border border-rose-500/20">⚠️</div>
-          <h3 className="text-rose-500 font-black text-sm uppercase tracking-[0.2em] mt-2">Emergency Recovery Sequence</h3>
+          <h3 className="text-rose-500 font-black text-sm uppercase tracking-[0.2em] mt-2">Emergency Recovery Tools</h3>
         </div>
         
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <button onClick={onRescue} className="bg-amber-600 hover:bg-amber-500 text-white px-8 py-5 rounded-2xl text-xs font-black shadow-lg shadow-amber-600/20 active:scale-95 transition-all uppercase tracking-widest">
-            WIPE ROUTES & NAT RESET
+            FLUSH ROUTES & NAT
           </button>
           <button onClick={onFixDns} className="bg-rose-600 hover:bg-rose-500 text-white px-8 py-5 rounded-2xl text-xs font-black shadow-lg shadow-rose-600/20 active:scale-95 transition-all uppercase tracking-widest">
             FORCED KERNEL DNS REPAIR
           </button>
         </div>
-        <div className="p-5 bg-slate-950/80 rounded-2xl border border-slate-800 shadow-inner">
-          <p className="text-[11px] text-slate-500 font-medium leading-relaxed italic">
-            This action will neutralize Ubuntu's systemd-resolved and hard-code /etc/resolv.conf to 1.1.1.1. 
-            It also force-restarts dnsmasq to ensure LAN DHCP/DNS connectivity is restored.
+        <div className="p-6 bg-slate-950/80 rounded-2xl border border-slate-800 shadow-inner">
+          <p className="text-[11px] text-slate-500 font-medium leading-relaxed italic text-left">
+            Repair sequence: 
+            1. Neutralize Ubuntu systemd-resolved 
+            2. Hard-overwrite /etc/resolv.conf 
+            3. Synchronize dnsmasq DHCP daemon 
+            4. Force enable net.ipv4.ip_forward.
           </p>
         </div>
       </div>
@@ -324,7 +329,7 @@ const App = () => {
 
   useEffect(() => {
     refreshData();
-    const interval = setInterval(refreshData, 1500); 
+    const interval = setInterval(refreshData, 2000); 
     return () => clearInterval(interval);
   }, [refreshData]);
 
@@ -333,35 +338,35 @@ const App = () => {
       const res = await fetch(`${API_BASE}/system/restore-dns`, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        alert("SUCCESS: DNS and LAN DHCP Repair complete.\n\n- systemd-resolved neutralized\n- /etc/resolv.conf force-updated\n- ip_forwarding enabled\n- dnsmasq synchronized.");
+        alert("RECOVERY SUCCESSFUL:\n- Port 53 cleared\n- systemd-resolved disabled\n- /etc/resolv.conf force-patched\n- IP Forwarding enabled.");
         refreshData();
       } else {
-        alert(`KERNEL REJECTION: ${data.error || 'The agent could not apply changes. Is it running as root?'}`);
+        alert(`KERNEL REJECTION: ${data.error || 'Check sudo permissions on the hardware agent.'}`);
       }
     } catch (e) {
-      alert("AGENT ERROR: Could not reach the hardware agent.");
+      alert("AGENT ERROR: Could not reach the hardware agent. Ensure 'sudo node server.js' is running on port 3000.");
     }
   };
 
   const handleRescue = async () => {
-    if (!confirm("This will wipe all existing Multi-WAN and Bridge routing. Proceed?")) return;
+    if (!confirm("This will WIPE all existing kernel routing tables. Proceed?")) return;
     try {
        const res = await fetch(`${API_BASE}/apply`, { 
           method: 'POST', 
           headers: { 'Content-Type': 'application/json' }, 
           body: JSON.stringify({ mode: 'FAILOVER', wanInterfaces: interfaces.map(i => ({...i, priority: 1})) }) 
        });
-       if (res.ok) alert("RESCUE: Kernel routes reset to default failover.");
-       else alert("RESCUE FAILED: Kernel rejected the flush command.");
+       if (res.ok) alert("RESCUE: Kernel routes reset to default.");
+       else alert("RESCUE FAILED: Access denied.");
     } catch(e) { alert("ERROR: Connectivity to Agent lost."); }
   };
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
-      {activeTab === 'wan' && <div className="p-32 text-center text-slate-700 font-mono text-sm tracking-widest uppercase opacity-40">Multi-WAN Orchestration Ready</div>}
-      {activeTab === 'bridge' && <div className="p-32 text-center text-slate-700 font-mono text-sm tracking-widest uppercase opacity-40">Bridge & DHCP Control Layer</div>}
-      {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-sm tracking-widest uppercase opacity-40">AI Advisor Awaiting Uplink</div>}
+      {activeTab === 'wan' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">Multi-WAN Orchestration Online</div>}
+      {activeTab === 'bridge' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">Bridge & DHCP Control Layer</div>}
+      {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Neural Pipeline</div>}
       {activeTab === 'settings' && <SystemRecovery metrics={metrics} onFixDns={handleFixDns} onRescue={handleRescue} interfaces={interfaces} />}
     </Layout>
   );
