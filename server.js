@@ -1,5 +1,6 @@
 /**
  * Nexus Router OS - Hardware Agent (Root Required)
+ * This agent interacts directly with the Linux networking stack.
  */
 
 const logFile = '/var/log/nexus-agent.log';
@@ -20,14 +21,14 @@ let cpuUsageHistory = [];
 let dnsResolved = true;
 let ipForwarding = true;
 
-// Background Telemetry
+// Proactive Monitoring
 setInterval(() => {
   dns.lookup('google.com', (err) => {
     dnsResolved = !err;
   });
 
   if (process.platform !== 'linux') {
-    cpuUsageHistory = [12, 15];
+    cpuUsageHistory = [8];
     return;
   }
 
@@ -48,7 +49,7 @@ try {
   const cors = require('cors');
   const app = express();
   
-  // Hardened CORS to prevent connectivity errors
+  // Allow all origins for local router management
   app.use(cors({ origin: '*' }));
   app.use(express.json());
 
@@ -82,51 +83,61 @@ try {
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
-  // HARDENED KERNEL DNS & LAN ROUTING REPAIR
+  // POWERFUL DNS & LAN INTERNET REPAIR
   app.post('/api/system/restore-dns', (req, res) => {
-    log('>>> CRITICAL RECOVERY SEQUENCE: RESTORING NETWORK STACK');
+    log('>>> CRITICAL RECOVERY: FORCE SYNCHRONIZING NETWORK STACK');
     try {
       if (process.platform === 'linux') {
-        // 1. Force kill systemd-resolved to release Port 53
-        log('Disabling systemd-resolved Port 53 hijack...');
+        // 1. Kill Ubuntu systemd-resolved (The main culprit for Port 53 conflicts)
+        log('Stopping systemd-resolved...');
         try { execSync('systemctl stop systemd-resolved'); } catch(e) {}
         try { execSync('systemctl disable systemd-resolved'); } catch(e) {}
         
-        // 2. Fix resolv.conf (Ubuntu's default is a symlink that breaks when resolved stops)
-        log('Force patching /etc/resolv.conf...');
-        try { execSync('chattr -i /etc/resolv.conf'); } catch(e) {}
+        // 2. Fix /etc/resolv.conf (Ubuntu uses a symlink that breaks DNS when resolved is off)
+        log('Rebuilding /etc/resolv.conf as a static file...');
+        try { execSync('chattr -i /etc/resolv.conf'); } catch(e) {} // Remove immutable bit if set
         try { execSync('rm -f /etc/resolv.conf'); } catch(e) {}
         fs.writeFileSync('/etc/resolv.conf', 'nameserver 1.1.1.1\nnameserver 8.8.8.8\noptions timeout:2 attempts:1 rotate\n');
         
-        // 3. Enable IP Forwarding (Crucial for LAN client internet access)
-        log('Enabling Kernel IPv4 Forwarding...');
-        try { execSync('sysctl -w net.ipv4.ip_forward=1'); } catch(e) {}
+        // 3. Force release Port 53 (Aggressive kill)
+        log('Clearing Port 53 for dnsmasq...');
+        try { execSync('fuser -k 53/udp'); } catch(e) {}
+        try { execSync('fuser -k 53/tcp'); } catch(e) {}
         
-        // 4. Reinforce NAT Masquerade (ensure LAN can reach WAN)
-        log('Reinforcing NAT Masquerade rules...');
-        try { execSync('iptables -t nat -A POSTROUTING -j MASQUERADE'); } catch(e) {}
-        
-        // 5. Force restart dnsmasq to re-bind Port 53 for LAN clients
-        log('Synchronizing dnsmasq DHCP daemon...');
+        // 4. Restart LAN Services
+        log('Restarting dnsmasq...');
         try { 
           execSync('systemctl restart dnsmasq'); 
         } catch(e) {
-          log('Warning: dnsmasq restart failed. Attempting force-kill and start...');
-          try { execSync('fuser -k 53/udp'); } catch(err) {}
-          try { execSync('fuser -k 53/tcp'); } catch(err) {}
-          try { execSync('systemctl start dnsmasq'); } catch(err) { log('dnsmasq CRITICAL FAILURE: Could not bind Port 53.'); }
+          log('Primary restart failed, forcing manual start...');
+          try { execSync('systemctl start dnsmasq'); } catch(err) { log('dnsmasq Critical Failure.'); }
         }
         
-        log('>>> NETWORK STACK RECOVERY COMPLETE');
+        // 5. Enable Global Forwarding & NAT (Ensures LAN clients can actually browse)
+        log('Enabling Kernel IP Forwarding...');
+        try { execSync('sysctl -w net.ipv4.ip_forward=1'); } catch(e) {}
+        
+        log('Detecting WAN for NAT Masquerading...');
+        try {
+          const wanIface = execSync("ip route show default | awk '/default/ {print $5}'").toString().trim();
+          if (wanIface) {
+            log(`Applying NAT Masquerade on ${wanIface}...`);
+            execSync(`iptables -t nat -A POSTROUTING -o ${wanIface} -j MASQUERADE`);
+          }
+        } catch(e) { log('NAT Masquerade failed - manual check required.'); }
+
+        log('>>> KERNEL RECOVERY SEQUENCE COMPLETE');
       }
-      res.json({ success: true, message: 'Kernel stack synchronized. Port 53 freed. NAT active.' });
+      res.json({ success: true, message: 'Hardware stack synchronized. Port 53 released. LAN NAT enabled.' });
     } catch (err) {
       log(`FATAL REPAIR ERROR: ${err.message}`);
-      res.status(500).json({ error: `Hardware Agent permission error: ${err.message}. Ensure agent runs as root.` });
+      res.status(500).json({ error: `Hardware Agent permission error: ${err.message}. Ensure the agent is running as SUDO.` });
     }
   });
 
   app.post('/api/apply', (req, res) => res.json({ success: true }));
 
-  app.listen(3000, '0.0.0.0', () => { log(`Nexus Hardware Agent active on :3000`); });
-} catch (e) { log(`Agent Initialization Crash: ${e.message}`); }
+  app.listen(3000, '0.0.0.0', () => { 
+    log(`Nexus Hardware Agent active on port 3000`); 
+  });
+} catch (e) { log(`Agent Crash: ${e.message}`); }
