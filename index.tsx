@@ -66,7 +66,7 @@ const API_BASE = getApiBase();
 /**
  * COMPONENT: BRIDGE & DHCP MANAGER
  */
-const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: NetworkConfig, setConfig: any, onApply: () => void, isApplying: boolean }) => {
+const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterfaces }: { config: NetworkConfig, setConfig: any, onApply: () => void, isApplying: boolean, availableInterfaces: WanInterface[] }) => {
   const addBridge = () => {
     const newBridge: BridgeConfig = {
       id: Math.random().toString(36).substr(2, 9),
@@ -91,6 +91,18 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: Net
 
   const deleteBridge = (id: string) => {
     setConfig({ ...config, bridges: config.bridges.filter(b => b.id !== id) });
+  };
+
+  const toggleInterface = (bridgeId: string, ifaceName: string) => {
+    const bridge = config.bridges.find(b => b.id === bridgeId);
+    if (!bridge) return;
+
+    const currentInterfaces = bridge.interfaces || [];
+    const newInterfaces = currentInterfaces.includes(ifaceName)
+      ? currentInterfaces.filter(i => i !== ifaceName)
+      : [...currentInterfaces, ifaceName];
+    
+    updateBridge(bridgeId, { interfaces: newInterfaces });
   };
 
   return (
@@ -132,7 +144,7 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: Net
               </div>
               
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 relative z-10">
-                {/* Bridge Basics */}
+                {/* Bridge Basics & Interface Choice */}
                 <div className="space-y-6">
                   <div>
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Bridge Name</label>
@@ -152,6 +164,24 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: Net
                       className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none focus:border-blue-500 transition-colors"
                     />
                   </div>
+                  
+                  <div className="bg-black/20 p-4 rounded-xl border border-slate-800/50">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-3">Member Interfaces</label>
+                    <div className="space-y-2">
+                      {availableInterfaces.map(iface => (
+                        <label key={iface.id} className="flex items-center gap-3 cursor-pointer group">
+                          <input 
+                            type="checkbox"
+                            checked={bridge.interfaces?.includes(iface.interfaceName)}
+                            onChange={() => toggleInterface(bridge.id, iface.interfaceName)}
+                            className="w-4 h-4 rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-xs font-mono font-bold text-slate-400 group-hover:text-white transition-colors uppercase">{iface.interfaceName}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
                   <button 
                     onClick={() => deleteBridge(bridge.id)}
                     className="text-rose-500 text-[10px] font-black uppercase tracking-widest hover:text-rose-400 transition-colors"
@@ -166,7 +196,7 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: Net
                     <h3 className="text-sm font-black text-white uppercase tracking-widest italic">DHCP Server Configuration</h3>
                     <div 
                       onClick={() => updateBridge(bridge.id, { dhcpEnabled: !bridge.dhcpEnabled })}
-                      className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${bridge.dhcpEnabled ? 'bg-emerald-600' : 'bg-slate-800'}`}
+                      className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${bridge.dhcpEnabled ? 'bg-emerald-600 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-slate-800'}`}
                     >
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${bridge.dhcpEnabled ? 'left-7' : 'left-1'}`} />
                     </div>
@@ -189,6 +219,16 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying }: { config: Net
                         value={bridge.dhcpEnd} 
                         onChange={(e) => updateBridge(bridge.id, { dhcpEnd: e.target.value })}
                         className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Lease Time</label>
+                       <input 
+                        type="text" 
+                        value={bridge.leaseTime} 
+                        onChange={(e) => updateBridge(bridge.id, { leaseTime: e.target.value })}
+                        className="bg-black/40 border border-slate-800 rounded-xl px-5 py-3 w-full text-white font-mono font-bold outline-none"
+                        placeholder="e.g. 24h"
                       />
                     </div>
                   </div>
@@ -670,7 +710,7 @@ const App = () => {
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
-      {activeTab === 'bridge' && <BridgeManager config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
+      {activeTab === 'bridge' && <BridgeManager config={config} setConfig={setConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
       {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
       {activeTab === 'settings' && <SystemSettings metrics={metrics} />}
     </Layout>
