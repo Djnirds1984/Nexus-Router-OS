@@ -58,7 +58,42 @@ echo "<your-strong-token>" | sudo tee /etc/nexus/api.token > /dev/null
 sudo systemctl restart nexus-agent
 ```
 
-## 5. DHCP Integration (dnsmasq)
+## 5. Web Interface (nginx)
+Install and configure nginx to serve the UI and proxy API requests to the agent.
+```bash
+sudo apt install -y nginx
+sudo systemctl enable --now nginx
+```
+Default site config:
+```bash
+sudo tee /etc/nginx/sites-available/default > /dev/null <<'EOF'
+server {
+  listen 80 default_server;
+  server_name _;
+  root /var/www/html/Nexus-Router-Os;
+  index index.html;
+
+  location /api/ {
+    proxy_pass http://127.0.0.1:3000/api/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}
+EOF
+sudo nginx -t
+sudo systemctl reload nginx
+```
+Optional firewall:
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 3000/tcp
+```
+## 6. DHCP Integration (dnsmasq)
 The agent writes `/etc/dnsmasq.d/nexus-dhcp.conf` when you save DHCP settings in the UI. To ensure service order:
 ```ini
 # /etc/systemd/system/dnsmasq.service.d/override.conf
@@ -77,14 +112,14 @@ sudo systemctl daemon-reload
 sudo systemctl restart dnsmasq
 ```
 
-## 6. Persistence & Backup
+## 7. Persistence & Backup
 - Config: `/var/www/html/Nexus-Router-Os/nexus-config.json`
 - Backup: `/var/www/html/Nexus-Router-Os/nexus-config.backup.json` (auto-saved on apply)
 - Init log: `/var/log/nexus-init.log`
 - Agent log: `/var/log/nexus-agent.log`
 The agent restores from backup on boot if the primary config is missing and reapplies DHCP.
 
-## 7. Post-Deployment Verification
+## 8. Post-Deployment Verification
 ```bash
 # Initialization and logs
 curl -s http://localhost:3000/api/init/status | jq
@@ -105,7 +140,7 @@ ipconfig /renew
 nslookup google.com
 ```
 
-## 8. Rollback Procedures
+## 9. Rollback Procedures
 ```bash
 # Restore previous config
 cp /var/www/html/Nexus-Router-Os/nexus-config.backup.json /var/www/html/Nexus-Router-Os/nexus-config.json
@@ -124,7 +159,7 @@ Disable agent (if needed):
 sudo systemctl disable --now nexus-agent
 ```
 
-## 9. Monitoring & Logging
+## 10. Monitoring & Logging
 - Agent: `/var/log/nexus-agent.log`, `journalctl -u nexus-agent -f`
 - Init: `/var/log/nexus-init.log`
 - DHCP: `journalctl -u dnsmasq -f`
@@ -141,7 +176,7 @@ sudo tee /etc/logrotate.d/nexus > /dev/null <<'EOF'
 EOF
 ```
 
-## 10. Deployment Notes
+## 11. Deployment Notes
 - Install path must remain `/var/www/html/Nexus-Router-Os`.
 - Agent requires root to perform network changes.
 - WAN detection uses the system default route; ensure the correct interface is primary.
