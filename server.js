@@ -271,6 +271,64 @@ function getDhcpStatus() {
 app.get('/api/dhcp/status', (req, res) => { res.json(getDhcpStatus()); });
 app.get('/api/init/status', (req, res) => { const initialized = fs.existsSync(stampPath); let tail = []; try { if (fs.existsSync(installLog)) tail = fs.readFileSync(installLog,'utf8').split('\n').slice(-50); } catch (e) {} res.json({ initialized, log: tail }); });
 
+function zeroTierStatus() {
+  let installed = false, running = false, node = '', networks = [], iface = '';
+  try { execSync('dpkg -s zerotier-one'); installed = true; } catch (e) {}
+  if (installed) { try { running = execSync('systemctl is-active zerotier-one').toString().trim() === 'active'; } catch (e) {} }
+  if (installed) {
+    try { node = execSync('zerotier-cli info').toString().trim(); } catch (e) {}
+    try {
+      const out = execSync('zerotier-cli listnetworks').toString().trim().split('\n').slice(1);
+      networks = out.map(l => { const p = l.trim().split(/\s+/); return { id: p[0], name: p[1], status: p[6] }; });
+    } catch (e) {}
+    try { iface = execSync("ip -br link | awk '/zt/{print $1; exit}'").toString().trim(); } catch (e) {}
+  }
+  return { installed, running, node, networks, iface };
+}
+
+app.get('/api/zerotier/status', (req, res) => { res.json(zeroTierStatus()); });
+app.post('/api/zerotier/install', (req, res) => {
+  try { ensurePkg('zerotier-one'); execSync('systemctl enable --now zerotier-one'); logInstall('zerotier-installed'); res.json(zeroTierStatus()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/zerotier/networks', (req, res) => {
+  try { const { id } = req.body; if (!id) return res.status(400).json({ error: 'missing id' }); execSync(`zerotier-cli join ${id}`); systemState.config.zerotier = systemState.config.zerotier || { networks: [], forward: [] }; if (!systemState.config.zerotier.networks.find(n => n.id === id)) systemState.config.zerotier.networks.push({ id }); fs.writeFileSync(configPath, JSON.stringify(systemState.config)); res.json(zeroTierStatus()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/zerotier/networks/:id', (req, res) => {
+  try { const { id } = req.params; execSync(`zerotier-cli leave ${id}`); systemState.config.zerotier = systemState.config.zerotier || { networks: [], forward: [] }; systemState.config.zerotier.networks = systemState.config.zerotier.networks.filter(n => n.id !== id); fs.writeFileSync(configPath, JSON.stringify(systemState.config)); res.json(zeroTierStatus()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/zerotier/forwarding', (req, res) => { res.json((systemState.config.zerotier||{forward:[]}).forward||[]); });
+app.post('/api/zerotier/forwarding', (req, res) => {
+  try {
+    const { proto, listenPort, destIp, destPort, enabled } = req.body;
+    if (!listenPort || !destIp || !destPort) return res.status(400).json({ error: 'missing fields' });
+    const zt = zeroTierStatus().iface; if (!zt) return res.status(400).json({ error: 'no zerotier iface' });
+    const id = Math.random().toString(36).slice(2,9);
+    systemState.config.zerotier = systemState.config.zerotier || { networks: [], forward: [] };
+    systemState.config.zerotier.forward.push({ id, proto: (proto||'tcp').toLowerCase(), listenPort, destIp, destPort, enabled: !!enabled });
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    const p = (proto||'tcp').toLowerCase();
+    if (enabled) {
+      execSync(`iptables -t nat -A PREROUTING -i ${zt} -p ${p} --dport ${listenPort} -j DNAT --to-destination ${destIp}:${destPort}`);
+      execSync(`iptables -A FORWARD -p ${p} -d ${destIp} --dport ${destPort} -j ACCEPT`);
+    }
+    res.json(systemState.config.zerotier.forward);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/zerotier/forwarding/:id', (req, res) => {
+  try {
+    const { id } = req.params; const zt = zeroTierStatus().iface;
+    systemState.config.zerotier = systemState.config.zerotier || { networks: [], forward: [] };
+    const rule = systemState.config.zerotier.forward.find(r => r.id === id);
+    if (rule && rule.enabled && zt) {
+      execSync(`iptables -t nat -D PREROUTING -i ${zt} -p ${rule.proto} --dport ${rule.listenPort} -j DNAT --to-destination ${rule.destIp}:${rule.destPort}`);
+      execSync(`iptables -D FORWARD -p ${rule.proto} -d ${rule.destIp} --dport ${rule.destPort} -j ACCEPT`);
+    }
+    systemState.config.zerotier.forward = systemState.config.zerotier.forward.filter(r => r.id !== id);
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    res.json(systemState.config.zerotier.forward);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 function applyDhcp(dhcp) {
   if (process.platform !== 'linux') return;
   try {

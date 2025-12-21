@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import ZeroTierManager from './components/ZeroTierManager';
 
 /**
  * TYPES & ENUMS
@@ -524,6 +525,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
     { id: 'bridge', label: 'Bridge & DHCP', icon: '🌉' },
+    { id: 'zerotier', label: 'ZeroTier', icon: '🕸️' },
     { id: 'updates', label: 'Updates', icon: '🆙' },
     { id: 'advisor', label: 'AI Advisor', icon: '🧠' },
     { id: 'settings', label: 'System', icon: '⚙️' },
@@ -815,6 +817,7 @@ const App = () => {
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'bridge' && <BridgeManager config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
+      {activeTab === 'zerotier' && <ZeroTierManager />}
       {activeTab === 'updates' && <UpdateManager onApplyUpdate={handleUpdate} isUpdating={isApplying} />}
       {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
       {activeTab === 'settings' && <SystemSettings metrics={metrics} />}
