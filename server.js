@@ -10,6 +10,7 @@ const cors = require('cors');
 
 const logFile = '/var/log/nexus-agent.log';
 const configPath = './nexus-config.json';
+const backupPath = './nexus-config.backup.json';
 
 function log(msg) {
   const entry = `[${new Date().toISOString()}] ${msg}\n`;
@@ -29,11 +30,21 @@ let lastNetStats = {}; // { iface: { rx, tx, time } }
 
 // Load existing config if available
 try {
+  let loaded = null;
   if (fs.existsSync(configPath)) {
-    const saved = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    systemState.config = saved;
+    loaded = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } else if (fs.existsSync(backupPath)) {
+    loaded = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
+    fs.writeFileSync(configPath, JSON.stringify(loaded));
+  }
+  if (loaded) {
+    systemState.config = loaded;
   }
 } catch (e) { log('Failed to load config'); }
+
+try {
+  applyDhcp(systemState.config.dhcp);
+} catch (e) { log('Boot DHCP apply skipped'); }
 
 /**
  * SMART WAN MONITOR
@@ -242,10 +253,16 @@ function applyDhcp(dhcp) {
   if (process.platform !== 'linux') return;
   try {
     if (!dhcp || !dhcp.enabled || !dhcp.interfaceName) return;
+    const ipv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
     const iface = dhcp.interfaceName;
     const start = dhcp.start || '';
-    const base = start.split('.').slice(0,3).join('.');
-    const gw = `${base}.1`;
+    const end = dhcp.end || '';
+    if (!ipv4.test(start) || !ipv4.test(end)) { log('DHCP VALIDATION: invalid start/end'); return; }
+    try { execSync(`ip link show ${iface}`); } catch (e) { log('DHCP VALIDATION: interface not found'); return; }
+    const baseS = start.split('.').slice(0,3).join('.');
+    const baseE = end.split('.').slice(0,3).join('.');
+    if (baseS !== baseE) { log('DHCP VALIDATION: range not in same /24'); return; }
+    const gw = `${baseS}.1`;
     execSync(`ip link set ${iface} up`);
     execSync(`ip addr flush dev ${iface}`);
     execSync(`ip addr add ${gw}/24 dev ${iface}`);
@@ -255,7 +272,7 @@ function applyDhcp(dhcp) {
       `bind-interfaces`,
       `port=0`,
       `dhcp-authoritative`,
-      `dhcp-range=${dhcp.start},${dhcp.end},255.255.255.0,${dhcp.leaseTime || '24h'}`,
+      `dhcp-range=${start},${end},255.255.255.0,${dhcp.leaseTime || '24h'}`,
       `dhcp-option=option:router,${gw}`,
       `dhcp-option=option:dns-server,${dnsOpt}`,
       `log-dhcp`
@@ -281,6 +298,7 @@ app.post('/api/apply', (req, res) => {
   try {
     systemState.config = req.body;
     fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    fs.writeFileSync(backupPath, JSON.stringify(systemState.config));
     applyMultiWanKernel();
     applyDhcp(systemState.config.dhcp);
     res.json({ success: true });

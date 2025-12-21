@@ -762,6 +762,11 @@ const App = () => {
           if (!currentConfig.dhcp && savedConfig.dhcp) {
             setCurrentConfig(prev => ({ ...prev, dhcp: savedConfig.dhcp }));
           }
+          if (savedConfig.wanInterfaces && savedConfig.wanInterfaces.length > 0) {
+            const dhcpIface = (savedConfig.dhcp?.interfaceName) || currentConfig.dhcp?.interfaceName || '';
+            const persistedWans = dhcpIface ? savedConfig.wanInterfaces.filter((w: any) => w.interfaceName !== dhcpIface) : savedConfig.wanInterfaces;
+            setCurrentConfig(prev => ({ ...prev, wanInterfaces: persistedWans }));
+          }
         }
 
         if (currentConfig.wanInterfaces.length === 0 && ifaces.length > 0) {
