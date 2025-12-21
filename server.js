@@ -11,6 +11,17 @@ const cors = require('cors');
 const logFile = '/var/log/nexus-agent.log';
 const configPath = './nexus-config.json';
 const backupPath = './nexus-config.backup.json';
+const installLog = '/var/log/nexus-init.log';
+const stateDir = '/var/lib/nexus';
+const stampPath = '/var/lib/nexus/initialized.flag';
+const tokenPath = '/etc/nexus/api.token';
+
+function logInstall(msg) {
+  const entry = `[${new Date().toISOString()}] ${msg}\n`;
+  try { fs.appendFileSync(installLog, entry); } catch (e) {}
+}
+
+try { fs.mkdirSync('/etc/nexus', { recursive: true }); fs.mkdirSync(stateDir, { recursive: true }); } catch (e) {}
 
 function log(msg) {
   const entry = `[${new Date().toISOString()}] ${msg}\n`;
@@ -36,15 +47,24 @@ try {
   } else if (fs.existsSync(backupPath)) {
     loaded = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
     fs.writeFileSync(configPath, JSON.stringify(loaded));
+    logInstall('restore-config-from-backup');
   }
   if (loaded) {
     systemState.config = loaded;
   }
 } catch (e) { log('Failed to load config'); }
 
-try {
-  applyDhcp(systemState.config.dhcp);
-} catch (e) { log('Boot DHCP apply skipped'); }
+function sh(cmd) { logInstall(`run:${cmd}`); return execSync(cmd).toString(); }
+function ensurePkg(pkg) { try { execSync(`dpkg -s ${pkg}`); logInstall(`pkg-ok:${pkg}`); } catch (e) { try { execSync('apt-get update -y'); execSync(`apt-get install -y ${pkg}`); logInstall(`pkg-install:${pkg}`); } catch (err) { throw new Error(`pkg-failed:${pkg}`); } } }
+function validateEnvironment() { if (process.platform !== 'linux') throw new Error('os-invalid'); try { if (process.getuid && process.getuid() !== 0) throw new Error('need-root'); } catch (e) {} const meminfo = fs.readFileSync('/proc/meminfo','utf8'); const mt = parseInt((meminfo.match(/MemTotal:\s+(\d+)/)||[])[1]||'0'); if (mt < 256000) throw new Error('mem-low'); }
+function applyDefaults() { try { if (!fs.existsSync('/etc/dnsmasq.d/nexus-dhcp.conf')) { fs.writeFileSync('/etc/dnsmasq.d/nexus-dhcp.conf', 'port=0\nlog-dhcp'); logInstall('write:dnsmasq-default'); } } catch (e) { logInstall('write-failed:dnsmasq'); } }
+function verifyComponents() { try { execSync('systemctl is-enabled dnsmasq'); logInstall('verify:dnsmasq-enabled'); } catch (e) { logInstall('verify:dnsmasq-not-enabled'); } }
+function rollbackInit() { try { logInstall('rollback-start'); } catch (e) {} }
+function runInitialization() { try { validateEnvironment(); ensurePkg('dnsmasq'); ensurePkg('iproute2'); try { ensurePkg('iptables'); } catch (e) { ensurePkg('nftables'); } applyDefaults(); verifyComponents(); fs.writeFileSync(stampPath, new Date().toISOString()); logInstall('initialized'); } catch (e) { logInstall(`init-error:${e.message}`); rollbackInit(); } }
+
+try { if (!fs.existsSync(stampPath)) { runInitialization(); } } catch (e) { logInstall('init-check-failed'); }
+
+try { applyDhcp(systemState.config.dhcp); } catch (e) { log('Boot DHCP apply skipped'); }
 
 /**
  * SMART WAN MONITOR
@@ -205,6 +225,9 @@ setInterval(async () => {
 const app = express();
 app.use(cors());
 app.use(express.json());
+let apiToken = '';
+try { if (fs.existsSync(tokenPath)) { apiToken = fs.readFileSync(tokenPath,'utf8').trim(); logInstall('auth-token-present'); } } catch (e) {}
+if (apiToken) { app.use((req,res,next)=>{ const auth = req.headers['authorization']||''; if (auth === `Bearer ${apiToken}`) return next(); return res.status(401).json({ error: 'unauthorized' }); }); }
 
 app.get('/api/interfaces', (req, res) => res.json(systemState.interfaces));
 app.get('/api/metrics', (req, res) => res.json(systemState.metrics));
@@ -245,9 +268,8 @@ function getDhcpStatus() {
   return { running, ...parsed, gateway };
 }
 
-app.get('/api/dhcp/status', (req, res) => {
-  res.json(getDhcpStatus());
-});
+app.get('/api/dhcp/status', (req, res) => { res.json(getDhcpStatus()); });
+app.get('/api/init/status', (req, res) => { const initialized = fs.existsSync(stampPath); let tail = []; try { if (fs.existsSync(installLog)) tail = fs.readFileSync(installLog,'utf8').split('\n').slice(-50); } catch (e) {} res.json({ initialized, log: tail }); });
 
 function applyDhcp(dhcp) {
   if (process.platform !== 'linux') return;
