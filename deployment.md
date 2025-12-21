@@ -1,49 +1,41 @@
-# 🌐 Nexus Router OS: The Definitive Deployment Guide
+# 🌐 Nexus Router OS Deployment Guide
 
-This project **MUST** be installed in `/var/www/html/Nexus-Router-Os`.
+This project MUST be installed in `/var/www/html/Nexus-Router-Os` on an Ubuntu Linux router.
 
----
+## 1. Prerequisites
+- OS: Ubuntu 22.04/24.04 (systemd ≥ 245)
+- Runtime: Node.js ≥ 18, npm
+- Packages: `dnsmasq`, `iproute2`, `iptables` (or `nftables`), `jq`, `curl`, `git`
+- Browser: Recent Chromium/Firefox for UI access
 
-## 🛠️ 1. Environment Preparation & DNS Fix
-Run these as `root` to avoid port conflicts with the DHCP server.
-
+## 2. Environment Setup
 ```bash
-# Update Ubuntu
 sudo apt update && sudo apt upgrade -y
-sudo apt install git nodejs npm nginx iproute2 net-tools fuser dnsmasq bridge-utils -y
-
-# CRITICAL: Resolve Port 53 Conflict (for DHCP/DNS support)
-# This stops systemd-resolved from blocking Port 53.
-sudo systemctl stop systemd-resolved
-sudo systemctl disable systemd-resolved
-# Ensure /etc/resolv.conf is handled by your ISP or manually
-sudo rm /etc/resolv.conf
-echo "nameserver 1.1.1.1" | sudo tee /etc/resolv.conf
+sudo apt install -y dnsmasq iproute2 iptables jq curl git nodejs npm
+# If iptables is unavailable:
+sudo apt install -y nftables
+# Enable IPv4 forwarding (persistent)
+echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-nexus-forward.conf
+sudo sysctl --system
 ```
+Note: Do NOT disable `systemd-resolved` unless you plan to run DNS on the router. Nexus uses DHCP-only mode by default (`port=0`) to avoid DNS port conflicts.
 
----
-
-## 📂 2. Installation
+## 3. Install Nexus Router OS
 ```bash
 sudo mkdir -p /var/www/html/Nexus-Router-Os
-sudo chown -R $USER:$USER /var/www/html/Nexus-Router-Os
+sudo chown -R root:root /var/www/html/Nexus-Router-Os
 cd /var/www/html/Nexus-Router-Os
 git clone https://github.com/Djnirds1984/Nexus-Router-OS.git .
-sudo npm install express cors --save
+npm install
 ```
 
----
-
-## ⚡ 3. Nexus Agent Service
+## 4. Nexus Agent Service
 ```bash
-sudo nano /etc/systemd/system/nexus-agent.service
-```
-
-Paste:
-```ini
+sudo tee /etc/systemd/system/nexus-agent.service > /dev/null <<'EOF'
 [Unit]
 Description=Nexus Router Core Agent
 After=network.target
+Requires=network.target
 
 [Service]
 Type=simple
@@ -55,17 +47,103 @@ RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-```
+EOF
 
-```bash
 sudo systemctl daemon-reload
-sudo systemctl enable nexus-agent
+sudo systemctl enable --now nexus-agent
+```
+Optional API auth: create a token to protect endpoints.
+```bash
+echo "<your-strong-token>" | sudo tee /etc/nexus/api.token > /dev/null
 sudo systemctl restart nexus-agent
 ```
 
----
+## 5. DHCP Integration (dnsmasq)
+The agent writes `/etc/dnsmasq.d/nexus-dhcp.conf` when you save DHCP settings in the UI. To ensure service order:
+```ini
+# /etc/systemd/system/dnsmasq.service.d/override.conf
+[Unit]
+After=nexus-agent.service
+Requires=nexus-agent.service
+```
+```bash
+sudo mkdir -p /etc/systemd/system/dnsmasq.service.d
+sudo tee /etc/systemd/system/dnsmasq.service.d/override.conf > /dev/null <<'EOF'
+[Unit]
+After=nexus-agent.service
+Requires=nexus-agent.service
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart dnsmasq
+```
 
-## ✅ 4. Finalizing
-1. Open the UI in your browser.
-2. Go to **System** tab and click **"Fix DNS Conflict"** if `dnsmasq` fails to start.
-3. Your bridges and DHCP servers will now save persistently in `nexus-config.json`.
+## 6. Persistence & Backup
+- Config: `/var/www/html/Nexus-Router-Os/nexus-config.json`
+- Backup: `/var/www/html/Nexus-Router-Os/nexus-config.backup.json` (auto-saved on apply)
+- Init log: `/var/log/nexus-init.log`
+- Agent log: `/var/log/nexus-agent.log`
+The agent restores from backup on boot if the primary config is missing and reapplies DHCP.
+
+## 7. Post-Deployment Verification
+```bash
+# Initialization and logs
+curl -s http://localhost:3000/api/init/status | jq
+journalctl -u nexus-agent -f
+journalctl -u dnsmasq -f
+
+# DHCP status
+curl -s http://localhost:3000/api/dhcp/status | jq
+
+# Interfaces & metrics
+curl -s http://localhost:3000/api/interfaces | jq
+curl -s http://localhost:3000/api/metrics | jq
+```
+Client verification (Windows):
+```powershell
+ipconfig /release
+ipconfig /renew
+nslookup google.com
+```
+
+## 8. Rollback Procedures
+```bash
+# Restore previous config
+cp /var/www/html/Nexus-Router-Os/nexus-config.backup.json /var/www/html/Nexus-Router-Os/nexus-config.json
+systemctl restart nexus-agent
+
+# Remove DHCP config and restart
+rm -f /etc/dnsmasq.d/nexus-dhcp.conf
+systemctl restart dnsmasq
+
+# Clear NAT (iptables)
+iptables -t nat -F POSTROUTING
+iptables -F FORWARD
+```
+Disable agent (if needed):
+```bash
+sudo systemctl disable --now nexus-agent
+```
+
+## 9. Monitoring & Logging
+- Agent: `/var/log/nexus-agent.log`, `journalctl -u nexus-agent -f`
+- Init: `/var/log/nexus-init.log`
+- DHCP: `journalctl -u dnsmasq -f`
+Optional log rotation:
+```bash
+sudo tee /etc/logrotate.d/nexus > /dev/null <<'EOF'
+/var/log/nexus-*.log {
+  weekly
+  rotate 4
+  compress
+  missingok
+  notifempty
+}
+EOF
+```
+
+## 10. Deployment Notes
+- Install path must remain `/var/www/html/Nexus-Router-Os`.
+- Agent requires root to perform network changes.
+- WAN detection uses the system default route; ensure the correct interface is primary.
+- Avoid multiple DHCP servers on the same subnet.
+Refer to README.md for project overview; this document focuses on deployment only.
