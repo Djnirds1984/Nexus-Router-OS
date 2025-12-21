@@ -55,7 +55,7 @@ const ZeroTierManager: React.FC = () => {
   const handleInstall = async () => {
     setInstalling(true);
     try {
-      const res = await fetch(`${API_BASE}/zerotier/install`, { method: 'POST,', headers });
+      const res = await fetch(`${API_BASE}/zerotier/install`, { method: 'POST', headers });
       if (res.ok) {
         setStatus(await res.json());
       }
@@ -248,4 +248,3 @@ const ZeroTierManager: React.FC = () => {
 };
 
 export default ZeroTierManager;
-
