@@ -8,6 +8,7 @@ const { execSync, exec } = require('child_process');
 const express = require('express');
 const cors = require('cors');
 const https = require('https');
+const path = require('path');
 
 const logFile = '/var/log/nexus-agent.log';
 const configPath = './nexus-config.json';
@@ -350,6 +351,57 @@ app.get('/api/update/version', (req, res) => {
     const msg = execSync(`git -C ${panelDeployDir} show -s --format=%s HEAD`).toString().trim();
     res.json({ version: { sha, message: msg } });
   } catch { res.json({ version: null }); }
+});
+
+app.get('/api/update/backups', (req, res) => {
+  try {
+    const dirs = ['/var/www/html/Nexus-Router-Os/panel-backups', panelBackupDir];
+    const dir = dirs.find(d => fs.existsSync(d)) || panelBackupDir;
+    const files = fs.readdirSync(dir)
+      .filter(n => n.endsWith('.json') || n.endsWith('.tar.gz'))
+      .map(n => {
+        const p = path.join(dir, n);
+        const st = fs.statSync(p);
+        return { name: n, size: st.size, mtime: st.mtimeMs };
+      })
+      .sort((a,b) => b.mtime - a.mtime);
+    res.json({ files });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/update/restore', (req, res) => {
+  try {
+    const name = (req.body && req.body.name) || '';
+    if (!name || name.includes('/') || name.includes('\\')) return res.status(400).json({ error: 'invalid name' });
+    const dirs = ['/var/www/html/Nexus-Router-Os/panel-backups', panelBackupDir];
+    const dir = dirs.find(d => fs.existsSync(d)) || panelBackupDir;
+    const full = path.join(dir, name);
+    if (!fs.existsSync(full)) return res.status(404).json({ error: 'not found' });
+
+    if (name.endsWith('.json')) {
+      const cfg = JSON.parse(fs.readFileSync(full, 'utf8'));
+      systemState.config = cfg;
+      fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+      fs.writeFileSync(backupPath, JSON.stringify(systemState.config));
+      applyMultiWanKernel();
+      applyDhcp(systemState.config.dhcp);
+      return res.json({ ok: true });
+    }
+
+    if (name.endsWith('.tar.gz')) {
+      if (process.platform === 'linux') {
+        execSync(`tar -xzf "${full}" -C .`);
+        try { systemState.config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) {}
+        applyMultiWanKernel();
+        applyDhcp(systemState.config.dhcp);
+        return res.json({ ok: true });
+      } else {
+        return res.status(400).json({ error: 'tar restore only on linux' });
+      }
+    }
+
+    return res.status(400).json({ error: 'unsupported file type' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 function parseDhcpConfig() {

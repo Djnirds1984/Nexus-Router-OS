@@ -267,15 +267,34 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
   const [jobId, setJobId] = useState('');
   const [logs, setLogs] = useState<string[]>(['Nexus Updater Ready.']);
   const [commits, setCommits] = useState<{h: string, m: string, d: string}[]>([]);
+  const [backups, setBackups] = useState<{ name: string; size: number; mtime: number }[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`].slice(-10));
   };
 
+  const loadBackups = async () => {
+    try {
+      const r = await fetch(`${API_BASE}/update/backups`);
+      if (r.ok) { const d = await r.json(); setBackups(d.files || []); }
+    } catch (e) {}
+  };
+
+  const restoreBackup = async (name: string) => {
+    try {
+      addLog(`RESTORE: ${name} -> applying backup...`);
+      const r = await fetch(`${API_BASE}/update/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      if (r.ok) { addLog('RESTORE COMPLETE'); }
+      else { const t = await r.text(); addLog(`RESTORE FAILED: ${t}`); }
+    } catch (e:any) { addLog(`RESTORE ERROR: ${e.message||'network'}`); }
+  };
+
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
+
+  useEffect(() => { loadBackups(); }, []);
 
   const checkUpdates = async () => {
     setChecking(true);
@@ -327,6 +346,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
                 }
               }
               if (!payload.done) setTimeout(poll, 1000);
+              else loadBackups();
             }
           } catch { setTimeout(poll, 1500); }
         };
@@ -434,7 +454,27 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
                {isUpdating && <div className="text-blue-400 animate-pulse tracking-widest italic font-black uppercase">COMMITTING CHANGES...</div>}
              </div>
           </div>
-        </div>
+
+          <div className="bg-black/60 p-6 rounded-[2.5rem] border border-slate-800">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Backups</h3>
+              <button onClick={loadBackups} className="px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700">Refresh</button>
+            </div>
+            <div className="space-y-2">
+              {backups.length === 0 ? (
+                <div className="text-[10px] text-slate-600">No backups found.</div>
+              ) : backups.map(b => (
+                <div key={b.name} className="flex items-center justify-between p-3 bg-black/40 border border-slate-800 rounded-xl">
+                  <div>
+                    <div className="text-[10px] text-slate-300 font-mono">{b.name}</div>
+                    <div className="text-[9px] text-slate-600 uppercase font-black">{new Date(b.mtime).toLocaleString()} • {(b.size/1024).toFixed(1)} KB</div>
+                  </div>
+                  <button onClick={() => restoreBackup(b.name)} className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-600/30">Restore</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div
       </div>
     </div>
   );
