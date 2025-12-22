@@ -670,16 +670,23 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
               type="button"
               onClick={() => {
                 if (confirm('RESTART AGENT: This will restart the Nexus background service. Web interface may briefly disconnect. Proceed?')) {
+                  // Use standard fetch without keepalive first to ensure we get a response
                   fetch(`${API_BASE}/system/restart`, { 
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    keepalive: true
+                    headers: { 'Content-Type': 'application/json' }
                   })
                     .then(r => {
-                      if (r.ok) alert('Agent is restarting. Please wait 10-15 seconds then refresh.');
-                      else r.text().then(t => alert(`Failed to restart agent: ${t || r.statusText}`));
+                      if (r.ok) {
+                        alert('Agent is restarting. Please wait 15-20 seconds for the service to come back online, then refresh the page.');
+                        // Optional: attempt to reload page after a delay
+                        // setTimeout(() => window.location.reload(), 20000);
+                      }
+                      else r.text().then(t => alert(`Failed to restart agent (Status ${r.status}): ${t || r.statusText}`));
                     })
-                    .catch((e) => alert(`Failed to contact agent: ${e.message}. Ensure the server is running and accessible.`));
+                    .catch((e) => {
+                      console.error(e);
+                      alert(`Failed to contact agent: ${e.message || 'Unknown network error'}. \n\nCheck if the server is running on port 3000.`);
+                    });
                 }
               }}
               className="w-full flex items-center justify-between p-4 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 rounded-2xl transition-all group"
