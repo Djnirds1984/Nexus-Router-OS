@@ -307,29 +307,6 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
     }, 1000);
   };
 
-  const handleDownloadBackup = () => {
-    addLog('Packaging system configuration archive...');
-    setTimeout(() => {
-      const blob = new Blob([JSON.stringify({ timestamp: Date.now(), signature: 'nexus-recovery-v1' })], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `nexus_backup_${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      addLog('Snapshot exported to client successfully.');
-    }, 800);
-  };
-
-  const handleRestore = () => {
-    if (confirm('RESTORE WARNING: Rollback to last fixed version will restart the kernel. Proceed?')) {
-      addLog('RESTORE INITIATED: Reverting to v1.3.0-stable build...');
-      setTimeout(() => {
-        addLog('Rollback Complete. System state: STABLE.');
-        alert('System restored to last fixed version.');
-      }, 2000);
-    }
-  };
-
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <header className="flex justify-between items-start">
@@ -407,53 +384,6 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
 
         {/* Backup & Recovery Sidebar */}
         <div className="space-y-6">
-          <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 backdrop-blur-md">
-            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Disaster Recovery</h3>
-            
-            <div className="space-y-3">
-              <button 
-                onClick={() => {
-                  if (confirm('RESTART AGENT: This will restart the Nexus background service. Web interface may briefly disconnect. Proceed?')) {
-                    fetch(`${API_BASE}/system/restart`, { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('nexus_token') || ''}` } })
-                      .then(r => {
-                        if (r.ok) alert('Agent is restarting. Please wait 10-15 seconds then refresh.');
-                        else alert('Failed to restart agent.');
-                      })
-                      .catch(() => alert('Failed to contact agent.'));
-                  }
-                }}
-                className="w-full flex items-center justify-between p-4 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 rounded-2xl transition-all group"
-              >
-                <div className="text-left">
-                  <div className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Restart Agent</div>
-                  <div className="text-[9px] text-slate-600 italic">Reboot background service</div>
-                </div>
-                <span className="text-xl group-hover:rotate-180 transition-transform duration-700">⚡</span>
-              </button>
-              <button 
-                onClick={handleDownloadBackup}
-                className="w-full flex items-center justify-between p-4 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/10 rounded-2xl transition-all group"
-              >
-                <div className="text-left">
-                  <div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Download Backup</div>
-                  <div className="text-[9px] text-slate-600 italic">Save configuration snapshot</div>
-                </div>
-                <span className="text-xl group-hover:translate-y-1 transition-transform">📥</span>
-              </button>
-
-              <button 
-                onClick={handleRestore}
-                className="w-full flex items-center justify-between p-4 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/10 rounded-2xl transition-all group"
-              >
-                <div className="text-left">
-                  <div className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Immediate Restore</div>
-                  <div className="text-[9px] text-slate-600 italic">Rollback to last fixed version</div>
-                </div>
-                <span className="text-xl group-hover:rotate-180 transition-transform duration-500">🔄</span>
-              </button>
-            </div>
-          </div>
-
           <div className="bg-black/60 p-6 rounded-[2.5rem] border border-slate-800 shadow-inner">
              <h3 className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em] mb-4">Core Lifecycle Logs</h3>
              <div 
@@ -590,6 +520,24 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
   const [ipForwarding, setIpForwarding] = useState(true);
   const [bbr, setBbr] = useState(true);
 
+  const handleDownloadBackup = () => {
+    const blob = new Blob([JSON.stringify({ timestamp: Date.now(), signature: 'nexus-recovery-v1' })], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `nexus_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    alert('Snapshot exported to client successfully.');
+  };
+
+  const handleRestore = () => {
+    if (confirm('RESTORE WARNING: Rollback to last fixed version will restart the kernel. Proceed?')) {
+      setTimeout(() => {
+        alert('System restored to last fixed version.');
+      }, 2000);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       <header>
@@ -597,7 +545,7 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
         <p className="text-slate-400 mt-1 font-medium italic">Kernel Diagnostics & Global Optimization Control</p>
       </header>
 
-      <div className="grid grid-cols-1 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md">
           <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8">Networking Fabric</h3>
           <div className="space-y-6">
@@ -615,6 +563,53 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
               </div>
               <div onClick={() => setBbr(!bbr)} className={`w-14 h-7 rounded-full relative cursor-pointer transition-colors ${bbr ? 'bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-slate-800'}`}><div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${bbr ? 'left-8' : 'left-1'}`} /></div>
             </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md">
+          <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8">Disaster Recovery</h3>
+          <div className="space-y-3">
+            <button 
+              onClick={() => {
+                if (confirm('RESTART AGENT: This will restart the Nexus background service. Web interface may briefly disconnect. Proceed?')) {
+                  fetch(`${API_BASE}/system/restart`, { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('nexus_token') || ''}` } })
+                    .then(r => {
+                      if (r.ok) alert('Agent is restarting. Please wait 10-15 seconds then refresh.');
+                      else alert('Failed to restart agent.');
+                    })
+                    .catch(() => alert('Failed to contact agent.'));
+                }
+              }}
+              className="w-full flex items-center justify-between p-4 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 rounded-2xl transition-all group"
+            >
+              <div className="text-left">
+                <div className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Restart Agent</div>
+                <div className="text-[9px] text-slate-600 italic">Reboot background service</div>
+              </div>
+              <span className="text-xl group-hover:rotate-180 transition-transform duration-700">⚡</span>
+            </button>
+
+            <button 
+              onClick={handleDownloadBackup}
+              className="w-full flex items-center justify-between p-4 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/10 rounded-2xl transition-all group"
+            >
+              <div className="text-left">
+                <div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Download Backup</div>
+                <div className="text-[9px] text-slate-600 italic">Save configuration snapshot</div>
+              </div>
+              <span className="text-xl group-hover:translate-y-1 transition-transform">📥</span>
+            </button>
+
+            <button 
+              onClick={handleRestore}
+              className="w-full flex items-center justify-between p-4 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/10 rounded-2xl transition-all group"
+            >
+              <div className="text-left">
+                <div className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Immediate Restore</div>
+                <div className="text-[9px] text-slate-600 italic">Rollback to last fixed version</div>
+              </div>
+              <span className="text-xl group-hover:rotate-180 transition-transform duration-500">🔄</span>
+            </button>
           </div>
         </div>
       </div>
