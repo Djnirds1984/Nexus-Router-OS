@@ -606,14 +606,19 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
           <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8">Disaster Recovery</h3>
           <div className="space-y-3">
             <button 
+              type="button"
               onClick={() => {
                 if (confirm('RESTART AGENT: This will restart the Nexus background service. Web interface may briefly disconnect. Proceed?')) {
-                  fetch(`${API_BASE}/system/restart`, { method: 'POST' })
+                  fetch(`${API_BASE}/system/restart`, { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    keepalive: true
+                  })
                     .then(r => {
                       if (r.ok) alert('Agent is restarting. Please wait 10-15 seconds then refresh.');
-                      else alert('Failed to restart agent.');
+                      else r.text().then(t => alert(`Failed to restart agent: ${t || r.statusText}`));
                     })
-                    .catch(() => alert('Failed to contact agent.'));
+                    .catch((e) => alert(`Failed to contact agent: ${e.message}. Ensure the server is running and accessible.`));
                 }
               }}
               className="w-full flex items-center justify-between p-4 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 rounded-2xl transition-all group"
