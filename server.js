@@ -254,20 +254,17 @@ app.get('/api/system/platform', (req, res) => res.json({ platform: process.platf
 
 app.post('/api/system/restart', (req, res) => {
   log('System restart requested via API');
-  try {
-    res.json({ status: 'restarting' });
-  } catch (e) {}
+  res.json({ status: 'restarting' });
   setTimeout(() => {
     if (process.platform === 'linux') {
       exec('systemctl restart nexus-agent', (error) => {
-        if (error) {
-          log(`Restart failed: ${error.message}`);
-        }
+        if (error) log(`Restart failed: ${error.message}`);
       });
     } else {
       log('Simulating restart on non-Linux platform');
+      setTimeout(() => process.exit(0), 1000);
     }
-  }, 500);
+  }, 2000);
 });
 
 const updateJobs = {};
