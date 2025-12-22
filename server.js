@@ -245,9 +245,7 @@ setInterval(async () => {
 const app = express();
 app.use(cors());
 app.use(express.json());
-let apiToken = '';
-try { if (fs.existsSync(tokenPath)) { apiToken = fs.readFileSync(tokenPath,'utf8').trim(); logInstall('auth-token-present'); } } catch (e) {}
-if (apiToken) { app.use((req,res,next)=>{ const auth = req.headers['authorization']||''; if (auth === `Bearer ${apiToken}`) return next(); return res.status(401).json({ error: 'unauthorized' }); }); }
+
 
 app.get('/api/interfaces', (req, res) => res.json(systemState.interfaces));
 app.get('/api/metrics', (req, res) => res.json(systemState.metrics));

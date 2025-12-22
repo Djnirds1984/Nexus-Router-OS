@@ -94,11 +94,10 @@ const ZeroTierManager: React.FC = () => {
   const [status, setStatus] = useState<ZTStatus | null>(null);
   const [installing, setInstalling] = useState(false);
   const [joiningId, setJoiningId] = useState('');
-  const [savingToken, setSavingToken] = useState(false);
-  const [token, setToken] = useState<string>(() => localStorage.getItem('nexus_token') || '');
+
   const [forwardRules, setForwardRules] = useState<ForwardRule[]>([]);
   const [newRule, setNewRule] = useState<{ proto: 'tcp' | 'udp'; listenPort: string; destIp: string; destPort: string; enabled: boolean }>({ proto: 'tcp', listenPort: '', destIp: '', destPort: '', enabled: true });
-  const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }), [token]);
+  const headers = useMemo(() => ({ 'Content-Type': 'application/json' }), []);
 const [platform, setPlatform] = useState<string>('');
 useEffect(() => { (async () => { try { const r = await fetch(`${API_BASE}/system/platform`); if (r.ok) { const d = await r.json(); setPlatform(d.platform || ''); } } catch {} })(); }, []);
 
@@ -163,12 +162,7 @@ useEffect(() => { (async () => { try { const r = await fetch(`${API_BASE}/system
     } catch {}
   };
 
-  const saveTokenLocal = () => {
-    setSavingToken(true);
-    localStorage.setItem('nexus_token', token || '');
-    setTimeout(() => setSavingToken(false), 500);
-    fetchStatus();
-  };
+
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-20">
@@ -182,10 +176,7 @@ useEffect(() => { (async () => { try { const r = await fetch(`${API_BASE}/system
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <input type="text" value={token} onChange={e => setToken(e.target.value)} placeholder="API Token (optional)" className="bg-black/40 border border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-300 outline-none" />
-          <button onClick={saveTokenLocal} className={`${savingToken ? 'bg-slate-700 text-slate-300' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'} px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest`}>{savingToken ? 'SAVED' : 'SAVE'}</button>
-        </div>
+
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -292,7 +283,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
     try {
       const res = await fetch(`${API_BASE}/update/check`, {
         method: 'POST',
-        headers: (() => { const t = localStorage.getItem('nexus_token'); return t ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}` } : { 'Content-Type': 'application/json' }; })(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo: gitRepo, branch })
       });
       if (res.ok) {
@@ -314,7 +305,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
     try {
       const res = await fetch(`${API_BASE}/update/apply`, {
         method: 'POST',
-        headers: (() => { const t = localStorage.getItem('nexus_token'); return t ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}` } : { 'Content-Type': 'application/json' }; })(),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo: gitRepo, branch })
       });
       if (res.ok) {
@@ -324,7 +315,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
         const poll = async () => {
           if (!jid) return;
           try {
-            const lr = await fetch(`${API_BASE}/update/logs?job=${encodeURIComponent(jid)}`, { headers: (() => { const t = localStorage.getItem('nexus_token'); return t ? { 'Authorization': `Bearer ${t}` } : {}; })() });
+            const lr = await fetch(`${API_BASE}/update/logs?job=${encodeURIComponent(jid)}`);
             if (lr.ok) {
               const payload = await lr.json();
               setLogs(payload.logs || []);
@@ -617,7 +608,7 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
             <button 
               onClick={() => {
                 if (confirm('RESTART AGENT: This will restart the Nexus background service. Web interface may briefly disconnect. Proceed?')) {
-                  fetch(`${API_BASE}/system/restart`, { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('nexus_token') || ''}` } })
+                  fetch(`${API_BASE}/system/restart`, { method: 'POST' })
                     .then(r => {
                       if (r.ok) alert('Agent is restarting. Please wait 10-15 seconds then refresh.');
                       else alert('Failed to restart agent.');
