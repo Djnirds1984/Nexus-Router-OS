@@ -356,33 +356,94 @@ app.get('/api/update/version', (req, res) => {
 app.get('/api/update/backups', (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
-    const candidates = ['/var/www/html/Nexus-Router-OS/panel-backups', '/var/www/html/Nexus-Router-Os/panel-backups', panelBackupDir];
-    const files = candidates
-      .filter(d => fs.existsSync(d))
-      .flatMap(dir => {
-        return fs.readdirSync(dir)
-          .filter(n => n.endsWith('.json') || n.endsWith('.tar.gz'))
-          .map(n => {
-            const p = path.join(dir, n);
-            const st = fs.statSync(p);
-            return { name: n, size: st.size, mtime: st.mtimeMs };
+    
+    // Dynamic discovery of project root to handle casing issues
+    let projectRoots = [process.cwd()];
+    const www = '/var/www/html';
+    if (fs.existsSync(www)) {
+      try {
+        const dirs = fs.readdirSync(www).filter(n => n.toLowerCase().includes('nexus-router'));
+        dirs.forEach(d => projectRoots.push(path.join(www, d)));
+      } catch (e) {}
+    }
+    
+    // Potential backup directories
+    const candidates = [];
+    projectRoots.forEach(root => {
+        candidates.push(path.join(root, 'panel-backups'));
+    });
+    // Add explicitly known paths just in case
+    candidates.push('/var/www/html/Nexus-Router-Os/panel-backups');
+    candidates.push('/var/www/html/Nexus-Router-OS/panel-backups');
+    candidates.push(panelBackupDir);
+
+    const uniqueCandidates = [...new Set(candidates)];
+    
+    let allFiles = [];
+    
+    uniqueCandidates.forEach(dir => {
+      if (fs.existsSync(dir)) {
+        try {
+          const files = fs.readdirSync(dir);
+          files.forEach(n => {
+            if (n.includes('panel_backup') || n.endsWith('.json') || n.endsWith('.tar.gz')) {
+                const p = path.join(dir, n);
+                try {
+                    const st = fs.statSync(p);
+                    allFiles.push({ name: n, size: st.size, mtime: st.mtimeMs }); 
+                } catch(e) {}
+            }
           });
-      })
-      .sort((a,b) => b.mtime - a.mtime);
-    res.json({ files });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+        } catch(e) { log(`Error reading backup dir ${dir}: ${e.message}`); }
+      }
+    });
+
+    // Remove duplicates by name (keeping newest mtime if duplicates exist)
+    const uniqueFiles = [];
+    const seen = new Set();
+    // Sort by mtime desc first so we keep the newest if dupes
+    allFiles.sort((a,b) => b.mtime - a.mtime);
+    
+    allFiles.forEach(f => {
+        if (!seen.has(f.name)) {
+            seen.add(f.name);
+            uniqueFiles.push(f);
+        }
+    });
+
+    res.json({ files: uniqueFiles });
+  } catch (e) { 
+      log(`Backup list error: ${e.message}`);
+      res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.post('/api/update/restore', (req, res) => {
   try {
     const name = (req.body && req.body.name) || '';
     if (!name || name.includes('/') || name.includes('\\')) return res.status(400).json({ error: 'invalid name' });
-    const candidates = ['/var/www/html/Nexus-Router-OS/panel-backups', '/var/www/html/Nexus-Router-Os/panel-backups', panelBackupDir];
+    
+    // Dynamic discovery for restore as well
+    let projectRoots = [process.cwd()];
+    const www = '/var/www/html';
+    if (fs.existsSync(www)) {
+      try {
+        const dirs = fs.readdirSync(www).filter(n => n.toLowerCase().includes('nexus-router'));
+        dirs.forEach(d => projectRoots.push(path.join(www, d)));
+      } catch (e) {}
+    }
+    
+    const candidates = [];
+    projectRoots.forEach(root => candidates.push(path.join(root, 'panel-backups')));
+    candidates.push('/var/www/html/Nexus-Router-Os/panel-backups');
+    candidates.push('/var/www/html/Nexus-Router-OS/panel-backups');
+    candidates.push(panelBackupDir);
+
     const dir = candidates.find(d => fs.existsSync(path.join(d, name)));
     if (!dir) return res.status(404).json({ error: 'not found' });
     const full = path.join(dir, name);
 
-    if (name.endsWith('.json')) {
+    if (name.includes('.json')) {
       const cfg = JSON.parse(fs.readFileSync(full, 'utf8'));
       systemState.config = cfg;
       fs.writeFileSync(configPath, JSON.stringify(systemState.config));
@@ -392,7 +453,7 @@ app.post('/api/update/restore', (req, res) => {
       return res.json({ ok: true });
     }
 
-    if (name.endsWith('.tar.gz')) {
+    if (name.includes('.tar.gz')) {
       if (process.platform === 'linux') {
         execSync(`tar -xzf "${full}" -C .`);
         try { systemState.config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) {}
