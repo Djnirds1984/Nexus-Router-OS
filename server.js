@@ -285,13 +285,13 @@ function zeroTierStatus() {
     try { iface = execSync('powershell -NoProfile -Command "(Get-NetAdapter | Where-Object {$_.Name -like \"*ZeroTier*\"} | Select-Object -First 1 -ExpandProperty Name)"').toString().trim(); } catch (e) {}
     return { installed, running, node, networks, iface };
   }
-  try { execSync('dpkg -s zerotier-one'); installed = true; } catch (e) {}
+  try { execSync('command -v zerotier-cli'); installed = true; } catch (e) { try { execSync('dpkg -s zerotier-one'); installed = true; } catch (e2) {} }
   if (installed) { try { running = execSync('systemctl is-active zerotier-one').toString().trim() === 'active'; } catch (e) {} }
   if (installed) {
     try { node = execSync('zerotier-cli info').toString().trim(); } catch (e) {}
     try {
       const out = execSync('zerotier-cli listnetworks').toString().trim().split('\n').slice(1);
-      networks = out.map(l => { const p = l.trim().split(/\s+/); return { id: p[0], name: p[1], status: p[6] }; });
+      networks = out.filter(Boolean).map(l => { const p = l.trim().split(/\s+/); return { id: p[0], name: p[1], status: p[p.length-1] }; });
     } catch (e) {}
     try { iface = execSync("ip -br link | awk '/zt/{print $1; exit}'").toString().trim(); } catch (e) {}
   }
@@ -307,8 +307,12 @@ app.post('/api/zerotier/install', (req, res) => {
       logInstall('zerotier-installed-win');
       return res.json(zeroTierStatus());
     }
-    ensurePkg('zerotier-one');
-    execSync('systemctl enable --now zerotier-one');
+    let hasCli = false;
+    try { execSync('command -v zerotier-cli'); hasCli = true; } catch (e) {}
+    if (!hasCli) {
+      try { ensurePkg('zerotier-one'); } catch (e) { logInstall('zerotier-install-apt-failed'); }
+    }
+    try { execSync('systemctl enable --now zerotier-one'); } catch (e) { logInstall('zerotier-service-enable-failed'); }
     logInstall('zerotier-installed');
     res.json(zeroTierStatus());
   } catch (e) { res.status(500).json({ error: e.message }); }
