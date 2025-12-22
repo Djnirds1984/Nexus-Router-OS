@@ -285,7 +285,7 @@ function zeroTierStatus() {
     try { iface = execSync('powershell -NoProfile -Command "(Get-NetAdapter | Where-Object {$_.Name -like \"*ZeroTier*\"} | Select-Object -First 1 -ExpandProperty Name)"').toString().trim(); } catch (e) {}
     return { installed, running, node, networks, iface };
   }
-  try { execSync('command -v zerotier-cli'); installed = true; } catch (e) { try { execSync('dpkg -s zerotier-one'); installed = true; } catch (e2) {} }
+  try { execSync('command -v zerotier-cli'); installed = true; } catch (e) {}
   if (installed) { try { running = execSync('systemctl is-active zerotier-one').toString().trim() === 'active'; } catch (e) {} }
   if (installed) {
     try { node = execSync('zerotier-cli info').toString().trim(); } catch (e) {}
@@ -307,14 +307,18 @@ app.post('/api/zerotier/install', (req, res) => {
       logInstall('zerotier-installed-win');
       return res.json(zeroTierStatus());
     }
-    let hasCli = false;
-    try { execSync('command -v zerotier-cli'); hasCli = true; } catch (e) {}
-    if (!hasCli) {
-      try { ensurePkg('zerotier-one'); } catch (e) { logInstall('zerotier-install-apt-failed'); }
-    }
-    try { execSync('systemctl enable --now zerotier-one'); } catch (e) { logInstall('zerotier-service-enable-failed'); }
-    logInstall('zerotier-installed');
-    res.json(zeroTierStatus());
+    logInstall('zerotier-install-start');
+    const cmd = "bash -lc 'command -v zerotier-cli >/dev/null 2>&1 || (curl -s https://install.zerotier.com | bash); systemctl enable --now zerotier-one'";
+    exec(cmd, { maxBuffer: 10485760, timeout: 900000 }, (error, stdout, stderr) => {
+      try { if (stdout) fs.appendFileSync(installLog, stdout); } catch (e) {}
+      try { if (stderr) fs.appendFileSync(installLog, stderr); } catch (e) {}
+      if (error) {
+        logInstall(`zerotier-install-error:${error.message}`);
+        return res.status(500).json({ error: 'zerotier-install-failed' });
+      }
+      logInstall('zerotier-install-complete');
+      res.json(zeroTierStatus());
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/zerotier/networks', (req, res) => {
