@@ -38,6 +38,10 @@ let systemState = {
 // State for calculating rates per core and per interface
 let lastCpuData = {}; // { coreId: { total, idle } }
 let lastNetStats = {}; // { iface: { rx, tx, time } }
+let pollingBusy = false;
+let healthCache = {};
+let lastUptimeStr = '';
+let lastUptimeAt = 0;
 
 // Load existing config if available
 try {
@@ -146,21 +150,31 @@ function applyMultiWanKernel() {
 
 // 1s Polling for Real-Time Hardware Statistics
 setInterval(async () => {
+  if (pollingBusy) return;
+  pollingBusy = true;
   if (process.platform !== 'linux') {
     systemState.interfaces = [{ id: 'eth0', name: 'WAN1', interfaceName: 'eth0', status: 'UP', ipAddress: '192.168.1.10', gateway: '192.168.1.1', internetHealth: 'HEALTHY', latency: 12, throughput: { rx: 5.2, tx: 1.5 } }];
     systemState.metrics = { cpuUsage: 15, cores: [10, 15, 20, 12], memoryUsage: '4.4', totalMem: '16.0', uptime: '1h 22m', activeSessions: 42, dnsResolved: true };
+    pollingBusy = false;
     return;
   }
 
   try {
-    // 1. Interfaces & Real Throughput
     const ipData = JSON.parse(execSync('ip -j addr show').toString());
     const routes = JSON.parse(execSync('ip -j route show').toString());
     const newInterfaces = await Promise.all(ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth') && !iface.ifname.startsWith('br')).map(async (iface) => {
       const gw = routes.find(r => r.dev === iface.ifname && r.dst === 'default')?.gateway || 'Detecting...';
-      const health = await checkInternetHealth(iface.ifname);
+
+      let health = { ok: true, latency: 0 };
+      const hc = healthCache[iface.ifname];
+      if (!hc || (Date.now() - hc.ts) > 10000) {
+        health = await checkInternetHealth(iface.ifname);
+        healthCache[iface.ifname] = { data: health, ts: Date.now() };
+      } else {
+        health = hc.data;
+      }
+
       const throughput = getThroughputMbps(iface.ifname);
-      
       return {
         id: iface.ifname,
         name: iface.ifname.toUpperCase(),
@@ -178,7 +192,6 @@ setInterval(async () => {
     systemState.interfaces = newInterfaces;
     if (healthChanged) applyMultiWanKernel();
 
-    // 2. Real Per-Core CPU Stats
     const statsLines = fs.readFileSync('/proc/stat', 'utf8').split('\n');
     const coreMetrics = [];
     let aggregateUsage = 0;
@@ -196,7 +209,7 @@ setInterval(async () => {
           const diffTotal = total - prev.total;
           const diffIdle = idle - prev.idle;
           const usage = diffTotal === 0 ? 0 : Math.floor((1 - diffIdle / diffTotal) * 100);
-          
+
           if (coreId === 'cpu') aggregateUsage = usage;
           else coreMetrics.push(usage);
         }
@@ -204,23 +217,29 @@ setInterval(async () => {
       }
     });
 
-    // 3. Real RAM Usage Stats
     const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
     const memTotal = parseInt(meminfo.match(/MemTotal:\s+(\d+)/)[1]) / 1024 / 1024;
     const memAvailable = parseInt(meminfo.match(/MemAvailable:\s+(\d+)/)[1]) / 1024 / 1024;
     const memUsed = memTotal - memAvailable;
+
+    if (!lastUptimeStr || (Date.now() - lastUptimeAt) > 30000) {
+      try { lastUptimeStr = execSync('uptime -p').toString().trim(); lastUptimeAt = Date.now(); } catch (e) {}
+    }
 
     systemState.metrics = {
       cpuUsage: aggregateUsage,
       cores: coreMetrics,
       memoryUsage: memUsed.toFixed(2),
       totalMem: memTotal.toFixed(2),
-      uptime: execSync('uptime -p').toString().trim(),
-      activeSessions: 0, // In real scenario, parse /proc/net/nf_conntrack_count
+      uptime: lastUptimeStr || '',
+      activeSessions: 0,
       dnsResolved: true
     };
   } catch (e) { log(`Poll Error: ${e.message}`); }
-}, 1000);
+  finally {
+    pollingBusy = false;
+  }
+}, 2000);
 
 const app = express();
 app.use(cors());
