@@ -405,6 +405,7 @@ function applyDhcp(dhcp) {
       `dhcp-range=${start},${end},255.255.255.0,${dhcp.leaseTime || '24h'}`,
       `dhcp-option=option:router,${gw}`,
       `dhcp-option=option:dns-server,${dnsOpt}`,
+      `dhcp-leasefile=/var/lib/nexus/dhcp.leases`,
       `log-dhcp`
     ].join('\n');
     fs.writeFileSync('/etc/dnsmasq.d/nexus-dhcp.conf', conf);
