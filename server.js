@@ -355,14 +355,17 @@ app.get('/api/update/version', (req, res) => {
 
 app.get('/api/update/backups', (req, res) => {
   try {
-    const dirs = ['/var/www/html/Nexus-Router-Os/panel-backups', panelBackupDir];
-    const dir = dirs.find(d => fs.existsSync(d)) || panelBackupDir;
-    const files = fs.readdirSync(dir)
-      .filter(n => n.endsWith('.json') || n.endsWith('.tar.gz'))
-      .map(n => {
-        const p = path.join(dir, n);
-        const st = fs.statSync(p);
-        return { name: n, size: st.size, mtime: st.mtimeMs };
+    const candidates = ['/var/www/html/Nexus-Router-OS/panel-backups', '/var/www/html/Nexus-Router-Os/panel-backups', panelBackupDir];
+    const files = candidates
+      .filter(d => fs.existsSync(d))
+      .flatMap(dir => {
+        return fs.readdirSync(dir)
+          .filter(n => n.endsWith('.json') || n.endsWith('.tar.gz'))
+          .map(n => {
+            const p = path.join(dir, n);
+            const st = fs.statSync(p);
+            return { name: n, size: st.size, mtime: st.mtimeMs };
+          });
       })
       .sort((a,b) => b.mtime - a.mtime);
     res.json({ files });
@@ -373,10 +376,10 @@ app.post('/api/update/restore', (req, res) => {
   try {
     const name = (req.body && req.body.name) || '';
     if (!name || name.includes('/') || name.includes('\\')) return res.status(400).json({ error: 'invalid name' });
-    const dirs = ['/var/www/html/Nexus-Router-Os/panel-backups', panelBackupDir];
-    const dir = dirs.find(d => fs.existsSync(d)) || panelBackupDir;
+    const candidates = ['/var/www/html/Nexus-Router-OS/panel-backups', '/var/www/html/Nexus-Router-Os/panel-backups', panelBackupDir];
+    const dir = candidates.find(d => fs.existsSync(path.join(d, name)));
+    if (!dir) return res.status(404).json({ error: 'not found' });
     const full = path.join(dir, name);
-    if (!fs.existsSync(full)) return res.status(404).json({ error: 'not found' });
 
     if (name.endsWith('.json')) {
       const cfg = JSON.parse(fs.readFileSync(full, 'utf8'));

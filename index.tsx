@@ -331,6 +331,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
         const data = await res.json();
         const jid = data.job || '';
         setJobId(jid);
+        loadBackups();
         const poll = async () => {
           if (!jid) return;
           try {
@@ -345,6 +346,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
                   if (m) setVersion({ sha: m[1], message: m[2] });
                 }
               }
+              if ((payload.logs || []).some((l: string) => l.startsWith('BACKUP:'))) loadBackups();
               if (!payload.done) setTimeout(poll, 1000);
               else loadBackups();
             }
