@@ -578,7 +578,7 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
         <p className="text-slate-400 mt-1 font-medium italic">Kernel Diagnostics & Global Optimization Control</p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-8">
         <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md">
           <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8">Networking Fabric</h3>
           <div className="space-y-6">
@@ -595,16 +595,6 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
                 <div className="text-slate-500 text-[10px] font-medium leading-relaxed uppercase">Google's Bottleneck Bandwidth and RTT algorithm</div>
               </div>
               <div onClick={() => setBbr(!bbr)} className={`w-14 h-7 rounded-full relative cursor-pointer transition-colors ${bbr ? 'bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-slate-800'}`}><div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${bbr ? 'left-8' : 'left-1'}`} /></div>
-            </div>
-          </div>
-        </div>
-        <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md flex flex-col justify-between">
-          <div>
-            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8">Maintenance Actions</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <button className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-4 px-6 rounded-2xl border border-slate-700 text-[10px] uppercase tracking-[0.2em] transition-all">Flush Logs</button>
-              <button className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-4 px-6 rounded-2xl border border-slate-700 text-[10px] uppercase tracking-[0.2em] transition-all">Clear ARP</button>
-              <button className="bg-rose-600/10 hover:bg-rose-600/20 text-rose-500 font-black py-4 px-6 rounded-2xl border border-rose-500/20 text-[10px] uppercase tracking-[0.2em] transition-all">Reboot Agent</button>
             </div>
           </div>
         </div>
