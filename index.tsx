@@ -476,7 +476,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
               ))}
             </div>
           </div>
-        </div
+        </div>
       </div>
     </div>
   );
