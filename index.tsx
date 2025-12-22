@@ -412,6 +412,25 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
             
             <div className="space-y-3">
               <button 
+                onClick={() => {
+                  if (confirm('RESTART AGENT: This will restart the Nexus background service. Web interface may briefly disconnect. Proceed?')) {
+                    fetch(`${API_BASE}/system/restart`, { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('nexus_token') || ''}` } })
+                      .then(r => {
+                        if (r.ok) alert('Agent is restarting. Please wait 10-15 seconds then refresh.');
+                        else alert('Failed to restart agent.');
+                      })
+                      .catch(() => alert('Failed to contact agent.'));
+                  }
+                }}
+                className="w-full flex items-center justify-between p-4 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 rounded-2xl transition-all group"
+              >
+                <div className="text-left">
+                  <div className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Restart Agent</div>
+                  <div className="text-[9px] text-slate-600 italic">Reboot background service</div>
+                </div>
+                <span className="text-xl group-hover:rotate-180 transition-transform duration-700">⚡</span>
+              </button>
+              <button 
                 onClick={handleDownloadBackup}
                 className="w-full flex items-center justify-between p-4 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/10 rounded-2xl transition-all group"
               >

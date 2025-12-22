@@ -253,6 +253,41 @@ app.get('/api/metrics', (req, res) => res.json(systemState.metrics));
 app.get('/api/config', (req, res) => res.json(systemState.config));
 app.get('/api/system/platform', (req, res) => res.json({ platform: process.platform }));
 
+app.post('/api/system/restart', (req, res) => {
+  log('System restart requested via API');
+  if (process.platform === 'linux') {
+    exec('systemctl restart nexus-agent', (error) => {
+      if (error) {
+        log(`Restart failed: ${error.message}`);
+        return res.status(500).json({ error: 'Restart failed' });
+      }
+      res.json({ status: 'restarting' });
+    });
+  } else {
+    log('Simulating restart on non-Linux platform');
+    setTimeout(() => process.exit(0), 1000);
+    res.json({ status: 'restarting (simulation)' });
+  }
+});
+
+app.post('/api/system/restart', (req, res) => {
+  log('System restart requested via API');
+  if (process.platform === 'linux') {
+    exec('systemctl restart nexus-agent', (error) => {
+      if (error) {
+        log(`Restart failed: ${error.message}`);
+        return res.status(500).json({ error: 'Restart failed' });
+      }
+      res.json({ status: 'restarting' });
+    });
+  } else {
+    // For Windows/Dev, just exit to simulate restart if running with a supervisor, or just log
+    log('Simulating restart on non-Linux platform');
+    setTimeout(() => process.exit(0), 1000); 
+    res.json({ status: 'restarting (simulation)' });
+  }
+});
+
 function parseDhcpConfig() {
   try {
     const path = fs.existsSync('/etc/dnsmasq.d/nexus-dhcp.conf')
