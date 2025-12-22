@@ -292,7 +292,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
     try {
       const res = await fetch(`${API_BASE}/update/check`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('nexus_token') || ''}` },
+        headers: (() => { const t = localStorage.getItem('nexus_token'); return t ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}` } : { 'Content-Type': 'application/json' }; })(),
         body: JSON.stringify({ repo: gitRepo, branch })
       });
       if (res.ok) {
@@ -314,7 +314,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
     try {
       const res = await fetch(`${API_BASE}/update/apply`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('nexus_token') || ''}` },
+        headers: (() => { const t = localStorage.getItem('nexus_token'); return t ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}` } : { 'Content-Type': 'application/json' }; })(),
         body: JSON.stringify({ repo: gitRepo, branch })
       });
       if (res.ok) {
@@ -324,7 +324,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
         const poll = async () => {
           if (!jid) return;
           try {
-            const lr = await fetch(`${API_BASE}/update/logs?job=${encodeURIComponent(jid)}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('nexus_token') || ''}` } });
+            const lr = await fetch(`${API_BASE}/update/logs?job=${encodeURIComponent(jid)}`, { headers: (() => { const t = localStorage.getItem('nexus_token'); return t ? { 'Authorization': `Bearer ${t}` } : {}; })() });
             if (lr.ok) {
               const payload = await lr.json();
               setLogs(payload.logs || []);
