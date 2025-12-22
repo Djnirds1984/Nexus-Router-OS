@@ -1008,6 +1008,10 @@ const App = () => {
   });
   const [appliedConfig, setAppliedConfig] = useState<NetworkConfig>(currentConfig);
   const [isApplying, setIsApplying] = useState(false);
+  
+  // Use ref to access current config inside refreshData without stale closures
+  const configRef = useRef(currentConfig);
+  useEffect(() => { configRef.current = currentConfig; }, [currentConfig]);
 
   const refreshData = useCallback(async () => {
     try {
@@ -1027,24 +1031,31 @@ const App = () => {
         setInterfaces(ifaces);
         setMetrics(met);
         
+        let loadedFromSave = false;
+        
         // Load settings from config endpoint
         if (configRes.ok) {
           const savedConfig = await configRes.json();
-          if (currentConfig.bridges.length === 0 && savedConfig.bridges && savedConfig.bridges.length > 0) {
+          const current = configRef.current;
+
+          if (current.bridges.length === 0 && savedConfig.bridges && savedConfig.bridges.length > 0) {
             setCurrentConfig(prev => ({ ...prev, bridges: savedConfig.bridges }));
           }
-          if (!currentConfig.dhcp && savedConfig.dhcp) {
+          if (!current.dhcp && savedConfig.dhcp) {
             setCurrentConfig(prev => ({ ...prev, dhcp: savedConfig.dhcp }));
           }
-          if (savedConfig.wanInterfaces && savedConfig.wanInterfaces.length > 0) {
-            const dhcpIface = (savedConfig.dhcp?.interfaceName) || currentConfig.dhcp?.interfaceName || '';
+          // Only overwrite WAN interfaces if local state is empty (prevents overwrite while editing)
+          if (current.wanInterfaces.length === 0 && savedConfig.wanInterfaces && savedConfig.wanInterfaces.length > 0) {
+            const dhcpIface = (savedConfig.dhcp?.interfaceName) || current.dhcp?.interfaceName || '';
             const persistedWans = dhcpIface ? savedConfig.wanInterfaces.filter((w: any) => w.interfaceName !== dhcpIface) : savedConfig.wanInterfaces;
             setCurrentConfig(prev => ({ ...prev, wanInterfaces: persistedWans }));
+            loadedFromSave = true;
           }
         }
 
-        if (currentConfig.wanInterfaces.length === 0 && ifaces.length > 0) {
-          const dhcpIface = currentConfig?.dhcp?.interfaceName || '';
+        const current = configRef.current;
+        if (!loadedFromSave && current.wanInterfaces.length === 0 && ifaces.length > 0) {
+          const dhcpIface = current?.dhcp?.interfaceName || '';
           const wanList = dhcpIface ? ifaces.filter((i: any) => i.interfaceName !== dhcpIface) : ifaces;
           setCurrentConfig(prev => ({ ...prev, wanInterfaces: wanList }));
         }
@@ -1053,7 +1064,7 @@ const App = () => {
         setIsLive(false);
       }
     } catch (e) { setIsLive(false); }
-  }, [currentConfig.bridges.length]);
+  }, []);
 
   useEffect(() => {
     refreshData();
