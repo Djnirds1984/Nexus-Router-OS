@@ -99,6 +99,8 @@ const ZeroTierManager: React.FC = () => {
   const [forwardRules, setForwardRules] = useState<ForwardRule[]>([]);
   const [newRule, setNewRule] = useState<{ proto: 'tcp' | 'udp'; listenPort: string; destIp: string; destPort: string; enabled: boolean }>({ proto: 'tcp', listenPort: '', destIp: '', destPort: '', enabled: true });
   const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }), [token]);
+const [platform, setPlatform] = useState<string>('');
+useEffect(() => { (async () => { try { const r = await fetch(`${API_BASE}/system/platform`); if (r.ok) { const d = await r.json(); setPlatform(d.platform || ''); } } catch {} })(); }, []);
 
   const fetchStatus = async () => {
     try {
@@ -191,12 +193,12 @@ const ZeroTierManager: React.FC = () => {
           <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4">Smart Installation</h3>
           <div className="space-y-3">
             <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Compatibility</div>
-            <div className="text-xs text-slate-300">Linux {navigator.platform}</div>
+            <div className="text-xs text-slate-300">Platform: {platform || 'detecting...'}{platform && platform !== 'linux' ? ' (limited)' : ''}</div>
             <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Dependencies</div>
             <div className="text-xs text-slate-300">zerotier-one, systemd</div>
           </div>
-          <button onClick={handleInstall} disabled={installing || (status?.installed && status?.running)} className={`${installing ? 'bg-slate-800 text-slate-300' : 'bg-emerald-600 hover:bg-emerald-500 text-white'} mt-4 w-full px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest`}>
-            {installing ? 'INSTALLING...' : status?.installed ? (status?.running ? 'INSTALLED' : 'ENABLE SERVICE') : 'INSTALL ZEROTIER'}
+          <button onClick={handleInstall} disabled={installing || (platform && platform !== 'linux') || (status?.installed && status?.running)} className={`${installing ? 'bg-slate-800 text-slate-300' : 'bg-emerald-600 hover:bg-emerald-500 text-white'} mt-4 w-full px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest`}>
+            {installing ? 'INSTALLING...' : (platform && platform !== 'linux') ? 'UNSUPPORTED ON THIS OS' : status?.installed ? (status?.running ? 'INSTALLED' : 'ENABLE SERVICE') : 'INSTALL ZEROTIER'}
           </button>
           {status?.node && <div className="mt-4 text-[10px] text-slate-500 font-black uppercase">Node Info</div>}
           {status?.node && <div className="font-mono text-xs text-blue-400">{status.node}</div>}

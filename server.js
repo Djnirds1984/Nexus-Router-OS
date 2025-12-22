@@ -232,6 +232,7 @@ if (apiToken) { app.use((req,res,next)=>{ const auth = req.headers['authorizatio
 app.get('/api/interfaces', (req, res) => res.json(systemState.interfaces));
 app.get('/api/metrics', (req, res) => res.json(systemState.metrics));
 app.get('/api/config', (req, res) => res.json(systemState.config));
+app.get('/api/system/platform', (req, res) => res.json({ platform: process.platform }));
 
 function parseDhcpConfig() {
   try {
@@ -273,6 +274,17 @@ app.get('/api/init/status', (req, res) => { const initialized = fs.existsSync(st
 
 function zeroTierStatus() {
   let installed = false, running = false, node = '', networks = [], iface = '';
+  const plat = process.platform;
+  if (plat === 'win32') {
+    try { const svc = execSync('powershell -NoProfile -Command "(Get-Service -Name \"ZeroTier One\").Status"').toString().trim().toLowerCase(); installed = !!svc; running = svc === 'running'; } catch (e) {}
+    try { node = execSync('cmd /c zerotier-cli.bat info').toString().trim(); installed = installed || !!node; } catch (e) {}
+    try {
+      const out = execSync('cmd /c zerotier-cli.bat listnetworks').toString().trim().split('\n').slice(1);
+      networks = out.map(l => { const p = l.trim().split(/\s+/); return { id: p[0], name: p[1], status: p[p.length-1] }; });
+    } catch (e) {}
+    try { iface = execSync('powershell -NoProfile -Command "(Get-NetAdapter | Where-Object {$_.Name -like \"*ZeroTier*\"} | Select-Object -First 1 -ExpandProperty Name)"').toString().trim(); } catch (e) {}
+    return { installed, running, node, networks, iface };
+  }
   try { execSync('dpkg -s zerotier-one'); installed = true; } catch (e) {}
   if (installed) { try { running = execSync('systemctl is-active zerotier-one').toString().trim() === 'active'; } catch (e) {} }
   if (installed) {
@@ -288,7 +300,18 @@ function zeroTierStatus() {
 
 app.get('/api/zerotier/status', (req, res) => { res.json(zeroTierStatus()); });
 app.post('/api/zerotier/install', (req, res) => {
-  try { ensurePkg('zerotier-one'); execSync('systemctl enable --now zerotier-one'); logInstall('zerotier-installed'); res.json(zeroTierStatus()); } catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    if (process.platform === 'win32') {
+      try { execSync('powershell -NoProfile -Command "winget install --id ZeroTier.ZeroTierOne -e --silent"'); } catch (e) {}
+      try { execSync('powershell -NoProfile -Command "Start-Service -Name \"ZeroTier One\""'); } catch (e) {}
+      logInstall('zerotier-installed-win');
+      return res.json(zeroTierStatus());
+    }
+    ensurePkg('zerotier-one');
+    execSync('systemctl enable --now zerotier-one');
+    logInstall('zerotier-installed');
+    res.json(zeroTierStatus());
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/zerotier/networks', (req, res) => {
   try { const { id } = req.body; if (!id) return res.status(400).json({ error: 'missing id' }); execSync(`zerotier-cli join ${id}`); systemState.config.zerotier = systemState.config.zerotier || { networks: [], forward: [] }; if (!systemState.config.zerotier.networks.find(n => n.id === id)) systemState.config.zerotier.networks.push({ id }); fs.writeFileSync(configPath, JSON.stringify(systemState.config)); res.json(zeroTierStatus()); } catch (e) { res.status(500).json({ error: e.message }); }
