@@ -263,7 +263,9 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
   const [branch, setBranch] = useState('main');
   const [checking, setChecking] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [version, setVersion] = useState<{ sha: string; message: string; date?: string } | null>(null);
+  const [version, setVersion] = useState<{ sha: string; message: string; date?: string } | null>(null); // Kept for legacy prop if needed, but unused if we switch
+  const [activeVersion, setActiveVersion] = useState<{ sha: string; message: string; date?: string } | null>(null);
+  const [remoteVersion, setRemoteVersion] = useState<{ sha: string; message: string; date?: string } | null>(null);
   const [jobId, setJobId] = useState('');
   const [logs, setLogs] = useState<string[]>(['Nexus Updater Ready.']);
   const [commits, setCommits] = useState<{h: string, m: string, d: string}[]>([]);
@@ -274,6 +276,13 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`].slice(-10));
   };
+
+  useEffect(() => {
+    fetch(`${API_BASE}/update/version`)
+      .then(r => r.json())
+      .then(d => { if (d.version) setActiveVersion(d.version); })
+      .catch(() => {});
+  }, []);
 
   const loadBackups = async () => {
     try {
@@ -317,7 +326,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
       if (res.ok) {
         const data = await res.json();
         setUpdateAvailable(true);
-        if (data.version) setVersion(data.version);
+        if (data.version) setRemoteVersion(data.version);
         setCommits((data.commits || []).map((c: any) => ({ h: c.sha.substring(0, 7), m: c.message, d: c.date })));
         addLog('Remote HEAD resolved.');
       } else {
@@ -375,7 +384,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
         </div>
         <div className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
           <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Active Version</div>
-          <div className="text-emerald-400 font-mono text-sm font-bold">{version ? `${version.sha.substring(0,7)} : ${version.message}` : 'unknown'}</div>
+          <div className="text-emerald-400 font-mono text-sm font-bold">{activeVersion ? `${activeVersion.sha.substring(0,7)} : ${activeVersion.message}` : 'unknown'}</div>
         </div>
       </header>
 

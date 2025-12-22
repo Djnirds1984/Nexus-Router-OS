@@ -346,9 +346,16 @@ app.get('/api/update/logs', (req, res) => {
 
 app.get('/api/update/version', (req, res) => {
   try {
-    if (!fs.existsSync(panelDeployDir)) return res.json({ version: null });
-    const sha = execSync(`git -C ${panelDeployDir} rev-parse HEAD`).toString().trim();
-    const msg = execSync(`git -C ${panelDeployDir} show -s --format=%s HEAD`).toString().trim();
+    let dir = panelDeployDir;
+    // If panel-deploy doesn't exist, try current directory if it's a git repo
+    if (!fs.existsSync(dir) && fs.existsSync(path.join(process.cwd(), '.git'))) {
+       dir = process.cwd();
+    }
+    
+    if (!fs.existsSync(dir)) return res.json({ version: null });
+    
+    const sha = execSync(`git -C "${dir}" rev-parse HEAD`).toString().trim();
+    const msg = execSync(`git -C "${dir}" show -s --format=%s HEAD`).toString().trim();
     res.json({ version: { sha, message: msg } });
   } catch { res.json({ version: null }); }
 });
