@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import DeviceList from './components/DeviceList';
 
 /**
  * TYPES & ENUMS
@@ -714,6 +715,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
+    { id: 'devices', label: 'Devices', icon: '💻' },
     { id: 'bridge', label: 'Bridge & DHCP', icon: '🌉' },
     { id: 'zerotier', label: 'ZeroTier', icon: '🕸️' },
     { id: 'updates', label: 'Updates', icon: '🆙' },
@@ -1006,6 +1008,7 @@ const App = () => {
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
+      {activeTab === 'devices' && <DeviceList />}
       {activeTab === 'bridge' && <BridgeManager config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
       {activeTab === 'zerotier' && <ZeroTierManager />}
       {activeTab === 'updates' && <UpdateManager onApplyUpdate={handleUpdate} isUpdating={isApplying} />}
