@@ -11,6 +11,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) =>
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
+    { id: 'devices', label: 'Devices', icon: '💻' },
     { id: 'advisor', label: 'AI Advisor', icon: '🧠' },
     { id: 'updates', label: 'Updates', icon: '🐙' },
     { id: 'settings', label: 'System', icon: '⚙️' },

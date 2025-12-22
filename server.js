@@ -289,6 +289,45 @@ function getDhcpStatus() {
 }
 
 app.get('/api/dhcp/status', (req, res) => { res.json(getDhcpStatus()); });
+
+function getConnectedDevices() {
+  if (process.platform !== 'linux') {
+    return [
+      { mac: '00:11:22:33:44:55', ip: '192.168.1.101', hostname: 'My-Laptop', leaseTime: '23h 59m' },
+      { mac: 'AA:BB:CC:DD:EE:FF', ip: '192.168.1.102', hostname: 'Smart-TV', leaseTime: '12h 30m' },
+      { mac: '12:34:56:78:90:AB', ip: '192.168.1.103', hostname: 'IoT-Device', leaseTime: '1h 15m' }
+    ];
+  }
+
+  const devices = [];
+  const leasePath = '/var/lib/nexus/dhcp.leases';
+  try {
+    if (fs.existsSync(leasePath)) {
+      const content = fs.readFileSync(leasePath, 'utf8');
+      content.split('\n').forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 4) {
+          // dnsmasq lease file format: timestamp mac ip hostname client-id
+          const expiry = parseInt(parts[0]);
+          const now = Math.floor(Date.now() / 1000);
+          const minutesLeft = Math.floor((expiry - now) / 60);
+          const hours = Math.floor(minutesLeft / 60);
+          const mins = minutesLeft % 60;
+          
+          devices.push({
+            mac: parts[1],
+            ip: parts[2],
+            hostname: parts[3] === '*' ? 'Unknown' : parts[3],
+            leaseTime: expiry === 0 ? 'Infinite' : (minutesLeft > 0 ? `${hours}h ${mins}m` : 'Expired')
+          });
+        }
+      });
+    }
+  } catch (e) {}
+  return devices;
+}
+
+app.get('/api/devices', (req, res) => res.json(getConnectedDevices()));
 app.get('/api/init/status', (req, res) => { const initialized = fs.existsSync(stampPath); let tail = []; try { if (fs.existsSync(installLog)) tail = fs.readFileSync(installLog,'utf8').split('\n').slice(-50); } catch (e) {} res.json({ initialized, log: tail }); });
 
 function zeroTierStatus() {

@@ -5,6 +5,7 @@ import InterfaceManager from './components/InterfaceManager';
 import AIAdvisor from './components/AIAdvisor';
 import UpdateManager from './components/UpdateManager';
 import Terminal from './components/Terminal';
+import DeviceList from './components/DeviceList';
 import { NetworkConfig, RouterMode, SystemMetrics, TerminalLog, WanInterface } from './types';
 
 const API_BASE = `http://${window.location.hostname || 'localhost'}:3000/api`;
@@ -120,6 +121,8 @@ const App: React.FC = () => {
             isApplying={isApplying}
           />
         );
+      case 'devices':
+        return <DeviceList />;
       case 'advisor':
         return <AIAdvisor config={currentConfig} />;
       case 'updates':
