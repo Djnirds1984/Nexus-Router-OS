@@ -269,9 +269,12 @@ useEffect(() => { (async () => { try { const r = await fetch(`${API_BASE}/system
  */
 const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => void, isUpdating: boolean }) => {
   const [gitRepo, setGitRepo] = useState('https://github.com/Djnirds1984/Nexus-Router-OS.git');
+  const [branch, setBranch] = useState('main');
   const [checking, setChecking] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [logs, setLogs] = useState<string[]>(['Nexus Core Maintenance Agent Ready.']);
+  const [version, setVersion] = useState<{ sha: string; message: string; date?: string } | null>(null);
+  const [jobId, setJobId] = useState('');
+  const [logs, setLogs] = useState<string[]>(['Nexus Updater Ready.']);
   const [commits, setCommits] = useState<{h: string, m: string, d: string}[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -283,28 +286,62 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
 
-  const checkUpdates = () => {
+  const checkUpdates = async () => {
     setChecking(true);
-    addLog(`Probing repository: ${gitRepo}...`);
-    setTimeout(() => {
-      setChecking(false);
-      setUpdateAvailable(true);
-      setCommits([
-        { h: '8f2a1b', m: 'feat: Core Multi-WAN balancing optimization', d: '2h ago' },
-        { h: '4c9e7a', m: 'fix: DHCP lease timing on bridge interfaces', d: '1d ago' },
-        { h: '2b1d3f', m: 'style: Aesthetic improvements to host dashboard', d: '3d ago' }
-      ]);
-      addLog('Update found: Build v1.4.2-STABLE detected.');
-    }, 1500);
+    addLog(`Probing repository: ${gitRepo} [branch: ${branch}]...`);
+    try {
+      const res = await fetch(`${API_BASE}/update/check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('nexus_token') || ''}` },
+        body: JSON.stringify({ repo: gitRepo, branch })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUpdateAvailable(true);
+        if (data.version) setVersion(data.version);
+        setCommits((data.commits || []).map((c: any) => ({ h: c.sha.substring(0, 7), m: c.message, d: c.date })));
+        addLog('Remote HEAD resolved.');
+      } else {
+        setUpdateAvailable(false);
+        addLog('Repository check failed.');
+      }
+    } catch (e) { addLog('Network error while checking updates.'); }
+    setChecking(false);
   };
 
-  const handleUpdateNow = () => {
-    addLog('CRITICAL: Initiating pre-update system snapshot...');
-    setTimeout(() => {
-      addLog('BACKUP CREATED: /mnt/backups/nexus_state_stable_v1.3.tar.gz');
-      onApplyUpdate();
-      addLog('Deploying kernel objects and UI assets...');
-    }, 1000);
+  const handleUpdateNow = async () => {
+    addLog('INIT: Creating backup and syncing repository...');
+    try {
+      const res = await fetch(`${API_BASE}/update/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('nexus_token') || ''}` },
+        body: JSON.stringify({ repo: gitRepo, branch })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const jid = data.job || '';
+        setJobId(jid);
+        const poll = async () => {
+          if (!jid) return;
+          try {
+            const lr = await fetch(`${API_BASE}/update/logs?job=${encodeURIComponent(jid)}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('nexus_token') || ''}` } });
+            if (lr.ok) {
+              const payload = await lr.json();
+              setLogs(payload.logs || []);
+              if (!version && payload.logs) {
+                const line = (payload.logs || []).find((l: string) => l.startsWith('DEPLOYED:'));
+                if (line) {
+                  const m = line.match(/DEPLOYED:\s+(\w+)\s+-\s+(.*)$/);
+                  if (m) setVersion({ sha: m[1], message: m[2] });
+                }
+              }
+              if (!payload.done) setTimeout(poll, 1000);
+            }
+          } catch { setTimeout(poll, 1500); }
+        };
+        poll();
+      }
+    } catch (e) { addLog('Update request failed.'); }
   };
 
   return (
@@ -316,7 +353,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
         </div>
         <div className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
           <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Active Version</div>
-          <div className="text-emerald-400 font-mono text-sm font-bold">v1.3.0-STABLE</div>
+          <div className="text-emerald-400 font-mono text-sm font-bold">{version ? `${version.sha.substring(0,7)} : ${version.message}` : 'unknown'}</div>
         </div>
       </header>
 
@@ -338,6 +375,14 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
                   onChange={(e) => setGitRepo(e.target.value)}
                   className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-mono text-blue-400 outline-none focus:border-blue-500 transition-all placeholder:text-slate-800"
                   placeholder="https://github.com/user/repo.git"
+                />
+                <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest block mb-2 mt-6">Branch to Pull</label>
+                <input 
+                  type="text" 
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-mono text-blue-400 outline-none focus:border-blue-500 transition-all placeholder:text-slate-800"
+                  placeholder="main"
                 />
               </div>
 

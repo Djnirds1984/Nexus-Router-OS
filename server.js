@@ -7,6 +7,7 @@ const fs = require('fs');
 const { execSync, exec } = require('child_process');
 const express = require('express');
 const cors = require('cors');
+const https = require('https');
 
 const logFile = '/var/log/nexus-agent.log';
 const configPath = './nexus-config.json';
@@ -270,22 +271,89 @@ app.post('/api/system/restart', (req, res) => {
   }
 });
 
-app.post('/api/system/restart', (req, res) => {
-  log('System restart requested via API');
-  if (process.platform === 'linux') {
-    exec('systemctl restart nexus-agent', (error) => {
-      if (error) {
-        log(`Restart failed: ${error.message}`);
-        return res.status(500).json({ error: 'Restart failed' });
+const updateJobs = {};
+const panelDeployDir = './panel-deploy';
+const panelBackupDir = './panel-backups';
+try { fs.mkdirSync(panelBackupDir, { recursive: true }); } catch (e) {}
+
+app.post('/api/update/check', (req, res) => {
+  try {
+    const { repo, branch } = req.body || {};
+    const m = (repo || '').match(/github\.com\/([^\/]+)\/([^\/.]+)/);
+    if (!m) return res.status(400).json({ error: 'invalid repo url' });
+    const owner = m[1], name = m[2];
+    const url = `https://api.github.com/repos/${owner}/${name}/commits?sha=${branch||'main'}&per_page=5`;
+    const options = { headers: { 'User-Agent': 'Nexus-Agent', 'Accept': 'application/vnd.github+json' } };
+    https.get(url, options, (r) => {
+      let buf = ''; r.on('data', c => buf += c);
+      r.on('end', () => {
+        try {
+          const list = JSON.parse(buf);
+          const commits = (Array.isArray(list) ? list : []).map(c => ({ sha: c.sha, message: c.commit?.message || '', date: c.commit?.author?.date || '' }));
+          const head = commits[0] || null;
+          res.json({ repo, branch, version: head ? { sha: head.sha, message: head.message, date: head.date } : null, commits });
+        } catch { res.status(500).json({ error: 'parse-failed' }); }
+      });
+    }).on('error', () => res.status(500).json({ error: 'github-failed' }));
+  } catch { res.status(500).json({ error: 'unexpected' }); }
+});
+
+app.post('/api/update/apply', (req, res) => {
+  const { repo, branch } = req.body || {};
+  const job = Math.random().toString(36).slice(2);
+  updateJobs[job] = { logs: [], done: false };
+  res.json({ job, status: 'started' });
+  setImmediate(() => {
+    const J = updateJobs[job];
+    const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+    try {
+      J.logs.push('BACKUP: creating snapshot...');
+      try {
+        if (process.platform === 'linux') {
+          execSync(`tar -czf ${panelBackupDir}/panel_backup_${stamp}.tar.gz ${configPath} ${backupPath}`, { stdio: 'pipe' });
+          J.logs.push('BACKUP: snapshot created');
+        } else {
+          fs.writeFileSync(`${panelBackupDir}/panel_backup_${stamp}.json`, JSON.stringify(systemState.config));
+          J.logs.push('BACKUP: snapshot created');
+        }
+      } catch (e) {
+        fs.writeFileSync(`${panelBackupDir}/panel_backup_${stamp}.json`, JSON.stringify(systemState.config));
+        J.logs.push('BACKUP: tar failed, wrote JSON snapshot');
       }
-      res.json({ status: 'restarting' });
-    });
-  } else {
-    // For Windows/Dev, just exit to simulate restart if running with a supervisor, or just log
-    log('Simulating restart on non-Linux platform');
-    setTimeout(() => process.exit(0), 1000); 
-    res.json({ status: 'restarting (simulation)' });
-  }
+
+      if (!repo) { J.logs.push('ERROR: repo not provided'); J.done = true; return; }
+      J.logs.push('UPDATE: syncing repository...');
+      if (fs.existsSync(panelDeployDir)) {
+        execSync(`git -C ${panelDeployDir} fetch`, { stdio: 'pipe' });
+        execSync(`git -C ${panelDeployDir} checkout ${branch||'main'}`, { stdio: 'pipe' });
+        execSync(`git -C ${panelDeployDir} pull origin ${branch||'main'}`, { stdio: 'pipe' });
+      } else {
+        execSync(`git clone --depth 1 --branch ${branch||'main'} ${repo} ${panelDeployDir}`, { stdio: 'pipe' });
+      }
+      const sha = execSync(`git -C ${panelDeployDir} rev-parse HEAD`).toString().trim();
+      const msg = execSync(`git -C ${panelDeployDir} show -s --format=%s HEAD`).toString().trim();
+      J.logs.push(`DEPLOYED: ${sha.slice(0,7)} - ${msg}`);
+      J.logs.push('UPDATE COMPLETE');
+    } catch (e) {
+      J.logs.push(`ERROR: ${e.message}`);
+    } finally { J.done = true; }
+  });
+});
+
+app.get('/api/update/logs', (req, res) => {
+  const job = req.query.job || '';
+  const J = updateJobs[job];
+  if (!J) return res.json({ logs: [], done: true });
+  res.json({ logs: J.logs.slice(-50), done: J.done });
+});
+
+app.get('/api/update/version', (req, res) => {
+  try {
+    if (!fs.existsSync(panelDeployDir)) return res.json({ version: null });
+    const sha = execSync(`git -C ${panelDeployDir} rev-parse HEAD`).toString().trim();
+    const msg = execSync(`git -C ${panelDeployDir} show -s --format=%s HEAD`).toString().trim();
+    res.json({ version: { sha, message: msg } });
+  } catch { res.json({ version: null }); }
 });
 
 function parseDhcpConfig() {
