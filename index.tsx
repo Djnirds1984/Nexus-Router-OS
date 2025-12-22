@@ -268,6 +268,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
   const [logs, setLogs] = useState<string[]>(['Nexus Updater Ready.']);
   const [commits, setCommits] = useState<{h: string, m: string, d: string}[]>([]);
   const [backups, setBackups] = useState<{ name: string; size: number; mtime: number }[]>([]);
+  const [backupError, setBackupError] = useState('');
   const logRef = useRef<HTMLDivElement>(null);
 
   const addLog = (msg: string) => {
@@ -276,9 +277,11 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
 
   const loadBackups = async () => {
     try {
-      const r = await fetch(`${API_BASE}/update/backups`);
+      setBackupError('');
+      const r = await fetch(`${API_BASE}/update/backups`, { headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } });
       if (r.ok) { const d = await r.json(); setBackups(d.files || []); }
-    } catch (e) {}
+      else { const t = await r.text(); setBackupError(t || 'Failed to load backups'); }
+    } catch (e:any) { setBackupError(e?.message || 'Network error while loading backups'); }
   };
 
   const restoreBackup = async (name: string) => {
@@ -295,6 +298,12 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
   }, [logs]);
 
   useEffect(() => { loadBackups(); }, []);
+
+  useEffect(() => {
+    if (!jobId) return;
+    const t = setInterval(loadBackups, 3000);
+    return () => clearInterval(t);
+  }, [jobId]);
 
   const checkUpdates = async () => {
     setChecking(true);
@@ -462,6 +471,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
               <h3 className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Backups</h3>
               <button onClick={loadBackups} className="px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700">Refresh</button>
             </div>
+            {backupError && <div className="text-[10px] text-rose-400 border border-rose-500/30 bg-rose-500/10 rounded-xl px-3 py-2 mb-2">{backupError}</div>}
             <div className="space-y-2">
               {backups.length === 0 ? (
                 <div className="text-[10px] text-slate-600">No backups found.</div>

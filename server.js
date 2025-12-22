@@ -355,6 +355,7 @@ app.get('/api/update/version', (req, res) => {
 
 app.get('/api/update/backups', (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const candidates = ['/var/www/html/Nexus-Router-OS/panel-backups', '/var/www/html/Nexus-Router-Os/panel-backups', panelBackupDir];
     const files = candidates
       .filter(d => fs.existsSync(d))
