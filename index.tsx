@@ -907,6 +907,7 @@ const DeviceList: React.FC = () => {
 const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'interfaces', label: 'Interfaces', icon: '🔌' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
     { id: 'devices', label: 'Devices', icon: '💻' },
     { id: 'bridge', label: 'Bridge & DHCP', icon: '🌉' },
@@ -1211,6 +1212,7 @@ const App = () => {
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
+      {activeTab === 'interfaces' && <Interfaces />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'devices' && <DeviceList />}
       {activeTab === 'bridge' && <BridgeManager config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}

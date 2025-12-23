@@ -253,6 +253,52 @@ app.get('/api/metrics', (req, res) => res.json(systemState.metrics));
 app.get('/api/config', (req, res) => res.json(systemState.config));
 app.get('/api/system/platform', (req, res) => res.json({ platform: process.platform }));
 
+app.get('/api/netdevs', (req, res) => {
+  try {
+    if (process.platform !== 'linux') {
+      return res.json({
+        interfaces: [
+          { name: 'eth0', type: 'physical', state: 'UP', mac: '00:11:22:33:44:55', mtu: 1500, ipAddress: '192.168.1.10', speed: 1000, master: null, members: [] },
+          { name: 'br0', type: 'bridge', state: 'UP', mac: '02:00:00:00:00:01', mtu: 1500, ipAddress: '192.168.1.1', speed: null, master: null, members: ['eth0'] }
+        ]
+      });
+    }
+    const links = JSON.parse(execSync('ip -j link show').toString());
+    const addrs = JSON.parse(execSync('ip -j addr show').toString());
+    const addrMap = {};
+    addrs.forEach(a => { addrMap[a.ifname] = ((a.addr_info || [])[0] || {}).local || ''; });
+    const masterMap = {};
+    links.forEach(l => { if (l.master) { masterMap[l.master] = masterMap[l.master] || []; masterMap[l.master].push(l.ifname); } });
+    const list = [];
+    for (const l of links) {
+      if (l.ifname === 'lo' || (l.ifname || '').startsWith('veth')) continue;
+      const isBridge = (l.linkinfo && l.linkinfo.info_kind === 'bridge') || (l.ifname || '').startsWith('br');
+      let speed = null;
+      if (!isBridge) {
+        try {
+          const out = execSync(`ethtool ${l.ifname}`, { stdio: 'pipe' }).toString();
+          const m = out.match(/Speed:\s*(\d+)/);
+          if (m) speed = parseInt(m[1], 10);
+        } catch (e) {}
+      }
+      list.push({
+        name: l.ifname,
+        type: isBridge ? 'bridge' : 'physical',
+        state: l.operstate || 'UNKNOWN',
+        mac: l.address || '',
+        mtu: l.mtu || 1500,
+        ipAddress: addrMap[l.ifname] || '',
+        speed: isBridge ? null : speed,
+        master: l.master || null,
+        members: isBridge ? (masterMap[l.ifname] || []) : []
+      });
+    }
+    res.json({ interfaces: list });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/system/restart', (req, res) => {
   log('System restart requested via API');
   res.json({ status: 'restarting' });

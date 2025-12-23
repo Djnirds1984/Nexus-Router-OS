@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
+import Interfaces from './components/Interfaces';
 import InterfaceManager from './components/InterfaceManager';
 import AIAdvisor from './components/AIAdvisor';
 import UpdateManager from './components/UpdateManager';
@@ -111,6 +112,8 @@ const App: React.FC = () => {
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard wanInterfaces={currentConfig.wanInterfaces} metrics={metrics} />;
+      case 'interfaces':
+        return <Interfaces />;
       case 'wan':
         return (
           <InterfaceManager 
