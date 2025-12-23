@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import Interfaces from './components/Interfaces.tsx';
 
 /**
  * TYPES & ENUMS
@@ -1212,7 +1213,8 @@ const App = () => {
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
-      {activeTab === 'interfaces' && <Interfaces />}
+      {activeTab === 'interfaces' && Interfaces && <Interfaces />}
+
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'devices' && <DeviceList />}
       {activeTab === 'bridge' && <BridgeManager config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
