@@ -617,6 +617,28 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
   const [ipForwarding, setIpForwarding] = useState(true);
   const [bbr, setBbr] = useState(true);
 
+  // Password Management State
+  const [oldPass, setOldPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [passMsg, setPassMsg] = useState('');
+
+  const handleChangePassword = () => {
+    const currentStored = localStorage.getItem('nexus_password') || 'admin';
+    if (oldPass !== currentStored) {
+      setPassMsg('Error: Incorrect current password.');
+      return;
+    }
+    if (!newPass) {
+      setPassMsg('Error: New password cannot be empty.');
+      return;
+    }
+    localStorage.setItem('nexus_password', newPass);
+    setPassMsg('Success: Password updated.');
+    setOldPass('');
+    setNewPass('');
+    setTimeout(() => setPassMsg(''), 3000);
+  };
+
   const handleDownloadBackup = () => {
     const blob = new Blob([JSON.stringify({ timestamp: Date.now(), signature: 'nexus-recovery-v1' })], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -719,6 +741,32 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
               </div>
               <span className="text-xl group-hover:rotate-180 transition-transform duration-500">🔄</span>
             </button>
+          </div>
+        </div>
+
+        <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md lg:col-span-2">
+          <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8">Security & Access Control</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+            <div>
+              <div className="text-white font-bold text-sm uppercase tracking-tight mb-2">Admin Credentials</div>
+              <p className="text-slate-500 text-[10px] font-medium leading-relaxed uppercase mb-6">Update the master password for the administrative console.</p>
+              {passMsg && (
+                <div className={`text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl mb-4 ${passMsg.startsWith('Success') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
+                  {passMsg}
+                </div>
+              )}
+            </div>
+            <div className="space-y-4 bg-black/20 p-6 rounded-2xl border border-slate-800/50">
+               <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Current Password</label>
+                  <input type="password" value={oldPass} onChange={e => setOldPass(e.target.value)} className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-blue-500 transition-all" />
+               </div>
+               <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">New Password</label>
+                  <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-blue-500 transition-all" />
+               </div>
+               <button onClick={handleChangePassword} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-3 rounded-xl uppercase tracking-widest text-[10px] transition-all">Update Password</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1249,6 +1297,28 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
  * MAIN APP
  */
 const App = () => {
+  // Login Logic State
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  useEffect(() => {
+    const auth = localStorage.getItem('nexus_auth');
+    if (auth === 'true') setIsLoggedIn(true);
+  }, []);
+
+  const handleLogin = () => {
+    const storedPass = localStorage.getItem('nexus_password') || 'admin';
+    if (loginUser === 'admin' && loginPass === storedPass) {
+      setIsLoggedIn(true);
+      localStorage.setItem('nexus_auth', 'true');
+      setLoginError('');
+    } else {
+      setLoginError('Invalid credentials');
+    }
+  };
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isLive, setIsLive] = useState(false);
   const [metrics, setMetrics] = useState<SystemMetrics>({ cpuUsage: 0, memoryUsage: '0', totalMem: '0', temp: '0', uptime: '', activeSessions: 0, dnsResolved: true, ipForwarding: true });
@@ -1347,6 +1417,62 @@ const App = () => {
     await new Promise(r => setTimeout(r, 2000));
     setIsApplying(false);
   };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#020617] text-slate-200 font-sans selection:bg-blue-500/30">
+        <div className="bg-slate-900/40 p-12 rounded-[2.5rem] border border-slate-800 shadow-2xl backdrop-blur-md w-full max-w-md animate-in fade-in zoom-in duration-500">
+          <div className="text-center mb-10">
+            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center font-bold text-white shadow-xl italic text-3xl mx-auto mb-6">N</div>
+            <h1 className="text-3xl font-black text-white tracking-tighter uppercase italic">Nexus OS</h1>
+            <p className="text-slate-500 mt-2 text-xs font-black uppercase tracking-widest">Secure Admin Access</p>
+          </div>
+          
+          {loginError && (
+            <div className="mb-6 bg-rose-500/10 border border-rose-500/20 text-rose-400 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest text-center">
+              {loginError}
+            </div>
+          )}
+
+          <div className="space-y-6">
+            <div>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Username</label>
+              <input 
+                type="text" 
+                value={loginUser}
+                onChange={e => setLoginUser(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-bold text-white outline-none focus:border-blue-500 transition-all placeholder:text-slate-700"
+                placeholder="admin"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Password</label>
+              <input 
+                type="password" 
+                value={loginPass}
+                onChange={e => setLoginPass(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-bold text-white outline-none focus:border-blue-500 transition-all placeholder:text-slate-700"
+                placeholder="••••••••"
+              />
+            </div>
+            <button 
+              onClick={handleLogin}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-600/20 uppercase tracking-widest text-xs transition-all active:scale-95"
+            >
+              Login to Console
+            </button>
+          </div>
+          
+          <div className="mt-8 text-center">
+             <div className="text-[9px] text-slate-700 font-mono">Build v2.4.0-stable</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
