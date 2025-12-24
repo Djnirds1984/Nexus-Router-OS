@@ -1091,7 +1091,7 @@ const Interfaces: React.FC = () => {
 /**
  * COMPONENT: LAYOUT
  */
-const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
+const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout }: any) => {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'interfaces', label: 'Interfaces', icon: '🔌' },
@@ -1118,6 +1118,12 @@ const Layout = ({ children, activeTab, setActiveTab, isLive }: any) => {
               <span className="font-bold text-sm tracking-tight">{tab.label}</span>
             </button>
           ))}
+          <div className="pt-4 mt-4 border-t border-slate-800/50">
+            <button onClick={onLogout} className="w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl transition-all duration-300 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 group">
+              <span className="text-xl group-hover:-translate-x-1 transition-transform">🚪</span>
+              <span className="font-bold text-sm tracking-tight">Logout</span>
+            </button>
+          </div>
         </nav>
         <div className="p-6 mt-auto">
           <div className={`p-5 rounded-2xl border transition-all duration-500 ${isLive ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20 shadow-[0_0_20px_rgba(244,63,94,0.15)]'}`}>
@@ -1319,6 +1325,13 @@ const App = () => {
     }
   };
 
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem('nexus_auth');
+    setLoginUser('');
+    setLoginPass('');
+  };
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isLive, setIsLive] = useState(false);
   const [metrics, setMetrics] = useState<SystemMetrics>({ cpuUsage: 0, memoryUsage: '0', totalMem: '0', temp: '0', uptime: '', activeSessions: 0, dnsResolved: true, ipForwarding: true });
@@ -1475,7 +1488,7 @@ const App = () => {
   }
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive}>
+    <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive} onLogout={handleLogout}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'interfaces' && <Interfaces />}
 
