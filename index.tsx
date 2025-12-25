@@ -1262,11 +1262,11 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl">
+        <div className="bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl">
           <div className="flex justify-between items-center mb-10">
             <h2 className="text-xl font-black text-white flex items-center gap-3 uppercase italic tracking-tight">
               <span className="w-2 h-6 bg-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
-              Traffic Monitor: <span className="text-emerald-400 font-mono tracking-tighter">{selectedIface.toUpperCase()}</span>
+              Traffic Monitor A: <span className="text-emerald-400 font-mono tracking-tighter">{selectedIface.toUpperCase()}</span>
             </h2>
             <select 
               value={selectedIface}
@@ -1278,19 +1278,53 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
               ))}
             </select>
           </div>
-          <div className="h-[350px] w-full">
+          <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={history}>
                 <defs>
-                  <linearGradient id="colorRx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
-                  <linearGradient id="colorTx" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
+                  <linearGradient id="colorRx1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
+                  <linearGradient id="colorTx1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                 <XAxis dataKey="time" hide />
                 <YAxis stroke="#475569" fontSize={10} tickFormatter={(v) => `${v}M`} />
                 <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '16px' }} />
-                <Area name="Down" type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={4} fill="url(#colorRx)" isAnimationActive={false} />
-                <Area name="Up" type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={4} fill="url(#colorTx)" isAnimationActive={false} />
+                <Area name="Down" type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={4} fill="url(#colorRx1)" isAnimationActive={false} />
+                <Area name="Up" type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={4} fill="url(#colorTx1)" isAnimationActive={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl">
+          <div className="flex justify-between items-center mb-10">
+            <h2 className="text-xl font-black text-white flex items-center gap-3 uppercase italic tracking-tight">
+              <span className="w-2 h-6 bg-blue-500 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
+              Traffic Monitor B: <span className="text-blue-400 font-mono tracking-tighter">{selectedIface2.toUpperCase()}</span>
+            </h2>
+            <select 
+              value={selectedIface2}
+              onChange={(e) => setSelectedIface2(e.target.value)}
+              className="bg-slate-950 text-emerald-400 border border-slate-800 rounded-2xl px-6 py-2.5 text-xs font-black outline-none font-mono focus:border-emerald-500 cursor-pointer uppercase"
+            >
+              {interfaces.map(iface => (
+                <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName}</option>
+              ))}
+            </select>
+          </div>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={history2}>
+                <defs>
+                  <linearGradient id="colorRx2" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
+                  <linearGradient id="colorTx2" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="time" hide />
+                <YAxis stroke="#475569" fontSize={10} tickFormatter={(v) => `${v}M`} />
+                <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '16px' }} />
+                <Area name="Down" type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={4} fill="url(#colorRx2)" isAnimationActive={false} />
+                <Area name="Up" type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={4} fill="url(#colorTx2)" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -1305,7 +1339,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
               {interfaces.map(iface => (
                 <div 
                   key={iface.id} 
-                  onClick={() => setSelectedIface(iface.interfaceName)}
+                  onClick={() => { setSelectedIface(iface.interfaceName); setSelectedIface2(iface.interfaceName); }}
                   className={`p-5 rounded-2xl border transition-all cursor-pointer group flex items-center justify-between ${selectedIface === iface.interfaceName ? 'bg-blue-600/10 border-blue-500/30' : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'}`}
                 >
                    <div className="flex items-center gap-4">
