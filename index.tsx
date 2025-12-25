@@ -983,6 +983,7 @@ const DeviceList: React.FC = () => {
 
 type NetDev = {
   name: string;
+  customName?: string;
   type: 'physical' | 'bridge';
   state: string;
   mac: string;
@@ -997,6 +998,32 @@ const Interfaces: React.FC = () => {
   const [items, setItems] = useState<NetDev[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [tempName, setTempName] = useState('');
+
+  const handleRename = async (interfaceName: string) => {
+    try {
+      await fetch(`${API_BASE}/interfaces/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interfaceName, customName: tempName })
+      });
+      setEditingId(null);
+      // Immediate refresh
+      const r = await fetch(`${API_BASE}/netdevs`);
+      if (r.ok) {
+        const d = await r.json();
+        setItems(d.interfaces || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const startEditing = (item: NetDev) => {
+    setEditingId(item.name);
+    setTempName(item.customName || '');
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -1055,7 +1082,30 @@ const Interfaces: React.FC = () => {
             <tbody>
               {bridges.map(b => (
                 <tr key={b.name} className="border-t border-slate-800/60">
-                  <td className="px-3 py-2 text-white font-bold">{b.name}</td>
+                  <td className="px-3 py-2 text-white font-bold group relative">
+                    {editingId === b.name ? (
+                      <div className="flex items-center gap-2">
+                        <input 
+                          autoFocus
+                          value={tempName}
+                          onChange={e => setTempName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleRename(b.name);
+                            if (e.key === 'Escape') setEditingId(null);
+                          }}
+                          className="bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none w-32"
+                        />
+                        <button onClick={() => handleRename(b.name)} className="text-emerald-500 hover:text-emerald-400">✓</button>
+                        <button onClick={() => setEditingId(null)} className="text-rose-500 hover:text-rose-400">✕</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 cursor-pointer" onClick={() => startEditing(b)}>
+                        <span>{b.customName || b.name}</span>
+                        {b.customName && <span className="text-[10px] text-slate-500 font-mono bg-slate-800 px-1 rounded">{b.name}</span>}
+                        <span className="opacity-0 group-hover:opacity-100 text-[10px] text-blue-400">✎</span>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-2 font-mono text-blue-400">{b.ipAddress || 'N/A'}</td>
                   <td className="px-3 py-2 font-mono text-slate-300">{b.mac || 'N/A'}</td>
                   <td className="px-3 py-2 font-mono text-slate-300">{b.mtu}</td>
@@ -1094,7 +1144,30 @@ const Interfaces: React.FC = () => {
             <tbody>
               {phys.map(p => (
                 <tr key={p.name} className="border-t border-slate-800/60">
-                  <td className="px-3 py-2 text-white font-bold">{p.name}</td>
+                  <td className="px-3 py-2 text-white font-bold group relative">
+                    {editingId === p.name ? (
+                      <div className="flex items-center gap-2">
+                        <input 
+                          autoFocus
+                          value={tempName}
+                          onChange={e => setTempName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleRename(p.name);
+                            if (e.key === 'Escape') setEditingId(null);
+                          }}
+                          className="bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none w-32"
+                        />
+                        <button onClick={() => handleRename(p.name)} className="text-emerald-500 hover:text-emerald-400">✓</button>
+                        <button onClick={() => setEditingId(null)} className="text-rose-500 hover:text-rose-400">✕</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 cursor-pointer" onClick={() => startEditing(p)}>
+                        <span>{p.customName || p.name}</span>
+                        {p.customName && <span className="text-[10px] text-slate-500 font-mono bg-slate-800 px-1 rounded">{p.name}</span>}
+                        <span className="opacity-0 group-hover:opacity-100 text-[10px] text-blue-400">✎</span>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-2 font-mono text-blue-400">{p.ipAddress || 'N/A'}</td>
                   <td className="px-3 py-2 font-mono text-slate-300">{p.mac || 'N/A'}</td>
                   <td className="px-3 py-2 font-mono text-slate-300">{p.mtu}</td>
@@ -1289,7 +1362,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
           <div className="flex justify-between items-center mb-10">
             <h2 className="text-xl font-black text-white flex items-center gap-3 uppercase italic tracking-tight">
               <span className="w-2 h-6 bg-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
-              Traffic Monitor A: <span className="text-emerald-400 font-mono tracking-tighter">{selectedIface.toUpperCase()}</span>
+              Traffic Monitor A: <span className="text-emerald-400 font-mono tracking-tighter">{(interfaces.find(i => i.interfaceName === selectedIface)?.name || selectedIface).toUpperCase()}</span>
             </h2>
             <select 
               value={selectedIface}
@@ -1297,7 +1370,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
               className="bg-slate-950 text-blue-400 border border-slate-800 rounded-2xl px-6 py-2.5 text-xs font-black outline-none font-mono focus:border-blue-500 cursor-pointer uppercase"
             >
               {interfaces.map(iface => (
-                <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName}</option>
+                <option key={iface.interfaceName} value={iface.interfaceName}>{iface.name}</option>
               ))}
             </select>
           </div>
@@ -1323,7 +1396,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
           <div className="flex justify-between items-center mb-10">
             <h2 className="text-xl font-black text-white flex items-center gap-3 uppercase italic tracking-tight">
               <span className="w-2 h-6 bg-blue-500 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
-              Traffic Monitor B: <span className="text-blue-400 font-mono tracking-tighter">{selectedIface2.toUpperCase()}</span>
+              Traffic Monitor B: <span className="text-blue-400 font-mono tracking-tighter">{(interfaces.find(i => i.interfaceName === selectedIface2)?.name || selectedIface2).toUpperCase()}</span>
             </h2>
             <select 
               value={selectedIface2}
@@ -1331,7 +1404,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
               className="bg-slate-950 text-emerald-400 border border-slate-800 rounded-2xl px-6 py-2.5 text-xs font-black outline-none font-mono focus:border-emerald-500 cursor-pointer uppercase"
             >
               {interfaces.map(iface => (
-                <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName}</option>
+                <option key={iface.interfaceName} value={iface.interfaceName}>{iface.name}</option>
               ))}
             </select>
           </div>
@@ -1368,7 +1441,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
                    <div className="flex items-center gap-4">
                       <div className={`w-2.5 h-2.5 rounded-full ${iface.internetHealth === 'HEALTHY' ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-rose-500 animate-pulse shadow-[0_0_8px_#f43f5e]'}`} />
                       <div>
-                        <div className="text-sm font-black text-white font-mono uppercase tracking-tighter">{iface.interfaceName}</div>
+                        <div className="text-sm font-black text-white font-mono uppercase tracking-tighter">{iface.name}</div>
                         <div className="text-[10px] text-slate-500 font-mono tracking-tight tabular-nums">{iface.ipAddress}</div>
                       </div>
                    </div>
@@ -1576,8 +1649,7 @@ const App = () => {
     <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive} onLogout={handleLogout}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'interfaces' && <Interfaces />}
-
-      {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
+      {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} appliedConfig={appliedConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'devices' && <DeviceList />}
       {activeTab === 'dhcp' && <DhcpManagement config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
       {activeTab === 'zerotier' && <ZeroTierManager />}

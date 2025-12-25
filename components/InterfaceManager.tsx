@@ -6,6 +6,7 @@ interface ExtendedWanInterface extends WanInterface {
 }
 
 interface InterfaceManagerProps {
+  interfaces: any[];
   config: NetworkConfig;
   appliedConfig: NetworkConfig;
   setConfig: (config: NetworkConfig) => void;
@@ -14,6 +15,7 @@ interface InterfaceManagerProps {
 }
 
 const InterfaceManager: React.FC<InterfaceManagerProps> = ({ 
+  interfaces,
   config, 
   appliedConfig, 
   setConfig, 
@@ -25,11 +27,24 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
   }, [config, appliedConfig]);
 
   const sortedWanInterfaces = useMemo(() => {
-    return [...config.wanInterfaces].sort((a, b) => {
+    const sorted = [...config.wanInterfaces].sort((a, b) => {
       if (config.mode === RouterMode.FAILOVER) return a.priority - b.priority;
       return b.weight - a.weight;
     });
-  }, [config.wanInterfaces, config.mode]);
+    
+    return sorted.map(wan => {
+      const live = interfaces.find(i => i.interfaceName === wan.interfaceName);
+      return {
+        ...wan,
+        name: live?.name || wan.name || wan.interfaceName.toUpperCase(),
+        ipAddress: live?.ipAddress || wan.ipAddress || 'N/A',
+        gateway: live?.gateway || wan.gateway || 'Detecting...',
+        latency: live?.latency || wan.latency || 0,
+        internetHealth: live?.internetHealth,
+        status: live?.status || wan.status
+      };
+    });
+  }, [config.wanInterfaces, config.mode, interfaces]);
 
   const updateWeight = (id: string, weight: number) => {
     setConfig({
