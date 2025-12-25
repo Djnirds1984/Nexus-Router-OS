@@ -1171,6 +1171,8 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout }: any) =>
 const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metrics: SystemMetrics }) => {
   const [selectedIface, setSelectedIface] = useState<string>('');
   const [history, setHistory] = useState<any[]>([]);
+  const [selectedIface2, setSelectedIface2] = useState<string>('');
+  const [history2, setHistory2] = useState<any[]>([]);
   
   useEffect(() => {
     if (!selectedIface && interfaces.length > 0) {
@@ -1178,6 +1180,13 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
       setSelectedIface(primary.interfaceName);
     }
   }, [interfaces, selectedIface]);
+
+  useEffect(() => {
+    if (!selectedIface2 && interfaces.length > 0) {
+      const alt = interfaces.find(i => i.interfaceName !== selectedIface) || interfaces[0];
+      setSelectedIface2(alt.interfaceName);
+    }
+  }, [interfaces, selectedIface2, selectedIface]);
 
   useEffect(() => {
     if (!selectedIface) return;
@@ -1193,6 +1202,20 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
       return [...prev, newEntry].slice(-60);
     });
   }, [interfaces, selectedIface]);
+
+  useEffect(() => {
+    if (!selectedIface2) return;
+    const currentData2 = interfaces.find(i => i.interfaceName === selectedIface2);
+    if (!currentData2) return;
+    setHistory2(prev => {
+      const newEntry = {
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        rx: currentData2.throughput.rx,
+        tx: currentData2.throughput.tx
+      };
+      return [...prev, newEntry].slice(-60);
+    });
+  }, [interfaces, selectedIface2]);
 
   const aggregateTraffic = useMemo(() => {
     return interfaces.reduce((acc, curr) => ({
