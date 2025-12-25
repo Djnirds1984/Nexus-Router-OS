@@ -70,7 +70,7 @@ function runInitialization() { try { validateEnvironment(); ensurePkg('dnsmasq')
 
 try { if (!fs.existsSync(stampPath)) { runInitialization(); } } catch (e) { logInstall('init-check-failed'); }
 
-try { applyDhcp(systemState.config.dhcp); } catch (e) { log('Boot DHCP apply skipped'); }
+
 
 /**
  * SMART WAN MONITOR
@@ -558,6 +558,20 @@ function getDhcpStatus() {
 }
 
 app.get('/api/dhcp/status', (req, res) => { res.json(getDhcpStatus()); });
+app.delete('/api/dhcp', (req, res) => {
+  try {
+    const status = getDhcpStatus();
+    if (status.interfaceName) {
+      try { execSync(`ip addr flush dev ${status.interfaceName}`); } catch (e) {}
+    }
+    try { execSync('systemctl stop dnsmasq'); } catch (e) {}
+    try { fs.unlinkSync('/etc/dnsmasq.d/nexus-dhcp.conf'); } catch (e) {}
+    systemState.config.dhcp = { interfaceName: '', enabled: false, start: '', end: '', leaseTime: '', dnsServers: [] };
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    fs.writeFileSync(backupPath, JSON.stringify(systemState.config));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 function getConnectedDevices() {
   if (process.platform !== 'linux') {

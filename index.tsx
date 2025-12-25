@@ -502,26 +502,35 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
 };
 
 /**
- * COMPONENT: BRIDGE & DHCP MANAGER
+ * COMPONENT: DHCP MANAGEMENT
  */
-const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterfaces }: { config: NetworkConfig, setConfig: any, onApply: () => void, isApplying: boolean, availableInterfaces: WanInterface[] }) => {
+const DhcpManagement = ({ config, setConfig, onApply, isApplying, availableInterfaces }: { config: NetworkConfig, setConfig: any, onApply: () => void, isApplying: boolean, availableInterfaces: WanInterface[] }) => {
   const [dhcpStatus, setDhcpStatus] = useState<any>(null);
+  const handleDeleteDhcp = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/dhcp`, { method: 'DELETE' });
+      if (res.ok) {
+        setDhcpStatus(await res.json());
+        setConfig({ ...config, dhcp: { interfaceName: '', enabled: false, start: '', end: '', leaseTime: '24h', dnsServers: '' } });
+        alert('DHCP setup deleted.');
+      } else {
+        alert('Failed to delete DHCP setup.');
+      }
+    } catch (e) { alert('Error deleting DHCP setup.'); }
+  };
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/dhcp/status`);
         if (res.ok) {
           const st = await res.json();
-          setDhcpStatus(st);
-          if (st.running && st.interfaceName) {
-            setConfig({ ...config, dhcp: { interfaceName: st.interfaceName, enabled: true, start: st.start || '', end: st.end || '', leaseTime: st.leaseTime || '24h', dnsServers: (st.dnsServers || []).join(',') } });
-          }
+        setDhcpStatus(st);
         }
       } catch (e) {}
     })();
   }, []);
 
-  const selectedIface = config.dhcp?.interfaceName || (availableInterfaces[0]?.interfaceName || '');
+  const selectedIface = config.dhcp?.interfaceName || '';
   const dhcp = config.dhcp || { interfaceName: selectedIface, enabled: false, start: '', end: '', leaseTime: '24h', dnsServers: '8.8.8.8,1.1.1.1' };
   const setDhcp = (updates: Partial<DhcpConfig>) => {
     setConfig({ ...config, dhcp: { ...dhcp, ...updates } });
@@ -533,7 +542,7 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterf
     <div className="space-y-8 animate-in fade-in duration-700 pb-20">
       <header className="flex justify-between items-start">
         <div>
-          <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">DHCP Server</h1>
+          <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">DHCP Management</h1>
           <p className="text-slate-400 mt-1 font-medium italic">Assign IP addresses on a selected physical interface</p>
           {dhcpStatus && (
             <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${dhcpStatus.running ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>
@@ -541,13 +550,22 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterf
             </div>
           )}
         </div>
-        <button 
-          onClick={onApply} 
-          disabled={isApplying} 
-          className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-8 rounded-2xl shadow-xl uppercase tracking-widest text-xs"
-        >
-          {isApplying ? 'COMMITTING...' : 'SAVE CONFIGURATION'}
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={onApply} 
+            disabled={isApplying} 
+            className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-8 rounded-2xl shadow-xl uppercase tracking-widest text-xs"
+          >
+            {isApplying ? 'COMMITTING...' : 'SAVE CONFIGURATION'}
+          </button>
+          <button 
+            onClick={handleDeleteDhcp} 
+            disabled={isApplying} 
+            className="bg-rose-600 hover:bg-rose-500 text-white font-black py-3 px-6 rounded-2xl shadow-xl uppercase tracking-widest text-xs"
+          >
+            DELETE DHCP SETUP
+          </button>
+        </div>
       </header>
 
       <div className="bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -556,8 +574,7 @@ const BridgeManager = ({ config, setConfig, onApply, isApplying, availableInterf
           <select 
             value={dhcp.interfaceName}
             onChange={(e) => setDhcp({ interfaceName: e.target.value })}
-            disabled={dhcpStatus?.running}
-            className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-3 text-xs font-bold text-slate-300 outline-none disabled:opacity-50"
+            className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-3 text-xs font-bold text-slate-300 outline-none"
           >
             {availableInterfaces.map(iface => (
               <option key={iface.interfaceName} value={iface.interfaceName}>{iface.interfaceName}</option>
@@ -1097,7 +1114,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout }: any) =>
     { id: 'interfaces', label: 'Interfaces', icon: '🔌' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
     { id: 'devices', label: 'Devices', icon: '💻' },
-    { id: 'bridge', label: 'Bridge & DHCP', icon: '🌉' },
+    { id: 'dhcp', label: 'DHCP Management', icon: '🌉' },
     { id: 'zerotier', label: 'ZeroTier', icon: '🕸️' },
     { id: 'updates', label: 'Updates', icon: '🆙' },
     { id: 'advisor', label: 'AI Advisor', icon: '🧠' },
@@ -1494,7 +1511,7 @@ const App = () => {
 
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'devices' && <DeviceList />}
-      {activeTab === 'bridge' && <BridgeManager config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
+      {activeTab === 'dhcp' && <DhcpManagement config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
       {activeTab === 'zerotier' && <ZeroTierManager />}
       {activeTab === 'updates' && <UpdateManager onApplyUpdate={handleUpdate} isUpdating={isApplying} />}
       {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
