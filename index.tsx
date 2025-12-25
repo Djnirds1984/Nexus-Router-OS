@@ -524,7 +524,18 @@ const DhcpManagement = ({ config, setConfig, onApply, isApplying, availableInter
         const res = await fetch(`${API_BASE}/dhcp/status`);
         if (res.ok) {
           const st = await res.json();
-        setDhcpStatus(st);
+          setDhcpStatus(st);
+          setConfig({
+            ...config,
+            dhcp: {
+              interfaceName: st.interfaceName || '',
+              enabled: !!st.running,
+              start: st.start || '',
+              end: st.end || '',
+              leaseTime: st.leaseTime || '24h',
+              dnsServers: (st.dnsServers || []).join(',')
+            }
+          });
         }
       } catch (e) {}
     })();
