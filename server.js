@@ -34,7 +34,7 @@ function log(msg) {
 let systemState = {
   interfaces: [],
   metrics: { cpuUsage: 0, cores: [], memoryUsage: '0', totalMem: '0', uptime: '', activeSessions: 0, dnsResolved: true },
-  config: { mode: 'LOAD_BALANCER', wanInterfaces: [], bridges: [] }
+  config: { mode: 'LOAD_BALANCER', wanInterfaces: [], bridges: [], interfaceCustomNames: {} }
 };
 
 // State for calculating rates per core and per interface
@@ -177,10 +177,12 @@ setInterval(async () => {
       }
 
       const throughput = getThroughputMbps(iface.ifname);
+      const customName = (systemState.config.interfaceCustomNames || {})[iface.ifname];
       return {
         id: iface.ifname,
-        name: iface.ifname.toUpperCase(),
+        name: customName || iface.ifname.toUpperCase(),
         interfaceName: iface.ifname,
+        customName: customName || undefined,
         status: iface.operstate === 'UP' ? 'UP' : 'DOWN',
         ipAddress: (iface.addr_info[0] || {}).local || 'N/A',
         gateway: gw,
@@ -256,10 +258,11 @@ app.get('/api/system/platform', (req, res) => res.json({ platform: process.platf
 app.get('/api/netdevs', (req, res) => {
   try {
     if (process.platform !== 'linux') {
+      const customNames = systemState.config.interfaceCustomNames || {};
       return res.json({
         interfaces: [
-          { name: 'eth0', type: 'physical', state: 'UP', mac: '00:11:22:33:44:55', mtu: 1500, ipAddress: '192.168.1.10', speed: 1000, master: null, members: [] },
-          { name: 'br0', type: 'bridge', state: 'UP', mac: '02:00:00:00:00:01', mtu: 1500, ipAddress: '192.168.1.1', speed: null, master: null, members: ['eth0'] }
+          { name: 'eth0', customName: customNames['eth0'], type: 'physical', state: 'UP', mac: '00:11:22:33:44:55', mtu: 1500, ipAddress: '192.168.1.10', speed: 1000, master: null, members: [] },
+          { name: 'br0', customName: customNames['br0'], type: 'bridge', state: 'UP', mac: '02:00:00:00:00:01', mtu: 1500, ipAddress: '192.168.1.1', speed: null, master: null, members: ['eth0'] }
         ]
       });
     }
@@ -281,8 +284,10 @@ app.get('/api/netdevs', (req, res) => {
           if (m) speed = parseInt(m[1], 10);
         } catch (e) {}
       }
+      const customName = (systemState.config.interfaceCustomNames || {})[l.ifname];
       list.push({
         name: l.ifname,
+        customName: customName || undefined,
         type: isBridge ? 'bridge' : 'physical',
         state: l.operstate || 'UNKNOWN',
         mac: l.address || '',
@@ -296,6 +301,26 @@ app.get('/api/netdevs', (req, res) => {
     res.json({ interfaces: list });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/interfaces/rename', (req, res) => {
+  const { interfaceName, customName } = req.body;
+  if (!interfaceName) return res.status(400).json({ error: 'Missing interfaceName' });
+
+  if (!systemState.config.interfaceCustomNames) systemState.config.interfaceCustomNames = {};
+
+  if (customName && customName.trim()) {
+    systemState.config.interfaceCustomNames[interfaceName] = customName.trim();
+  } else {
+    delete systemState.config.interfaceCustomNames[interfaceName];
+  }
+
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2));
+    res.json({ status: 'ok', customName: systemState.config.interfaceCustomNames[interfaceName] });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to save config' });
   }
 });
 
