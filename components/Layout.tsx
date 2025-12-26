@@ -49,7 +49,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) =>
       {/* Sidebar */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-[60] bg-slate-900 border-r border-slate-800 flex flex-col
+          fixed inset-y-0 left-0 z-[60] bg-slate-900 border-r border-slate-800 ${isMobileMenuOpen ? 'flex' : 'hidden'} md:flex flex-col
           transform transition-all duration-300 ease-in-out
           md:translate-x-0 md:static md:inset-auto
           ${isMobileMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64'}
