@@ -46,6 +46,7 @@ let pollingBusy = false;
 let healthCache = {};
 let lastUptimeStr = '';
 let lastUptimeAt = 0;
+let dhcpSessions = {}; // { [iface]: { startedAt: number, client: string, attempts: number } }
 
 // Start DHCP clients on WAN ports that lack IPv4 and ensure NAT
 function ensureWanDhcpClients() {
@@ -59,13 +60,25 @@ function ensureWanDhcpClients() {
       const inet = (a.addr_info || []).find(i => i.family === 'inet');
       addrMap[a.ifname] = inet ? inet.local : '';
     });
-  links
-      .filter(l => l.ifname !== 'lo' && !String(l.ifname).startsWith('veth') && !String(l.ifname).startsWith('br'))
+    links
+      .filter(l => {
+        const n = String(l.ifname);
+        return n !== 'lo' && !n.startsWith('veth') && !n.startsWith('br');
+      })
       .forEach(l => {
         const iface = l.ifname;
         if (iface === lan) return;
         const hasIPv4 = !!addrMap[iface];
         const isUp = (l.operstate || '') === 'UP';
+        let hasMac = true, hasCarrier = true;
+        try {
+          const mac = fs.readFileSync(`/sys/class/net/${iface}/address`, 'utf8').trim();
+          hasMac = !!mac && mac !== '00:00:00:00:00:00';
+        } catch (e) { hasMac = false; }
+        try {
+          const carrier = fs.readFileSync(`/sys/class/net/${iface}/carrier`, 'utf8').trim();
+          hasCarrier = carrier === '1';
+        } catch (e) { hasCarrier = true; }
         if (isUp && !hasIPv4) {
           try {
             let running = false;
@@ -74,20 +87,37 @@ function ensureWanDhcpClients() {
               running = p.split('\n').some(line => line.includes(` ${iface}`));
             } catch (e) {}
             execSync(`ip link set ${iface} up`);
-            if (!running) {
-              let cmd = '';
-              try { execSync('command -v dhclient'); cmd = `nohup dhclient -4 -nw -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &`; }
-              catch (e1) {
-                try { execSync('command -v udhcpc'); cmd = `nohup udhcpc -q -R -i ${iface} >/dev/null 2>&1 &`; }
-                catch (e2) {
-                  try { execSync('command -v dhcpcd'); cmd = `nohup dhcpcd -4 -q ${iface} >/dev/null 2>&1 &`; } catch (e3) {}
+            if (hasMac && hasCarrier) {
+              const sess = dhcpSessions[iface] || { startedAt: 0, client: '', attempts: 0 };
+              if (running && (!sess.startedAt || (Date.now() - sess.startedAt) > 15000)) {
+                try { execSync(`bash -lc 'dhclient -r ${iface} || true'`); } catch (e) {}
+                try { execSync(`bash -lc 'pkill -f "dhclient.*${iface}" || true'`); } catch (e) {}
+                try { execSync(`bash -lc 'pkill -f "udhcpc.*${iface}" || true'`); } catch (e) {}
+                try { execSync(`bash -lc 'pkill -f "dhcpcd.*${iface}" || true'`); } catch (e) {}
+                try { fs.unlinkSync(`/var/run/dhclient-${iface}.pid`); } catch (e) {}
+                try { fs.unlinkSync(`/var/lib/nexus/dhclient-${iface}.lease`); } catch (e) {}
+                running = false;
+              }
+              if (!running) {
+                let cmd = '';
+                const preferOrder = ['dhclient', 'udhcpc', 'dhcpcd'];
+                const prevIdx = preferOrder.indexOf(sess.client);
+                const tryOrder = prevIdx >= 0 ? [...preferOrder.slice(prevIdx + 1), ...preferOrder.slice(0, prevIdx + 1)] : preferOrder;
+                for (const c of tryOrder) {
+                  try {
+                    execSync(`command -v ${c}`);
+                    if (c === 'dhclient') cmd = `nohup dhclient -4 -nw -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &`;
+                    if (c === 'udhcpc') cmd = `nohup udhcpc -q -R -i ${iface} >/dev/null 2>&1 &`;
+                    if (c === 'dhcpcd') cmd = `nohup dhcpcd -4 -q ${iface} >/dev/null 2>&1 &`;
+                    if (cmd) { dhcpSessions[iface] = { startedAt: Date.now(), client: c, attempts: (sess.attempts || 0) + 1 }; break; }
+                  } catch (e) {}
                 }
+                if (!cmd) {
+                  try { ensurePkg('isc-dhcp-client'); cmd = `nohup dhclient -4 -nw -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &`; dhcpSessions[iface] = { startedAt: Date.now(), client: 'dhclient', attempts: (sess.attempts || 0) + 1 }; } catch (e) {}
+                }
+                if (cmd) exec(`bash -lc '${cmd}'`);
+                log(`DHCP CLIENT STARTED: ${iface}`);
               }
-              if (!cmd) {
-                try { ensurePkg('isc-dhcp-client'); cmd = `nohup dhclient -4 -nw -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &`; } catch (e) {}
-              }
-              if (cmd) exec(`bash -lc '${cmd}'`);
-              log(`DHCP CLIENT STARTED: ${iface}`);
             }
           } catch (e) { log(`DHCP CLIENT ERROR (${iface}): ${e.message}`); }
         } else if (!isUp) {
@@ -185,7 +215,19 @@ function sh(cmd) { logInstall(`run:${cmd}`); return execSync(cmd).toString(); }
 function ensurePkg(pkg) { try { execSync(`dpkg -s ${pkg}`); logInstall(`pkg-ok:${pkg}`); } catch (e) { try { execSync('apt-get update -y'); execSync(`apt-get install -y ${pkg}`); logInstall(`pkg-install:${pkg}`); } catch (err) { throw new Error(`pkg-failed:${pkg}`); } } }
 function validateEnvironment() { if (process.platform !== 'linux') throw new Error('os-invalid'); try { if (process.getuid && process.getuid() !== 0) throw new Error('need-root'); } catch (e) {} const meminfo = fs.readFileSync('/proc/meminfo','utf8'); const mt = parseInt((meminfo.match(/MemTotal:\s+(\d+)/)||[])[1]||'0'); if (mt < 256000) throw new Error('mem-low'); }
 function applyDefaults() { try { if (!fs.existsSync('/etc/dnsmasq.d/nexus-dhcp.conf')) { fs.writeFileSync('/etc/dnsmasq.d/nexus-dhcp.conf', 'port=0\nlog-dhcp'); logInstall('write:dnsmasq-default'); } } catch (e) { logInstall('write-failed:dnsmasq'); } }
-function verifyComponents() { try { execSync('systemctl is-enabled dnsmasq'); logInstall('verify:dnsmasq-enabled'); } catch (e) { logInstall('verify:dnsmasq-not-enabled'); } }
+function verifyComponents() { 
+  try { 
+    execSync('systemctl is-enabled dnsmasq'); 
+    logInstall('verify:dnsmasq-enabled'); 
+  } catch (e) { 
+    try { 
+      execSync('systemctl enable dnsmasq'); 
+      logInstall('verify:dnsmasq-enabled-now'); 
+    } catch (err) { 
+      logInstall('verify:dnsmasq-not-enabled'); 
+    } 
+  } 
+}
 function rollbackInit() { try { logInstall('rollback-start'); } catch (e) {} }
 function runInitialization() { try { validateEnvironment(); ensurePkg('dnsmasq'); ensurePkg('iproute2'); ensurePkg('isc-dhcp-client'); try { ensurePkg('iptables'); } catch (e) { ensurePkg('nftables'); } applyDefaults(); verifyComponents(); fs.writeFileSync(stampPath, new Date().toISOString()); logInstall('initialized'); } catch (e) { logInstall(`init-error:${e.message}`); rollbackInit(); } }
 
