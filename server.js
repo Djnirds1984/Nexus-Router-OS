@@ -280,6 +280,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Serve built panel statically for LAN/offline access
+try {
+  const staticDir = path.join(__dirname, 'dist');
+  if (fs.existsSync(staticDir)) {
+    app.use(express.static(staticDir));
+    app.get('/', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
+  }
+} catch (e) { log(`Static serve init failed: ${e.message}`); }
 
 app.get('/api/interfaces', (req, res) => res.json(systemState.interfaces));
 app.get('/api/metrics', (req, res) => res.json(systemState.metrics));
