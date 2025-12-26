@@ -1676,21 +1676,39 @@ const App = () => {
   const refreshData = useCallback(async () => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      const [ifaceRes, metricRes, configRes] = await Promise.all([
+      const [ifaceRes, metricRes, configRes, netdevsRes] = await Promise.all([
         fetch(`${API_BASE}/interfaces`, { signal: controller.signal }),
         fetch(`${API_BASE}/metrics`, { signal: controller.signal }),
-        fetch(`${API_BASE}/config`, { signal: controller.signal })
+        fetch(`${API_BASE}/config`, { signal: controller.signal }),
+        fetch(`${API_BASE}/netdevs`, { signal: controller.signal })
       ]);
       clearTimeout(timeoutId);
 
-      if (ifaceRes.ok && metricRes.ok) {
-        const ifaces = await ifaceRes.json();
+      let ndMap: Record<string, any> = {};
+      if (netdevsRes.ok) {
+        const nd = await netdevsRes.json();
+        if (nd && Array.isArray(nd.interfaces)) {
+          nd.interfaces.forEach((n: any) => { ndMap[n.name] = n; });
+        }
+      }
+
+      if (metricRes.ok) {
         const met = await metricRes.json();
-        setInterfaces(ifaces);
         setMetrics(met);
-        
+      }
+
+      if (ifaceRes.ok) {
+        const rawIfaces = await ifaceRes.json();
+        const ifaces = Array.isArray(rawIfaces) ? rawIfaces : [];
+        const overlaid = ifaces.map((i: any) => {
+          const nd = ndMap[i.interfaceName] || {};
+          const ip = i.ipAddress && i.ipAddress !== 'N/A' ? i.ipAddress : (nd.ipAddress || i.ipAddress);
+          return { ...i, ipAddress: ip };
+        });
+        setInterfaces(overlaid);
+
         let loadedFromSave = false;
         
         // Load settings from config endpoint
@@ -1721,7 +1739,24 @@ const App = () => {
         }
         setIsLive(true);
       } else {
-        setIsLive(false);
+        if (netdevsRes.ok) {
+          const nd = await netdevsRes.json();
+          const list = (nd.interfaces || []).filter((n: any) => n.type !== 'bridge').map((n: any) => ({
+            id: n.name,
+            name: (n.customName || n.name.toUpperCase()),
+            interfaceName: n.name,
+            status: (n.state === 'UP' ? 'UP' : 'DOWN'),
+            ipAddress: n.ipAddress || 'N/A',
+            gateway: 'Detecting...',
+            throughput: { rx: 0, tx: 0 },
+            latency: 0,
+            internetHealth: 'OFFLINE'
+          }));
+          setInterfaces(list);
+          setIsLive(true);
+        } else {
+          setIsLive(false);
+        }
       }
     } catch (e) { setIsLive(false); }
   }, []);
