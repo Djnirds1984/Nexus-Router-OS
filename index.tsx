@@ -1229,6 +1229,7 @@ const Interfaces: React.FC = () => {
  * COMPONENT: LAYOUT
  */
 const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout }: any) => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'interfaces', label: 'Interfaces', icon: '🔌' },
@@ -1243,14 +1244,58 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout }: any) =>
 
   return (
     <div className="flex h-screen bg-[#020617] text-slate-200 overflow-hidden font-sans selection:bg-blue-500/30">
-      <aside className="w-64 bg-[#0B0F1A] border-r border-slate-800 flex flex-col shadow-2xl z-20">
-        <div className="p-8 border-b border-slate-800 flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white shadow-xl italic text-xl">N</div>
-          <span className="font-bold text-2xl tracking-tighter text-white uppercase italic">Nexus</span>
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-[#0B0F1A] border-b border-slate-800 z-40 flex items-center px-4 justify-between">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+          <span className="font-bold text-xl tracking-tight text-white uppercase italic">Nexus</span>
+        </div>
+      </div>
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
+      )}
+      {!isMobileMenuOpen && (
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="md:hidden fixed bottom-20 right-4 z-50 p-4 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-500/30 active:scale-95"
+          aria-label="Open menu"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-7 h-7">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          </svg>
+        </button>
+      )}
+      <aside
+        className={`
+          fixed inset-y-0 left-0 z-40 w-64 bg-[#0B0F1A] border-r border-slate-800 flex flex-col shadow-2xl
+          transform transition-transform duration-300 md:translate-x-0 md:static md:inset-auto
+          ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+      >
+        <div className="p-8 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white shadow-xl italic text-xl">N</div>
+            <span className="font-bold text-2xl tracking-tighter text-white uppercase italic">Nexus</span>
+          </div>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-white">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
         <nav className="flex-1 p-6 space-y-2 overflow-y-auto custom-scrollbar">
           {tabs.map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl transition-all duration-300 ${activeTab === tab.id ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+            <button
+              key={tab.id}
+              onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl transition-all duration-300 ${activeTab === tab.id ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+            >
               <span className="text-xl">{tab.icon}</span>
               <span className="font-bold text-sm tracking-tight">{tab.label}</span>
             </button>
@@ -1269,7 +1314,9 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout }: any) =>
           </div>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto relative bg-[#020617] scroll-smooth"><div className="max-w-7xl mx-auto p-12">{children}</div></main>
+      <main className="flex-1 overflow-y-auto relative bg-[#020617] scroll-smooth pt-14 md:pt-0">
+        <div className="max-w-7xl mx-auto p-6 md:p-12">{children}</div>
+      </main>
     </div>
   );
 };
