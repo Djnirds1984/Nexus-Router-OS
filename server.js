@@ -11,12 +11,14 @@ const https = require('https');
 const path = require('path');
 
 const logFile = '/var/log/nexus-agent.log';
-const configPath = './nexus-config.json';
-const backupPath = './nexus-config.backup.json';
 const installLog = '/var/log/nexus-init.log';
 const stateDir = '/var/lib/nexus';
 const stampPath = '/var/lib/nexus/initialized.flag';
 const tokenPath = '/etc/nexus/api.token';
+const legacyConfigPath = path.join(process.cwd(), 'nexus-config.json');
+const legacyBackupPath = path.join(process.cwd(), 'nexus-config.backup.json');
+const configPath = process.platform === 'linux' ? path.join(stateDir, 'nexus-config.json') : legacyConfigPath;
+const backupPath = process.platform === 'linux' ? path.join(stateDir, 'nexus-config.backup.json') : legacyBackupPath;
 
 function logInstall(msg) {
   const entry = `[${new Date().toISOString()}] ${msg}\n`;
@@ -81,6 +83,9 @@ function ensureWanDhcpClients() {
                   try { execSync('command -v dhcpcd'); cmd = `nohup dhcpcd -4 -q ${iface} >/dev/null 2>&1 &`; } catch (e3) {}
                 }
               }
+              if (!cmd) {
+                try { ensurePkg('isc-dhcp-client'); cmd = `nohup dhclient -4 -nw -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &`; } catch (e) {}
+              }
               if (cmd) exec(`bash -lc '${cmd}'`);
               log(`DHCP CLIENT STARTED: ${iface}`);
             }
@@ -118,6 +123,21 @@ function ensureMasqueradeAllWan() {
 // Load existing config if available
 try {
   let loaded = null;
+  // Migrate legacy config to persistent location on Linux
+  try {
+    if (process.platform === 'linux') {
+      if (!fs.existsSync(configPath) && fs.existsSync(legacyConfigPath)) {
+        const data = fs.readFileSync(legacyConfigPath, 'utf8');
+        fs.writeFileSync(configPath, data);
+        logInstall('migrate-config-to-stateDir');
+      }
+      if (!fs.existsSync(backupPath) && fs.existsSync(legacyBackupPath)) {
+        const data = fs.readFileSync(legacyBackupPath, 'utf8');
+        fs.writeFileSync(backupPath, data);
+        logInstall('migrate-backup-to-stateDir');
+      }
+    }
+  } catch (e) { }
   if (fs.existsSync(configPath)) {
     loaded = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   } else if (fs.existsSync(backupPath)) {
