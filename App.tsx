@@ -151,7 +151,7 @@ const App: React.FC = () => {
         {renderContent()}
       </div>
       
-      <div className="fixed bottom-0 right-0 left-64 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800 px-6 py-2.5 flex items-center justify-between z-40">
+      <div className="fixed bottom-0 right-0 left-0 md:left-64 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800 px-6 py-2.5 flex items-center justify-between z-40">
         <div className="flex items-center gap-8">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Hardware Link</span>
