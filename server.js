@@ -60,6 +60,37 @@ try {
   }
 } catch (e) { log('Failed to load config'); }
 
+function restorePersistentNaming() {
+  if (process.platform !== 'linux') return;
+  const map = systemState.config.persistentInterfaceMap || {};
+  if (Object.keys(map).length === 0) return;
+  
+  try {
+    let rules = [];
+    if (fs.existsSync(udevRulesPath)) {
+      rules = fs.readFileSync(udevRulesPath, 'utf8').split('\n').filter(l => l.trim());
+    }
+    
+    let changed = false;
+    Object.entries(map).forEach(([mac, name]) => {
+      if (!rules.some(r => r.includes(mac) && r.includes(name))) {
+        // Remove conflicting rules for this MAC
+        rules = rules.filter(r => !r.includes(mac));
+        rules.push(`SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="${mac}", NAME="${name}"`);
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      fs.writeFileSync(udevRulesPath, rules.join('\n') + '\n');
+      try { execSync('udevadm control --reload-rules && udevadm trigger'); } catch (e) {}
+      log('Restored persistent interface naming rules from config');
+    }
+  } catch (e) { log(`RESTORE NAMING ERROR: ${e.message}`); }
+}
+
+restorePersistentNaming();
+
 function sh(cmd) { logInstall(`run:${cmd}`); return execSync(cmd).toString(); }
 function ensurePkg(pkg) { try { execSync(`dpkg -s ${pkg}`); logInstall(`pkg-ok:${pkg}`); } catch (e) { try { execSync('apt-get update -y'); execSync(`apt-get install -y ${pkg}`); logInstall(`pkg-install:${pkg}`); } catch (err) { throw new Error(`pkg-failed:${pkg}`); } } }
 function validateEnvironment() { if (process.platform !== 'linux') throw new Error('os-invalid'); try { if (process.getuid && process.getuid() !== 0) throw new Error('need-root'); } catch (e) {} const meminfo = fs.readFileSync('/proc/meminfo','utf8'); const mt = parseInt((meminfo.match(/MemTotal:\s+(\d+)/)||[])[1]||'0'); if (mt < 256000) throw new Error('mem-low'); }
@@ -304,21 +335,122 @@ app.get('/api/netdevs', (req, res) => {
   }
 });
 
+const udevRulesPath = '/etc/udev/rules.d/99-nexus-net.rules';
+
+function isValidKernelName(name) {
+  return /^[a-zA-Z0-9]+$/.test(name) && !name.includes(' ');
+}
+
+function updatePersistentNetRules(mac, name) {
+  if (process.platform !== 'linux') return;
+  try {
+    let rules = [];
+    if (fs.existsSync(udevRulesPath)) {
+      rules = fs.readFileSync(udevRulesPath, 'utf8').split('\n').filter(l => l.trim());
+    }
+    // Remove existing rule for this MAC
+    rules = rules.filter(l => !l.includes(mac));
+    // Add new rule
+    rules.push(`SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="${mac}", NAME="${name}"`);
+    fs.writeFileSync(udevRulesPath, rules.join('\n') + '\n');
+    try { execSync('udevadm control --reload-rules && udevadm trigger'); } catch (e) {}
+  } catch (e) { log(`UDEV UPDATE ERROR: ${e.message}`); }
+}
+
 app.post('/api/interfaces/rename', (req, res) => {
   const { interfaceName, customName } = req.body;
   if (!interfaceName) return res.status(400).json({ error: 'Missing interfaceName' });
+  
+  const safeName = (customName || '').trim();
+  const isKernelRename = isValidKernelName(safeName);
 
+  // 1. Handle Display Name (Custom Name)
   if (!systemState.config.interfaceCustomNames) systemState.config.interfaceCustomNames = {};
 
-  if (customName && customName.trim()) {
-    systemState.config.interfaceCustomNames[interfaceName] = customName.trim();
+  if (safeName && safeName !== interfaceName) {
+    systemState.config.interfaceCustomNames[interfaceName] = safeName;
   } else {
     delete systemState.config.interfaceCustomNames[interfaceName];
   }
 
+  // 2. Handle Persistent Kernel Rename (if valid and requested)
+  let kernelRenamed = false;
+  let rebootRequired = false;
+  
+  if (isKernelRename && process.platform === 'linux' && safeName && safeName !== interfaceName) {
+    try {
+      // Find MAC address
+      const links = JSON.parse(execSync('ip -j link show').toString());
+      const link = links.find(l => l.ifname === interfaceName);
+      
+      if (link && link.address) {
+        // Update Persistent Map
+        if (!systemState.config.persistentInterfaceMap) systemState.config.persistentInterfaceMap = {};
+        systemState.config.persistentInterfaceMap[link.address] = safeName;
+
+        // Update UDEV
+        updatePersistentNetRules(link.address, safeName);
+        
+        // Update Internal Config References
+        // WAN Interfaces
+        systemState.config.wanInterfaces = systemState.config.wanInterfaces.map(w => {
+            if (w.interfaceName === interfaceName) return { ...w, interfaceName: safeName };
+            return w;
+        });
+        
+        // DHCP
+        if (systemState.config.dhcp && systemState.config.dhcp.interfaceName === interfaceName) {
+            systemState.config.dhcp.interfaceName = safeName;
+        }
+        
+        // Bridges
+        systemState.config.bridges = systemState.config.bridges.map(b => {
+             if (b.name === interfaceName) return { ...b, name: safeName }; // If renaming the bridge itself
+             b.members = b.members.map(m => m === interfaceName ? safeName : m);
+             return b;
+        });
+
+        // Clean up old custom name mapping since the system name is now the custom name
+        // actually, we might want to keep it if the user wants to see "LAN" instead of "lan" (case sensitivity)
+        // but if they provided "lan1", it matches.
+        if (safeName === systemState.config.interfaceCustomNames[interfaceName]) {
+             // If we successfully rename kernel to "lan1", we don't need a map eth0->lan1 anymore.
+             // We need a map lan1->lan1 (redundant) or nothing.
+             // But wait, the frontend sends "interfaceName" as the OLD name.
+             // After this request, the frontend needs to know the ID changed.
+             delete systemState.config.interfaceCustomNames[interfaceName]; 
+        }
+
+        // Attempt Runtime Rename
+        try {
+            execSync(`ip link set ${interfaceName} down`);
+            execSync(`ip link set ${interfaceName} name ${safeName}`);
+            execSync(`ip link set ${safeName} up`);
+            kernelRenamed = true;
+            
+            // Re-apply DHCP if it was on this interface
+            if (systemState.config.dhcp.interfaceName === safeName) {
+                applyDhcp(systemState.config.dhcp);
+            }
+        } catch (e) {
+            log(`RUNTIME RENAME FAILED (Scheduled for reboot): ${e.message}`);
+            rebootRequired = true;
+        }
+      }
+    } catch (e) {
+      log(`KERNEL RENAME ERROR: ${e.message}`);
+    }
+  }
+
   try {
     fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2));
-    res.json({ status: 'ok', customName: systemState.config.interfaceCustomNames[interfaceName] });
+    res.json({ 
+        status: 'ok', 
+        customName: systemState.config.interfaceCustomNames[interfaceName] || safeName,
+        kernelRenamed,
+        rebootRequired,
+        newInterfaceName: kernelRenamed ? safeName : interfaceName
+    });
   } catch (e) {
     res.status(500).json({ error: 'Failed to save config' });
   }
