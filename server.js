@@ -73,7 +73,6 @@ function ensureWanDhcpClients() {
             } catch (e) {}
             execSync(`ip link set ${iface} up`);
             if (!running) {
-              // Choose available DHCP client
               let cmd = '';
               try { execSync('command -v dhclient'); cmd = `nohup dhclient -4 -nw -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &`; }
               catch (e1) {
@@ -175,6 +174,7 @@ try { if (!fs.existsSync(stampPath)) { runInitialization(); } } catch (e) { logI
 // Initial DHCP/NAT setup on boot
 ensureWanDhcpClients();
 ensureMasqueradeAllWan();
+ensureDhcpServerApplied();
 
 
 
@@ -304,6 +304,7 @@ setInterval(async () => {
     if (healthChanged) applyMultiWanKernel();
     ensureWanDhcpClients();
     ensureMasqueradeAllWan();
+    ensureDhcpServerApplied();
 
     const statsLines = fs.readFileSync('/proc/stat', 'utf8').split('\n');
     const coreMetrics = [];
@@ -818,6 +819,27 @@ function getDhcpStatus() {
     } catch (e) {}
   }
   return { running, ...parsed, gateway };
+}
+
+function ensureDhcpServerApplied() {
+  try {
+    if (process.platform !== 'linux') return;
+    const desired = (systemState.config && systemState.config.dhcp) || {};
+    const status = getDhcpStatus();
+    if (desired && desired.enabled && desired.interfaceName) {
+      const mismatch = (!status.running) ||
+        (status.interfaceName !== desired.interfaceName) ||
+        (status.start !== (desired.start || '')) ||
+        (status.end !== (desired.end || '')) ||
+        (status.leaseTime !== (desired.leaseTime || ''));
+      if (mismatch) applyDhcp(desired);
+    } else {
+      if (status.running) {
+        try { execSync('systemctl stop dnsmasq'); } catch (e) {}
+        try { fs.unlinkSync('/etc/dnsmasq.d/nexus-dhcp.conf'); } catch (e) {}
+      }
+    }
+  } catch (e) {}
 }
 
 app.get('/api/dhcp/status', (req, res) => { res.json(getDhcpStatus()); });
