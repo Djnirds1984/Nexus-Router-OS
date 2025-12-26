@@ -27,24 +27,20 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
   }, [config, appliedConfig]);
 
   const sortedWanInterfaces = useMemo(() => {
-    const sorted = [...config.wanInterfaces].sort((a, b) => {
+    const enriched = [...config.wanInterfaces].map(wan => ({
+      ...wan,
+      name: wan.name || wan.interfaceName.toUpperCase(),
+      ipAddress: wan.ipAddress || 'N/A',
+      gateway: wan.gateway || 'Detecting...',
+      latency: wan.latency || 0,
+      status: wan.status
+    }));
+    const sorted = [...enriched].sort((a, b) => {
       if (config.mode === RouterMode.FAILOVER) return a.priority - b.priority;
       return b.weight - a.weight;
     });
-    
-    return sorted.map(wan => {
-      const live = interfaces.find(i => i.interfaceName === wan.interfaceName);
-      return {
-        ...wan,
-        name: live?.name || wan.name || wan.interfaceName.toUpperCase(),
-        ipAddress: live?.ipAddress || wan.ipAddress || 'N/A',
-        gateway: live?.gateway || wan.gateway || 'Detecting...',
-        latency: live?.latency || wan.latency || 0,
-        internetHealth: live?.internetHealth,
-        status: live?.status || wan.status
-      };
-    });
-  }, [config.wanInterfaces, config.mode, interfaces]);
+    return sorted;
+  }, [config.wanInterfaces, config.mode]);
 
   const updateWeight = (id: string, weight: number) => {
     setConfig({
@@ -59,6 +55,8 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
       wanInterfaces: config.wanInterfaces.map(w => w.id === id ? { ...w, priority } : w)
     });
   };
+
+  const [ifaceConfigs, setIfaceConfigs] = useState<Record<string, { role: 'WAN' | 'NONE'; method: 'DHCP' | 'STATIC' | 'PPPOE'; staticIp?: string; netmask?: string; gateway?: string; pppoeUser?: string; pppoePass?: string }>>({});
 
   return (
     <div className="space-y-8 pb-32 animate-in fade-in duration-700">
@@ -118,7 +116,7 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {sortedWanInterfaces.map((wan: ExtendedWanInterface, index) => {
           const isHealthy = wan.internetHealth === 'HEALTHY' || (wan.status === WanStatus.UP && !wan.internetHealth);
-          
+          const cfg = ifaceConfigs[wan.interfaceName] || { role: 'WAN', method: 'DHCP' };
           return (
             <div key={wan.id} className={`bg-slate-900/40 p-8 rounded-[2.5rem] border transition-all relative overflow-hidden backdrop-blur-md ${isHealthy ? 'border-slate-800 hover:border-blue-500/20' : 'border-rose-500/20 bg-rose-500/5'}`}>
               {!isHealthy && <div className="absolute inset-0 bg-rose-500/5 pointer-events-none animate-pulse" />}
@@ -155,6 +153,37 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 relative z-10">
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Role</label>
+                  <select value={cfg.role} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), role: e.target.value as any } }))} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none">
+                    <option value="WAN">WAN</option>
+                    <option value="NONE">None</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Connection</label>
+                  <select value={cfg.method} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), method: e.target.value as any } }))} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none">
+                    <option value="DHCP">DHCP</option>
+                    <option value="STATIC">Static</option>
+                    <option value="PPPOE">PPPoE Client</option>
+                  </select>
+                </div>
+                {cfg.method === 'STATIC' && (
+                  <div className="grid grid-cols-1 gap-2">
+                    <input value={cfg.staticIp || ''} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), staticIp: e.target.value } }))} placeholder="IP Address" className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none" />
+                    <input value={cfg.netmask || ''} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), netmask: e.target.value } }))} placeholder="Netmask" className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none" />
+                    <input value={cfg.gateway || ''} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), gateway: e.target.value } }))} placeholder="Gateway" className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none" />
+                  </div>
+                )}
+                {cfg.method === 'PPPOE' && (
+                  <div className="grid grid-cols-1 gap-2">
+                    <input value={cfg.pppoeUser || ''} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), pppoeUser: e.target.value } }))} placeholder="PPPoE Username" className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none" />
+                    <input type="password" value={cfg.pppoePass || ''} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), pppoePass: e.target.value } }))} placeholder="PPPoE Password" className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none" />
+                  </div>
+                )}
+              </div>
+
               {config.mode === RouterMode.LOAD_BALANCER ? (
                 <div className="space-y-6 relative z-10">
                   <div className="flex justify-between items-end">
@@ -167,7 +196,8 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
                     max="100" 
                     value={wan.weight}
                     onChange={(e) => updateWeight(wan.id, parseInt(e.target.value))}
-                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all shadow-inner"
+                    disabled={cfg.role !== 'WAN'}
+                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 transition-all shadow-inner disabled:opacity-50"
                   />
                   <div className="flex justify-between text-[9px] text-slate-600 font-black uppercase tracking-widest">
                     <span>Low Priority</span>
@@ -180,7 +210,8 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
                   <select 
                     value={wan.priority}
                     onChange={(e) => updatePriority(wan.id, parseInt(e.target.value))}
-                    className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none transition-all cursor-pointer hover:bg-black/60 focus:border-blue-500"
+                    disabled={cfg.role !== 'WAN'}
+                    className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none transition-all cursor-pointer hover:bg-black/60 focus:border-blue-500 disabled:opacity-50"
                   >
                     <option value={1}>Primary [P1]</option>
                     <option value={2}>Secondary Backup [P2]</option>
