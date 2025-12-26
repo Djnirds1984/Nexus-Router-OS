@@ -45,6 +45,62 @@ let healthCache = {};
 let lastUptimeStr = '';
 let lastUptimeAt = 0;
 
+// Start DHCP clients on WAN ports that lack IPv4 and ensure NAT
+function ensureWanDhcpClients() {
+  try {
+    if (process.platform !== 'linux') return;
+    const lan = ((systemState.config || {}).dhcp || {}).interfaceName || '';
+    const links = JSON.parse(execSync('ip -j link show').toString());
+    const addrs = JSON.parse(execSync('ip -j addr show').toString());
+    const addrMap = {};
+    addrs.forEach(a => {
+      const inet = (a.addr_info || []).find(i => i.family === 'inet');
+      addrMap[a.ifname] = inet ? inet.local : '';
+    });
+    links
+      .filter(l => l.ifname !== 'lo' && !String(l.ifname).startsWith('veth') && !String(l.ifname).startsWith('br'))
+      .forEach(l => {
+        const iface = l.ifname;
+        if (iface === lan) return;
+        const hasIPv4 = !!addrMap[iface];
+        const isUp = (l.operstate || '') === 'UP';
+        if (isUp && !hasIPv4) {
+          try {
+            let running = false;
+            try {
+              const p = execSync(`pgrep -a dhclient || true`).toString();
+              running = p.split('\n').some(line => line.includes(` ${iface}`));
+            } catch (e) {}
+            execSync(`ip link set ${iface} up`);
+            if (!running) {
+              exec(`bash -lc 'nohup dhclient -4 -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &'`);
+              log(`DHCP CLIENT STARTED: ${iface}`);
+            }
+          } catch (e) { log(`DHCP CLIENT ERROR (${iface}): ${e.message}`); }
+        }
+      });
+  } catch (e) { log(`ensureWanDhcpClients error: ${e.message}`); }
+}
+
+function ensureMasqueradeAllWan() {
+  try {
+    if (process.platform !== 'linux') return;
+    const lan = ((systemState.config || {}).dhcp || {}).interfaceName || '';
+    const routes = JSON.parse(execSync('ip -j route show default').toString());
+    const wanIfaces = [];
+    routes.forEach(r => { if (r.dev && !wanIfaces.includes(r.dev)) wanIfaces.push(r.dev); });
+    wanIfaces.forEach(wan => {
+      try {
+        execSync(`iptables -t nat -C POSTROUTING -o ${wan} -j MASQUERADE || iptables -t nat -A POSTROUTING -o ${wan} -j MASQUERADE`);
+        if (lan) {
+          execSync(`iptables -C FORWARD -i ${lan} -o ${wan} -j ACCEPT || iptables -A FORWARD -i ${lan} -o ${wan} -j ACCEPT`);
+          execSync(`iptables -C FORWARD -i ${wan} -o ${lan} -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A FORWARD -i ${wan} -o ${lan} -m state --state RELATED,ESTABLISHED -j ACCEPT`);
+        }
+      } catch (e) {}
+    });
+  } catch (e) { log(`ensureMasqueradeAllWan error: ${e.message}`); }
+}
+
 // Load existing config if available
 try {
   let loaded = null;
@@ -100,6 +156,10 @@ function rollbackInit() { try { logInstall('rollback-start'); } catch (e) {} }
 function runInitialization() { try { validateEnvironment(); ensurePkg('dnsmasq'); ensurePkg('iproute2'); try { ensurePkg('iptables'); } catch (e) { ensurePkg('nftables'); } applyDefaults(); verifyComponents(); fs.writeFileSync(stampPath, new Date().toISOString()); logInstall('initialized'); } catch (e) { logInstall(`init-error:${e.message}`); rollbackInit(); } }
 
 try { if (!fs.existsSync(stampPath)) { runInitialization(); } } catch (e) { logInstall('init-check-failed'); }
+
+// Initial DHCP/NAT setup on boot
+ensureWanDhcpClients();
+ensureMasqueradeAllWan();
 
 
 
@@ -226,6 +286,8 @@ setInterval(async () => {
     const healthChanged = JSON.stringify(newInterfaces.map(i => i.internetHealth)) !== JSON.stringify(systemState.interfaces.map(i => i.internetHealth));
     systemState.interfaces = newInterfaces;
     if (healthChanged) applyMultiWanKernel();
+    ensureWanDhcpClients();
+    ensureMasqueradeAllWan();
 
     const statsLines = fs.readFileSync('/proc/stat', 'utf8').split('\n');
     const coreMetrics = [];
@@ -936,6 +998,8 @@ app.post('/api/apply', (req, res) => {
     fs.writeFileSync(backupPath, JSON.stringify(systemState.config));
     applyMultiWanKernel();
     applyDhcp(systemState.config.dhcp);
+    ensureWanDhcpClients();
+    ensureMasqueradeAllWan();
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
