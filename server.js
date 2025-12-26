@@ -53,10 +53,10 @@ function ensureWanDhcpClients() {
     const links = JSON.parse(execSync('ip -j link show').toString());
     const addrs = JSON.parse(execSync('ip -j addr show').toString());
     const addrMap = {};
-  addrs.forEach(a => {
-    const inet = (a.addr_info || []).find(i => i.family === 'inet');
-    addrMap[a.ifname] = inet ? inet.local : '';
-  });
+    addrs.forEach(a => {
+      const inet = (a.addr_info || []).find(i => i.family === 'inet');
+      addrMap[a.ifname] = inet ? inet.local : '';
+    });
   links
       .filter(l => l.ifname !== 'lo' && !String(l.ifname).startsWith('veth') && !String(l.ifname).startsWith('br'))
       .forEach(l => {
@@ -73,7 +73,16 @@ function ensureWanDhcpClients() {
             } catch (e) {}
             execSync(`ip link set ${iface} up`);
             if (!running) {
-              exec(`bash -lc 'nohup dhclient -4 -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &'`);
+              // Choose available DHCP client
+              let cmd = '';
+              try { execSync('command -v dhclient'); cmd = `nohup dhclient -4 -nw -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &`; }
+              catch (e1) {
+                try { execSync('command -v udhcpc'); cmd = `nohup udhcpc -q -R -i ${iface} >/dev/null 2>&1 &`; }
+                catch (e2) {
+                  try { execSync('command -v dhcpcd'); cmd = `nohup dhcpcd -4 -q ${iface} >/dev/null 2>&1 &`; } catch (e3) {}
+                }
+              }
+              if (cmd) exec(`bash -lc '${cmd}'`);
               log(`DHCP CLIENT STARTED: ${iface}`);
             }
           } catch (e) { log(`DHCP CLIENT ERROR (${iface}): ${e.message}`); }
@@ -377,7 +386,10 @@ app.get('/api/netdevs', (req, res) => {
     const links = JSON.parse(execSync('ip -j link show').toString());
     const addrs = JSON.parse(execSync('ip -j addr show').toString());
     const addrMap = {};
-    addrs.forEach(a => { addrMap[a.ifname] = ((a.addr_info || [])[0] || {}).local || ''; });
+    addrs.forEach(a => {
+      const inet = (a.addr_info || []).find(i => i.family === 'inet');
+      addrMap[a.ifname] = inet ? inet.local : '';
+    });
     const masterMap = {};
     links.forEach(l => { if (l.master) { masterMap[l.master] = masterMap[l.master] || []; masterMap[l.master].push(l.ifname); } });
     const list = [];
