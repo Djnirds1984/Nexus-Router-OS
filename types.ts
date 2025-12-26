@@ -45,10 +45,23 @@ export interface SystemMetrics {
   activeSessions: number;
 }
 
+export interface FirewallRule {
+  id: string;
+  type: 'INPUT' | 'FORWARD';
+  proto: 'tcp' | 'udp' | 'icmp' | 'any';
+  port?: string;
+  src?: string;
+  action: 'ACCEPT' | 'DROP' | 'REJECT';
+  enabled: boolean;
+}
+
 export interface NetworkConfig {
   mode: RouterMode;
   wanInterfaces: WanInterface[];
   dnsServers: string[];
+  firewallRules?: FirewallRule[];
+  dhcp?: { interfaceName: string; enabled: boolean; start: string; end: string; leaseTime: string };
+  bridges?: any[];
 }
 
 export interface TerminalLog {

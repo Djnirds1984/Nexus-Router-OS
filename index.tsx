@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import FirewallManager from './components/FirewallManager';
 
 /**
  * TYPES & ENUMS
@@ -56,11 +57,22 @@ interface SystemMetrics {
   bbrEnabled?: boolean;
 }
 
+interface FirewallRule {
+  id: string;
+  type: 'INPUT' | 'FORWARD';
+  proto: 'tcp' | 'udp' | 'icmp' | 'any';
+  port?: string;
+  src?: string;
+  action: 'ACCEPT' | 'DROP' | 'REJECT';
+  enabled: boolean;
+}
+
 interface NetworkConfig {
   mode: RouterMode;
   wanInterfaces: WanInterface[];
   bridges: BridgeConfig[];
   dhcp?: DhcpConfig;
+  firewallRules?: FirewallRule[];
 }
 
 /**
@@ -1317,6 +1329,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout }: any) =>
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'interfaces', label: 'Interfaces', icon: '🔌' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
+    { id: 'firewall', label: 'Firewall', icon: '🛡️' },
     { id: 'devices', label: 'Devices', icon: '💻' },
     { id: 'dhcp', label: 'DHCP Management', icon: '🌉' },
     { id: 'zerotier', label: 'ZeroTier', icon: '🕸️' },
@@ -1851,6 +1864,7 @@ const App = () => {
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'interfaces' && <Interfaces />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} appliedConfig={appliedConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
+      {activeTab === 'firewall' && <FirewallManager config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'devices' && <DeviceList />}
       {activeTab === 'dhcp' && <DhcpManagement config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
       {activeTab === 'zerotier' && <ZeroTierManager />}

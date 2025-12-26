@@ -36,7 +36,7 @@ function log(msg) {
 let systemState = {
   interfaces: [],
   metrics: { cpuUsage: 0, cores: [], memoryUsage: '0', totalMem: '0', uptime: '', activeSessions: 0, dnsResolved: true },
-  config: { mode: 'LOAD_BALANCER', wanInterfaces: [], bridges: [], interfaceCustomNames: {} }
+  config: { mode: 'LOAD_BALANCER', wanInterfaces: [], bridges: [], interfaceCustomNames: {}, firewallRules: [] }
 };
 
 // State for calculating rates per core and per interface
@@ -150,6 +150,35 @@ function ensureMasqueradeAllWan() {
   } catch (e) { log(`ensureMasqueradeAllWan error: ${e.message}`); }
 }
 
+function applyFirewallRules() {
+  try {
+    if (process.platform !== 'linux') return;
+    
+    // Create NEXUS_FW chain if not exists
+    try { execSync('iptables -N NEXUS_FW'); } catch (e) {}
+    
+    // Flush it
+    execSync('iptables -F NEXUS_FW');
+    
+    // Ensure it's jumped to from INPUT and FORWARD
+    try { execSync('iptables -C INPUT -j NEXUS_FW || iptables -I INPUT -j NEXUS_FW'); } catch (e) {}
+    try { execSync('iptables -C FORWARD -j NEXUS_FW || iptables -I FORWARD -j NEXUS_FW'); } catch (e) {}
+
+    const rules = systemState.config.firewallRules || [];
+    rules.forEach(rule => {
+      let cmd = 'iptables -A NEXUS_FW';
+      if (rule.proto && rule.proto !== 'any') cmd += ` -p ${rule.proto}`;
+      if (rule.src && rule.src.trim()) cmd += ` -s ${rule.src.trim()}`;
+      if (rule.port && rule.port.trim()) cmd += ` --dport ${rule.port.trim()}`;
+      if (rule.action) cmd += ` -j ${rule.action}`;
+      
+      try { execSync(cmd); } catch (e) { log(`FW Rule Fail: ${cmd} - ${e.message}`); }
+    });
+    
+    log(`Applied ${rules.length} firewall rules`);
+  } catch (e) { log(`applyFirewallRules error: ${e.message}`); }
+}
+
 // Load existing config if available
 try {
   let loaded = null;
@@ -237,6 +266,7 @@ try { if (!fs.existsSync(stampPath)) { runInitialization(); } } catch (e) { logI
 ensureWanDhcpClients();
 ensureMasqueradeAllWan();
 ensureDhcpServerApplied();
+applyFirewallRules();
 
 
 
@@ -420,6 +450,25 @@ setInterval(async () => {
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Firewall APIs
+app.get('/api/firewall/rules', (req, res) => {
+  res.json(systemState.config.firewallRules || []);
+});
+
+app.post('/api/firewall/rules', (req, res) => {
+  const { rules } = req.body;
+  if (!Array.isArray(rules)) return res.status(400).json({ error: 'rules must be an array' });
+  
+  systemState.config.firewallRules = rules;
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2));
+    applyFirewallRules();
+    res.json({ status: 'ok', rules: systemState.config.firewallRules });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to save rules' });
+  }
+});
 
 // Serve built panel statically for LAN/offline access
 try {
@@ -1109,6 +1158,7 @@ app.post('/api/apply', (req, res) => {
     applyDhcp(systemState.config.dhcp);
     ensureWanDhcpClients();
     ensureMasqueradeAllWan();
+    applyFirewallRules();
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
