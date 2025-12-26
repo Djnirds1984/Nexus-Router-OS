@@ -685,6 +685,8 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
     }
   };
 
+
+
   const [ifaceConfigs, setIfaceConfigs] = useState<Record<string, { role: 'WAN' | 'NONE'; method: 'DHCP' | 'STATIC' | 'PPPOE'; staticIp?: string; netmask?: string; gateway?: string; pppoeUser?: string; pppoePass?: string }>>({});
 
   return (
