@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NetworkConfig, FirewallRule } from '../types';
+import { NetworkConfig, FirewallRule } from '../types.ts';
 
 interface FirewallManagerProps {
   config: NetworkConfig;

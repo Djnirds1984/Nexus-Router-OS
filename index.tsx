@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import FirewallManager from './components/FirewallManager';
+import FirewallManager from './components/FirewallManager.tsx';
 
 /**
  * TYPES & ENUMS
