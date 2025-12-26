@@ -871,6 +871,12 @@ function parseDhcpConfig() {
 function getDhcpStatus() {
   let running = false;
   try { running = execSync('systemctl is-active dnsmasq').toString().trim() === 'active'; } catch (e) {}
+  if (!running) {
+    try {
+      const p = execSync('pgrep -x dnsmasq || true').toString().trim();
+      running = !!p;
+    } catch (e) {}
+  }
   const parsed = parseDhcpConfig();
   let gateway = '';
   if (parsed.interfaceName) {
