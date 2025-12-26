@@ -885,7 +885,23 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
   };
 
   const dhcpIface = config?.dhcp?.interfaceName;
-  const displayWanInterfaces: WanInterface[] = (config.wanInterfaces || []);
+  // Build live view by merging dynamic fields from latest /api/interfaces
+  const liveMap = new Map<string, any>((interfaces || []).map((i: any) => [i.interfaceName, i]));
+  const baseList: WanInterface[] = (config.wanInterfaces && config.wanInterfaces.length > 0)
+    ? config.wanInterfaces
+    : ((interfaces || []).filter((i: any) => i.interfaceName !== dhcpIface));
+  const displayWanInterfaces: WanInterface[] = baseList.map((w: any) => {
+    const live = liveMap.get(w.interfaceName) || {};
+    return {
+      ...w,
+      ipAddress: live.ipAddress ?? w.ipAddress,
+      gateway: live.gateway ?? w.gateway,
+      status: live.status ?? w.status,
+      latency: live.latency ?? w.latency,
+      throughput: live.throughput ?? w.throughput,
+      internetHealth: live.internetHealth ?? w.internetHealth
+    };
+  });
   const autoLabelWans = () => {
     let n = 1;
     setConfig((prev: NetworkConfig) => ({
