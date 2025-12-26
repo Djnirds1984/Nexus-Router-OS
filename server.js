@@ -53,11 +53,11 @@ function ensureWanDhcpClients() {
     const links = JSON.parse(execSync('ip -j link show').toString());
     const addrs = JSON.parse(execSync('ip -j addr show').toString());
     const addrMap = {};
-    addrs.forEach(a => {
-      const inet = (a.addr_info || []).find(i => i.family === 'inet');
-      addrMap[a.ifname] = inet ? inet.local : '';
-    });
-    links
+  addrs.forEach(a => {
+    const inet = (a.addr_info || []).find(i => i.family === 'inet');
+    addrMap[a.ifname] = inet ? inet.local : '';
+  });
+  links
       .filter(l => l.ifname !== 'lo' && !String(l.ifname).startsWith('veth') && !String(l.ifname).startsWith('br'))
       .forEach(l => {
         const iface = l.ifname;
@@ -77,6 +77,12 @@ function ensureWanDhcpClients() {
               log(`DHCP CLIENT STARTED: ${iface}`);
             }
           } catch (e) { log(`DHCP CLIENT ERROR (${iface}): ${e.message}`); }
+        } else if (!isUp) {
+          try {
+            execSync(`bash -lc 'dhclient -r ${iface} || true'`);
+            execSync(`bash -lc 'pkill -f "dhclient.*${iface}" || true'`);
+            log(`DHCP CLIENT STOPPED: ${iface}`);
+          } catch (e) {}
         }
       });
   } catch (e) { log(`ensureWanDhcpClients error: ${e.message}`); }
@@ -153,7 +159,7 @@ function validateEnvironment() { if (process.platform !== 'linux') throw new Err
 function applyDefaults() { try { if (!fs.existsSync('/etc/dnsmasq.d/nexus-dhcp.conf')) { fs.writeFileSync('/etc/dnsmasq.d/nexus-dhcp.conf', 'port=0\nlog-dhcp'); logInstall('write:dnsmasq-default'); } } catch (e) { logInstall('write-failed:dnsmasq'); } }
 function verifyComponents() { try { execSync('systemctl is-enabled dnsmasq'); logInstall('verify:dnsmasq-enabled'); } catch (e) { logInstall('verify:dnsmasq-not-enabled'); } }
 function rollbackInit() { try { logInstall('rollback-start'); } catch (e) {} }
-function runInitialization() { try { validateEnvironment(); ensurePkg('dnsmasq'); ensurePkg('iproute2'); try { ensurePkg('iptables'); } catch (e) { ensurePkg('nftables'); } applyDefaults(); verifyComponents(); fs.writeFileSync(stampPath, new Date().toISOString()); logInstall('initialized'); } catch (e) { logInstall(`init-error:${e.message}`); rollbackInit(); } }
+function runInitialization() { try { validateEnvironment(); ensurePkg('dnsmasq'); ensurePkg('iproute2'); ensurePkg('isc-dhcp-client'); try { ensurePkg('iptables'); } catch (e) { ensurePkg('nftables'); } applyDefaults(); verifyComponents(); fs.writeFileSync(stampPath, new Date().toISOString()); logInstall('initialized'); } catch (e) { logInstall(`init-error:${e.message}`); rollbackInit(); } }
 
 try { if (!fs.existsSync(stampPath)) { runInitialization(); } } catch (e) { logInstall('init-check-failed'); }
 
@@ -269,13 +275,14 @@ setInterval(async () => {
 
       const throughput = getThroughputMbps(iface.ifname);
       const customName = (systemState.config.interfaceCustomNames || {})[iface.ifname];
+      const ipv4Addr = ((iface.addr_info || []).find(a => a.family === 'inet') || {}).local || 'N/A';
       return {
         id: iface.ifname,
         name: customName || iface.ifname.toUpperCase(),
         interfaceName: iface.ifname,
         customName: customName || undefined,
         status: iface.operstate === 'UP' ? 'UP' : 'DOWN',
-        ipAddress: (iface.addr_info[0] || {}).local || 'N/A',
+        ipAddress: ipv4Addr,
         gateway: gw,
         internetHealth: health.ok ? 'HEALTHY' : 'OFFLINE',
         latency: health.latency,
