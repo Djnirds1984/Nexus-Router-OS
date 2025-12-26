@@ -830,6 +830,8 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
     }));
   };
 
+  const [ifaceConfigs, setIfaceConfigs] = useState<Record<string, { role: 'WAN' | 'NONE'; method: 'DHCP' | 'STATIC' | 'PPPOE'; staticIp?: string; netmask?: string; gateway?: string; pppoeUser?: string; pppoePass?: string }>>({});
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       <header className="flex justify-between items-start">
