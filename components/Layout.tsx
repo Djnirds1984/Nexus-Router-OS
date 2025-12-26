@@ -9,6 +9,7 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isDesktopExpanded, setIsDesktopExpanded] = useState(false);
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -46,18 +47,25 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) =>
       )}
 
       {/* Sidebar */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-[60] w-64 bg-slate-900 border-r border-slate-800 flex flex-col
-        transform transition-transform duration-300 ease-in-out
-        md:translate-x-0 md:static md:inset-auto
-        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
+      <aside
+        className={`
+          fixed inset-y-0 left-0 z-[60] bg-slate-900 border-r border-slate-800 flex flex-col
+          transform transition-all duration-300 ease-in-out
+          md:translate-x-0 md:static md:inset-auto
+          ${isMobileMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64'}
+          ${isDesktopExpanded ? 'md:w-64' : 'md:w-16'}
+        `}
+        onMouseEnter={() => setIsDesktopExpanded(true)}
+        onMouseLeave={() => setIsDesktopExpanded(false)}
+      >
         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
               N
             </div>
-            <span className="font-bold text-xl tracking-tight">Nexus OS</span>
+            {(isMobileMenuOpen || isDesktopExpanded) && (
+              <span className="font-bold text-xl tracking-tight">Nexus OS</span>
+            )}
           </div>
           <button 
             onClick={() => setIsMobileMenuOpen(false)}
@@ -69,7 +77,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) =>
           </button>
         </div>
         
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -77,27 +85,31 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) =>
                 setActiveTab(tab.id);
                 setIsMobileMenuOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+              className={`w-full flex items-center ${isMobileMenuOpen || isDesktopExpanded ? 'gap-3 px-4' : 'justify-center px-3'} py-3 rounded-xl transition-all ${
                 activeTab === tab.id
                   ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20'
                   : 'hover:bg-slate-800 text-slate-400'
               }`}
             >
               <span className="text-xl">{tab.icon}</span>
-              <span className="font-medium">{tab.label}</span>
+              {(isMobileMenuOpen || isDesktopExpanded) && (
+                <span className="font-medium">{tab.label}</span>
+              )}
             </button>
           ))}
         </nav>
         
-        <div className="p-4 mt-auto">
-          <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700/50">
-            <div className="text-xs text-slate-500 mb-1 uppercase tracking-wider font-semibold">Status</div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-sm font-medium text-emerald-400 uppercase tracking-tight">System Online</span>
+        {(isMobileMenuOpen || isDesktopExpanded) && (
+          <div className="p-4 mt-auto">
+            <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700/50">
+              <div className="text-xs text-slate-500 mb-1 uppercase tracking-wider font-semibold">Status</div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-sm font-medium text-emerald-400 uppercase tracking-tight">System Online</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </aside>
 
       {/* Main Content */}
