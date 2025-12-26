@@ -46,6 +46,17 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) =>
         />
       )}
 
+      {/* Mobile Toggle (Floating) */}
+      <button
+        onClick={() => setIsMobileMenuOpen(true)}
+        className="md:hidden fixed bottom-20 left-4 z-[70] p-3 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-500/30 active:scale-95"
+        aria-label="Open menu"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+      </button>
+
       {/* Sidebar */}
       <aside
         className={`
