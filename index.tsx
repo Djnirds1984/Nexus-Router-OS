@@ -649,6 +649,7 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
   const [oldPass, setOldPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [passMsg, setPassMsg] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
 
   const handleChangePassword = () => {
     const currentStored = localStorage.getItem('nexus_password') || 'admin';
@@ -773,6 +774,72 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
               </div>
               <span className="text-xl group-hover:rotate-180 transition-transform duration-500">🔄</span>
             </button>
+
+            <button
+              onClick={() => {
+                if (confirm('FULL SYSTEM REBOOT: This will reboot the host machine. Proceed?')) {
+                  fetch(`${API_BASE}/system/reboot`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                    .then(r => {
+                      if (r.ok) {
+                        alert('System is rebooting. Please wait 1–2 minutes, then reconnect. The page will attempt to reload in 60 seconds.');
+                        setTimeout(() => window.location.reload(), 60000);
+                      } else {
+                        r.text().then(t => alert(`Failed to request reboot (Status ${r.status}): ${t || r.statusText}`));
+                      }
+                    })
+                    .catch(e => alert(`Reboot request error: ${e.message || 'Unknown network error'}`));
+                }
+              }}
+              className="w-full flex items-center justify-between p-4 bg-slate-700/20 hover:bg-slate-700/30 border border-slate-700/40 rounded-2xl transition-all group"
+            >
+              <div className="text-left">
+                <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Full System Reboot</div>
+                <div className="text-[9px] text-slate-600 italic">Restart the host machine</div>
+              </div>
+              <span className="text-xl group-hover:rotate-180 transition-transform duration-700">🖥️</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (confirm('FACTORY RESET: This will erase Nexus configuration, DHCP settings, and networking rules and return to default. Proceed?')) {
+                  fetch(`${API_BASE}/factory-reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                    .then(async r => {
+                      if (r.ok) {
+                        const d = await r.json();
+                        setResetMsg('Factory reset complete.');
+                        localStorage.removeItem('nexus_auth');
+                        localStorage.removeItem('nexus_password');
+                        fetch(`${API_BASE}/system/restart`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                          .then(rr => {
+                            if (rr.ok) {
+                              alert('Factory reset complete. Agent restarting. Please wait ~20 seconds; the page will reload automatically.');
+                              setTimeout(() => window.location.reload(), 20000);
+                            } else {
+                              alert('Factory reset complete, but restart failed. Please restart the agent manually.');
+                              setTimeout(() => window.location.reload(), 2000);
+                            }
+                          })
+                          .catch(() => {
+                            alert('Factory reset complete, but restart failed. Please restart the agent manually.');
+                            setTimeout(() => window.location.reload(), 2000);
+                          });
+                      } else {
+                        const t = await r.text();
+                        alert(`Factory reset failed (Status ${r.status}): ${t || r.statusText}`);
+                      }
+                    })
+                    .catch(e => alert(`Factory reset error: ${e.message || 'Unknown network error'}`));
+                }
+              }}
+              className="w-full flex items-center justify-between p-4 bg-rose-600/10 hover:bg-rose-600/15 border border-rose-600/20 rounded-2xl transition-all group"
+            >
+              <div className="text-left">
+                <div className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Factory Reset</div>
+                <div className="text-[9px] text-slate-600 italic">Erase configuration and start fresh</div>
+              </div>
+              <span className="text-xl group-hover:scale-110 transition-transform duration-300">🧨</span>
+            </button>
+            {resetMsg && <div className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">{resetMsg}</div>}
           </div>
         </div>
 

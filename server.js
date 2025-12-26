@@ -471,6 +471,23 @@ app.post('/api/system/restart', (req, res) => {
   }, 2000);
 });
 
+app.post('/api/system/reboot', (req, res) => {
+  log('Full system reboot requested via API');
+  res.json({ status: 'rebooting' });
+  setTimeout(() => {
+    try {
+      if (process.platform === 'win32') {
+        exec('shutdown /r /t 0', (error) => { if (error) log(`Reboot failed: ${error.message}`); });
+      } else if (process.platform === 'linux') {
+        exec('systemctl reboot || reboot || shutdown -r now', (error) => { if (error) log(`Reboot failed: ${error.message}`); });
+      } else {
+        log('Simulating reboot on unsupported platform');
+        setTimeout(() => process.exit(0), 1000);
+      }
+    } catch (e) { log(`Reboot exception: ${e.message}`); }
+  }, 2000);
+});
+
 const updateJobs = {};
 const panelDeployDir = './panel-deploy';
 const panelBackupDir = './panel-backups';
@@ -912,6 +929,28 @@ app.post('/api/apply', (req, res) => {
     applyMultiWanKernel();
     applyDhcp(systemState.config.dhcp);
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/factory-reset', (req, res) => {
+  try {
+    if (process.platform === 'linux') {
+      try { execSync('systemctl stop dnsmasq'); } catch (e) {}
+      try { fs.unlinkSync('/etc/dnsmasq.d/nexus-dhcp.conf'); } catch (e) {}
+      try { execSync('iptables -t nat -F'); } catch (e) {}
+      try { execSync('iptables -F'); } catch (e) {}
+      try { if (fs.existsSync('/var/lib/nexus/dhcp.leases')) fs.unlinkSync('/var/lib/nexus/dhcp.leases'); } catch (e) {}
+      try { if (fs.existsSync(udevRulesPath)) fs.unlinkSync(udevRulesPath); } catch (e) {}
+      try { if (fs.existsSync(stampPath)) fs.unlinkSync(stampPath); } catch (e) {}
+    }
+    systemState.interfaces = [];
+    systemState.metrics = { cpuUsage: 0, cores: [], memoryUsage: '0', totalMem: '0', uptime: '', activeSessions: 0, dnsResolved: true };
+    systemState.config = { mode: 'LOAD_BALANCER', wanInterfaces: [], bridges: [], interfaceCustomNames: {} };
+    try { if (fs.existsSync(configPath)) fs.unlinkSync(configPath); } catch (e) {}
+    try { if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath); } catch (e) {}
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2));
+    fs.writeFileSync(backupPath, JSON.stringify(systemState.config, null, 2));
+    res.json({ ok: true, rebootRecommended: process.platform === 'linux' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
