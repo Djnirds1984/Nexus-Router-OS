@@ -685,6 +685,8 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
     }
   };
 
+  const [ifaceConfigs, setIfaceConfigs] = useState<Record<string, { role: 'WAN' | 'NONE'; method: 'DHCP' | 'STATIC' | 'PPPOE'; staticIp?: string; netmask?: string; gateway?: string; pppoeUser?: string; pppoePass?: string }>>({});
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       <header>
@@ -814,7 +816,7 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
   };
 
   const dhcpIface = config?.dhcp?.interfaceName;
-  const displayWanInterfaces: WanInterface[] = (config.wanInterfaces || []).filter((w: WanInterface) => w.interfaceName !== dhcpIface);
+  const displayWanInterfaces: WanInterface[] = (config.wanInterfaces || []);
   const autoLabelWans = () => {
     let n = 1;
     setConfig((prev: NetworkConfig) => ({
@@ -877,15 +879,45 @@ const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }
             </div>
 
             <div className="space-y-6 relative z-10">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Role</label>
+                  <select value={(ifaceConfigs[wan.interfaceName]?.role) || 'WAN'} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), role: e.target.value as any } }))} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none">
+                    <option value="WAN">WAN</option>
+                    <option value="NONE">None</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Connection</label>
+                  <select value={(ifaceConfigs[wan.interfaceName]?.method) || 'DHCP'} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), method: e.target.value as any } }))} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none">
+                    <option value="DHCP">DHCP</option>
+                    <option value="STATIC">Static</option>
+                    <option value="PPPOE">PPPoE Client</option>
+                  </select>
+                </div>
+                {(ifaceConfigs[wan.interfaceName]?.method) === 'STATIC' && (
+                  <div className="grid grid-cols-1 gap-2">
+                    <input value={ifaceConfigs[wan.interfaceName]?.staticIp || ''} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), staticIp: e.target.value } }))} placeholder="IP Address" className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none" />
+                    <input value={ifaceConfigs[wan.interfaceName]?.netmask || ''} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), netmask: e.target.value } }))} placeholder="Netmask" className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none" />
+                    <input value={ifaceConfigs[wan.interfaceName]?.gateway || ''} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), gateway: e.target.value } }))} placeholder="Gateway" className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none" />
+                  </div>
+                )}
+                {(ifaceConfigs[wan.interfaceName]?.method) === 'PPPOE' && (
+                  <div className="grid grid-cols-1 gap-2">
+                    <input value={ifaceConfigs[wan.interfaceName]?.pppoeUser || ''} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), pppoeUser: e.target.value } }))} placeholder="PPPoE Username" className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none" />
+                    <input type="password" value={ifaceConfigs[wan.interfaceName]?.pppoePass || ''} onChange={(e) => setIfaceConfigs(prev => ({ ...prev, [wan.interfaceName]: { ...(prev[wan.interfaceName] || { role: 'WAN', method: 'DHCP' }), pppoePass: e.target.value } }))} placeholder="PPPoE Password" className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none" />
+                  </div>
+                )}
+              </div>
               {config.mode === RouterMode.LOAD_BALANCER ? (
                 <>
                   <div className="flex justify-between items-end"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Load Weight</label><span className="text-3xl font-mono text-blue-400 font-black tracking-tighter">{wan.weight}%</span></div>
-                  <input type="range" min="1" max="100" value={wan.weight} onChange={(e) => updateInterface(wan.id, { weight: parseInt(e.target.value) })} className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+                  <input type="range" min="1" max="100" value={wan.weight} onChange={(e) => updateInterface(wan.id, { weight: parseInt(e.target.value) })} disabled={(ifaceConfigs[wan.interfaceName]?.role || 'WAN') !== 'WAN'} className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 disabled:opacity-50" />
                 </>
               ) : (
                 <>
                   <label className="text-[10px] font-black text-slate-500 uppercase block tracking-widest mb-2">Failover Priority</label>
-                  <select value={wan.priority} onChange={(e) => updateInterface(wan.id, { priority: parseInt(e.target.value) })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none"><option value={1}>1 - Primary Link</option><option value={2}>2 - Secondary Backup</option></select>
+                  <select value={wan.priority} onChange={(e) => updateInterface(wan.id, { priority: parseInt(e.target.value) })} disabled={(ifaceConfigs[wan.interfaceName]?.role || 'WAN') !== 'WAN'} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-slate-300 outline-none disabled:opacity-50"><option value={1}>1 - Primary Link</option><option value={2}>2 - Secondary Backup</option></select>
                 </>
               )}
             </div>
