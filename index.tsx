@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import DataplicityManager from './components/DataplicityManager';
 
 /**
  * TYPES & ENUMS
@@ -1622,6 +1623,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout }: any) =>
     { id: 'devices', label: 'Devices', icon: '💻' },
     { id: 'dhcp', label: 'DHCP Management', icon: '🌉' },
     { id: 'zerotier', label: 'ZeroTier', icon: '🕸️' },
+    { id: 'dataplicity', label: 'Dataplicity', icon: '🐍' },
     { id: 'updates', label: 'Updates', icon: '🆙' },
     { id: 'advisor', label: 'AI Advisor', icon: '🧠' },
     { id: 'settings', label: 'System', icon: '⚙️' },
@@ -2157,6 +2159,7 @@ const App = () => {
       {activeTab === 'devices' && <DeviceList />}
       {activeTab === 'dhcp' && <DhcpManagement config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
       {activeTab === 'zerotier' && <ZeroTierManager />}
+      {activeTab === 'dataplicity' && <DataplicityManager />}
       {activeTab === 'updates' && <UpdateManager onApplyUpdate={handleUpdate} isUpdating={isApplying} />}
       {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
       {activeTab === 'settings' && <SystemSettings metrics={metrics} />}

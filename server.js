@@ -1102,6 +1102,72 @@ function zeroTierStatus() {
   return { installed, running, node, networks, iface };
 }
 
+function getDataplicityStatus() {
+  let installed = false, running = false, serial = '', version = '';
+  if (process.platform === 'linux') {
+    try {
+      if (fs.existsSync('/opt/dataplicity')) installed = true;
+      if (installed) {
+        try { running = execSync('systemctl is-active dataplicity').toString().trim() === 'active'; } catch (e) {}
+        // Try to find serial - often in /opt/dataplicity/tuxtunnel/config or similar, but simpler to check logs or just assume installed
+        // Some versions allow `dataplicity version` or similar
+        try { 
+           // Attempt to find device serial if accessible
+           // Common location: /opt/dataplicity/tuxtunnel/device_id or serial
+           if (fs.existsSync('/opt/dataplicity/tuxtunnel/serial')) {
+             serial = fs.readFileSync('/opt/dataplicity/tuxtunnel/serial', 'utf8').trim();
+           }
+        } catch (e) {}
+      }
+    } catch (e) {}
+  }
+  return { installed, running, serial, version };
+}
+
+app.get('/api/dataplicity/status', (req, res) => res.json(getDataplicityStatus()));
+
+app.post('/api/dataplicity/install', (req, res) => {
+  try {
+    const { command } = req.body;
+    if (!command) return res.status(400).json({ error: 'Missing command' });
+    
+    // Basic security check - ensure it looks like a dataplicity curl command or python script
+    // curl -s https://www.dataplicity.com/xxxx.py | sudo python3
+    if (!command.includes('dataplicity.com') && !command.includes('python')) {
+      return res.status(400).json({ error: 'Invalid Dataplicity installation command' });
+    }
+
+    // If platform is not linux, mock or fail
+    if (process.platform !== 'linux') {
+      logInstall('dataplicity-install-mock-win');
+      return res.json({ success: true }); // Mock success for dev
+    }
+
+    logInstall('dataplicity-install-start');
+    
+    // Execute the command. Since it usually pipes to sudo python3, we execute it directly.
+    // Ensure we use python3 as requested.
+    // If the user pasted "curl ... | sudo python3", we can run it.
+    // But better to be explicit if possible.
+    
+    exec(command, { maxBuffer: 10485760, timeout: 300000 }, (error, stdout, stderr) => {
+      if (stdout) try { fs.appendFileSync(installLog, stdout); } catch(e) {}
+      if (stderr) try { fs.appendFileSync(installLog, stderr); } catch(e) {}
+      
+      if (error) {
+         logInstall(`dataplicity-install-error: ${error.message}`);
+         return res.status(500).json({ error: 'Installation failed. Check logs.' });
+      }
+      
+      logInstall('dataplicity-install-complete');
+      res.json(getDataplicityStatus());
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/zerotier/status', (req, res) => { res.json(zeroTierStatus()); });
 app.post('/api/zerotier/install', (req, res) => {
   try {
