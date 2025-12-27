@@ -570,7 +570,13 @@ app.get('/api/firewall/nat', (req, res) => {
 try {
   const staticDir = path.join(__dirname, 'dist');
   if (fs.existsSync(staticDir)) {
-    app.use(express.static(staticDir));
+    app.use(express.static(staticDir, {
+      setHeaders: (res, path) => {
+        if (path.endsWith('.js')) {
+          res.setHeader('Content-Type', 'application/javascript');
+        }
+      }
+    }));
     app.get('/', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
   }
 } catch (e) { log(`Static serve init failed: ${e.message}`); }
