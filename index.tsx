@@ -1875,15 +1875,46 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout, theme }: 
           .theme-light .text-slate-500 { color: #475569 !important; }
           .theme-light .text-slate-400 { color: #64748b !important; }
           .theme-light .text-slate-300 { color: #334155 !important; }
+          .theme-light .text-slate-200 { color: #334155 !important; }
+          .theme-light .text-slate-600 { color: #475569 !important; }
           .theme-light .text-blue-400 { color: #2563eb !important; }
           .theme-light .text-emerald-400 { color: #059669 !important; }
           .theme-light .text-amber-400 { color: #d97706 !important; }
           .theme-light .text-rose-500 { color: #e11d48 !important; }
           .theme-light .text-rose-400 { color: #e11d48 !important; }
-          .theme-light .bg-slate-900\\/40 { background-color: rgba(255,255,255,0.8) !important; border-color: #cbd5e1 !important; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1) !important; }
+          .theme-light .bg-slate-900\\/40 { background-color: #ffffff !important; border-color: #e2e8f0 !important; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1) !important; }
           .theme-light .bg-\\[\\#0B0F1A\\] { background-color: #ffffff !important; border-color: #e2e8f0 !important; color: #334155 !important; }
+          .theme-light .bg-\\[\\#020617\\] { background-color: #f1f5f9 !important; }
+          .theme-light .bg-slate-950 { background-color: #ffffff !important; border-color: #cbd5e1 !important; color: #0f172a !important; }
+          .theme-light .bg-black\\/20 { background-color: #f8fafc !important; border-color: #e2e8f0 !important; }
+          .theme-light .bg-black\\/40 { background-color: #ffffff !important; border-color: #cbd5e1 !important; color: #0f172a !important; }
+          .theme-light .bg-black\\/50 { background-color: #f8fafc !important; border-color: #cbd5e1 !important; }
+          .theme-light .bg-black\\/60 { background-color: #ffffff !important; border-color: #cbd5e1 !important; color: #0f172a !important; }
+          .theme-light .bg-black { background-color: #f1f5f9 !important; border-color: #cbd5e1 !important; }
+          .theme-light .bg-slate-950\\/50 { background-color: #f1f5f9 !important; border-color: #e2e8f0 !important; color: #475569 !important; }
+          .theme-light .bg-slate-950\\/30 { background-color: #f8fafc !important; border-color: #e2e8f0 !important; }
           .theme-light .border-slate-800 { border-color: #e2e8f0 !important; }
-          .theme-light .bg-black\\/20 { background-color: rgba(0,0,0,0.05) !important; }
+          .theme-light .border-slate-800\\/50 { border-color: #e2e8f0 !important; }
+          .theme-light ::-webkit-scrollbar-thumb { background-color: #cbd5e1 !important; }
+          .theme-light ::-webkit-scrollbar-thumb:hover { background-color: #94a3b8 !important; }
+          .theme-light .bg-slate-800 { background-color: #f1f5f9 !important; border-color: #cbd5e1 !important; color: #475569 !important; }
+          .theme-light .bg-slate-800:hover { background-color: #e2e8f0 !important; }
+          .theme-light .hover\:bg-slate-800:hover { background-color: #e2e8f0 !important; }
+          .theme-light .hover\:bg-slate-700:hover { background-color: #cbd5e1 !important; }
+          .theme-light .text-slate-300 { color: #334155 !important; }
+          .theme-light .text-slate-700 { color: #0f172a !important; }
+          .theme-light .bg-slate-700 { background-color: #e2e8f0 !important; border-color: #cbd5e1 !important; color: #475569 !important; }
+          .theme-light .bg-slate-900 { background-color: #f1f5f9 !important; border-color: #cbd5e1 !important; color: #475569 !important; }
+          .theme-light .bg-rose-500\/5 { background-color: #fff1f2 !important; border-color: #fecdd3 !important; }
+          .theme-light .bg-emerald-500\/5 { background-color: #ecfdf5 !important; border-color: #a7f3d0 !important; }
+          .theme-light .bg-blue-600\/10 { background-color: #eff6ff !important; border-color: #bfdbfe !important; }
+          .theme-light .border-rose-500\/20 { border-color: #fecdd3 !important; }
+          .theme-light .border-emerald-500\/20 { border-color: #a7f3d0 !important; }
+          .theme-light .border-blue-500\/20 { border-color: #bfdbfe !important; }
+          .theme-light .bg-blue-600.text-white { color: #ffffff !important; }
+          .theme-light .bg-emerald-600.text-white { color: #ffffff !important; }
+          .theme-light .bg-blue-500.text-white { color: #ffffff !important; }
+          .theme-light .bg-emerald-500.text-white { color: #ffffff !important; }
         `}</style>
       )}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-[#0B0F1A] border-b border-slate-800 z-40 flex items-center px-4 justify-between">
