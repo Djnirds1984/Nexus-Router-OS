@@ -470,6 +470,17 @@ app.post('/api/firewall/rules', (req, res) => {
   }
 });
 
+app.get('/api/firewall/nat', (req, res) => {
+  try {
+    if (process.platform !== 'linux') return res.json({ rules: [] });
+    const output = execSync('iptables -t nat -S').toString();
+    const rules = output.split('\n').filter(l => l.trim());
+    res.json({ rules });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Serve built panel statically for LAN/offline access
 try {
   const staticDir = path.join(__dirname, 'dist');

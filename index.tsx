@@ -1335,6 +1335,29 @@ const FirewallManager: React.FC<FirewallManagerProps> = ({
   onApply,
   isApplying
 }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'filter' | 'nat'>('filter');
+  const [natRules, setNatRules] = useState<string[]>([]);
+  const [loadingNat, setLoadingNat] = useState(false);
+
+  const fetchNatRules = useCallback(async () => {
+    setLoadingNat(true);
+    try {
+      const res = await fetch('/api/firewall/nat');
+      const data = await res.json();
+      setNatRules(data.rules || []);
+    } catch (error) {
+      console.error('Failed to fetch NAT rules:', error);
+    } finally {
+      setLoadingNat(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSubTab === 'nat') {
+      fetchNatRules();
+    }
+  }, [activeSubTab, fetchNatRules]);
+
   const [newRule, setNewRule] = useState<Partial<FirewallRule>>({
     type: 'INPUT',
     proto: 'tcp',
@@ -1385,101 +1408,162 @@ const FirewallManager: React.FC<FirewallManagerProps> = ({
           <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Firewall</h1>
           <p className="text-slate-400 mt-1 font-medium">Traffic Control & Security Rules</p>
         </div>
-        <button 
-            onClick={onApply}
-            disabled={isApplying}
-            className="bg-blue-600 hover:bg-blue-500 text-white font-black py-2.5 px-8 rounded-xl shadow-lg shadow-blue-600/20 disabled:opacity-50 transition-all active:scale-95 uppercase tracking-widest text-xs"
-          >
-            {isApplying ? 'APPLYING...' : 'APPLY RULES'}
-          </button>
+        <div className="flex gap-4">
+          <div className="bg-slate-900/50 p-1 rounded-xl border border-slate-800 flex">
+            <button
+              onClick={() => setActiveSubTab('filter')}
+              className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSubTab === 'filter' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              Filter Rules
+            </button>
+            <button
+              onClick={() => setActiveSubTab('nat')}
+              className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSubTab === 'nat' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              NAT Rules
+            </button>
+          </div>
+          <button 
+              onClick={onApply}
+              disabled={isApplying}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-black py-2.5 px-8 rounded-xl shadow-lg shadow-blue-600/20 disabled:opacity-50 transition-all active:scale-95 uppercase tracking-widest text-xs"
+            >
+              {isApplying ? 'APPLYING...' : 'APPLY RULES'}
+            </button>
+        </div>
       </header>
 
-      {/* Add Rule Form */}
-      <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800">
-         <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4">Add New Rule</h3>
-         <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-            <select 
-              value={newRule.type}
-              onChange={e => setNewRule({...newRule, type: e.target.value as any})}
-              className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 outline-none"
-            >
-              <option value="INPUT">INPUT (Local)</option>
-              <option value="FORWARD">FORWARD (Routing)</option>
-            </select>
-            <select 
-              value={newRule.proto}
-              onChange={e => setNewRule({...newRule, proto: e.target.value as any})}
-              className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 outline-none"
-            >
-              <option value="tcp">TCP</option>
-              <option value="udp">UDP</option>
-              <option value="icmp">ICMP</option>
-              <option value="any">ANY</option>
-            </select>
-            <input
-              type="text"
-              placeholder="Port (e.g. 80, 443)"
-              value={newRule.port}
-              onChange={e => setNewRule({...newRule, port: e.target.value})}
-              className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 outline-none"
-            />
-            <input
-              type="text"
-              placeholder="Source IP (Optional)"
-              value={newRule.src}
-              onChange={e => setNewRule({...newRule, src: e.target.value})}
-              className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 outline-none"
-            />
-             <select 
-              value={newRule.action}
-              onChange={e => setNewRule({...newRule, action: e.target.value as any})}
-              className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 outline-none"
-            >
-              <option value="ACCEPT">ACCEPT</option>
-              <option value="DROP">DROP</option>
-              <option value="REJECT">REJECT</option>
-            </select>
-            <button onClick={addRule} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl uppercase tracking-widest text-xs shadow-lg shadow-emerald-600/20 active:scale-95 transition-all">
-              ADD RULE
-            </button>
-         </div>
-      </div>
+      {activeSubTab === 'filter' ? (
+        <>
+          {/* Add Rule Form */}
+          <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800">
+             <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4">Add New Rule</h3>
+             <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                <select 
+                  value={newRule.type}
+                  onChange={e => setNewRule({...newRule, type: e.target.value as any})}
+                  className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 outline-none"
+                >
+                  <option value="INPUT">INPUT (Local)</option>
+                  <option value="FORWARD">FORWARD (Routing)</option>
+                </select>
+                <select 
+                  value={newRule.proto}
+                  onChange={e => setNewRule({...newRule, proto: e.target.value as any})}
+                  className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 outline-none"
+                >
+                  <option value="tcp">TCP</option>
+                  <option value="udp">UDP</option>
+                  <option value="icmp">ICMP</option>
+                  <option value="any">ANY</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="Port (e.g. 80, 443)"
+                  value={newRule.port}
+                  onChange={e => setNewRule({...newRule, port: e.target.value})}
+                  className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Source IP (Optional)"
+                  value={newRule.src}
+                  onChange={e => setNewRule({...newRule, src: e.target.value})}
+                  className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 outline-none"
+                />
+                 <select 
+                  value={newRule.action}
+                  onChange={e => setNewRule({...newRule, action: e.target.value as any})}
+                  className="bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-300 outline-none"
+                >
+                  <option value="ACCEPT">ACCEPT</option>
+                  <option value="DROP">DROP</option>
+                  <option value="REJECT">REJECT</option>
+                </select>
+                <button onClick={addRule} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl uppercase tracking-widest text-xs shadow-lg shadow-emerald-600/20 active:scale-95 transition-all">
+                  ADD RULE
+                </button>
+             </div>
+          </div>
 
-      {/* Rules List */}
-      <div className="space-y-4">
-        {rules.length === 0 ? (
-           <div className="text-center py-12 text-slate-500 text-sm">No active firewall rules</div>
-        ) : (
-          rules.map((rule, idx) => (
-            <div key={rule.id} className={`bg-slate-900/40 p-4 rounded-2xl border flex items-center justify-between group transition-all ${rule.enabled ? 'border-slate-800 hover:border-blue-500/30' : 'border-slate-800 opacity-60'}`}>
-              <div className="flex items-center gap-6">
-                <div className="font-mono text-xs text-slate-500 w-8">#{idx + 1}</div>
-                <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${rule.action === 'ACCEPT' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                  {rule.action}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-white">{rule.type}</span>
-                  <span className="text-[10px] text-slate-500 font-mono uppercase">{rule.proto} {rule.port ? `:${rule.port}` : ''}</span>
-                </div>
-                {rule.src && (
-                   <div className="flex flex-col">
-                    <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Source</span>
-                    <span className="text-xs font-mono text-blue-400">{rule.src}</span>
+          {/* Rules List */}
+          <div className="space-y-4">
+            {rules.length === 0 ? (
+               <div className="text-center py-12 text-slate-500 text-sm">No active firewall rules</div>
+            ) : (
+              rules.map((rule, idx) => (
+                <div key={rule.id} className={`bg-slate-900/40 p-4 rounded-2xl border flex items-center justify-between group transition-all ${rule.enabled ? 'border-slate-800 hover:border-blue-500/30' : 'border-slate-800 opacity-60'}`}>
+                  <div className="flex items-center gap-6">
+                    <div className="font-mono text-xs text-slate-500 w-8">#{idx + 1}</div>
+                    <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${rule.action === 'ACCEPT' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                      {rule.action}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-white">{rule.type}</span>
+                      <span className="text-[10px] text-slate-500 font-mono uppercase">{rule.proto} {rule.port ? `:${rule.port}` : ''}</span>
+                    </div>
+                    {rule.src && (
+                       <div className="flex flex-col">
+                        <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Source</span>
+                        <span className="text-xs font-mono text-blue-400">{rule.src}</span>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                 <button onClick={() => toggleRule(rule.id)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${rule.enabled ? 'border-emerald-500/20 text-emerald-400 bg-emerald-500/5' : 'border-slate-700 text-slate-500 hover:text-slate-300'}`}>
-                   {rule.enabled ? 'Active' : 'Disabled'}
-                 </button>
-                 <button onClick={() => removeRule(rule.id)} className="p-2 text-slate-500 hover:text-rose-400 transition-colors">
-                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                 </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+                  <div className="flex items-center gap-3">
+                     <button onClick={() => toggleRule(rule.id)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${rule.enabled ? 'border-emerald-500/20 text-emerald-400 bg-emerald-500/5' : 'border-slate-700 text-slate-500 hover:text-slate-300'}`}>
+                       {rule.enabled ? 'Active' : 'Disabled'}
+                     </button>
+                     <button onClick={() => removeRule(rule.id)} className="p-2 text-slate-500 hover:text-rose-400 transition-colors">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                     </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Current System NAT Rules</h3>
+            <button 
+              onClick={fetchNatRules} 
+              disabled={loadingNat}
+              className="text-xs font-bold text-blue-400 hover:text-blue-300 flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loadingNat ? "animate-spin" : ""}><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>
+              REFRESH
+            </button>
+          </div>
+          <div className="bg-black/50 rounded-2xl border border-slate-800 p-6 overflow-x-auto font-mono text-xs">
+            {loadingNat ? (
+              <div className="text-slate-500 italic">Loading rules...</div>
+            ) : natRules.length === 0 ? (
+              <div className="text-slate-500 italic">No NAT rules found or not running on Linux</div>
+            ) : (
+              <table className="w-full text-left">
+                <tbody>
+                  {natRules.map((rule, i) => (
+                    <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                      <td className="py-2 px-2 text-slate-600 select-none w-12 text-right">{i + 1}</td>
+                      <td className="py-2 px-4 text-emerald-400 whitespace-pre-wrap break-all">{rule}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+             <div className="flex gap-3">
+               <div className="text-blue-400">ℹ️</div>
+               <p className="text-xs text-blue-200/80 leading-relaxed">
+                 These are the raw active Network Address Translation (NAT) rules from the system kernel. 
+                 They include Masquerading (WAN access) and Port Forwarding rules managed by other system modules.
+               </p>
+             </div>
+          </div>
+        </div>
+      )}
      </div>
   );
 };
