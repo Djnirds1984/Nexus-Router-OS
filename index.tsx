@@ -709,7 +709,7 @@ const DhcpManagement = ({ config, setConfig, onApply, isApplying, availableInter
 /**
  * COMPONENT: SYSTEM SETTINGS
  */
-const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
+const SystemSettings = ({ metrics, theme, setTheme }: { metrics: SystemMetrics, theme?: string, setTheme?: (t: string) => void }) => {
   const [ipForwarding, setIpForwarding] = useState(true);
   const [bbr, setBbr] = useState(true);
 
@@ -764,6 +764,23 @@ const SystemSettings = ({ metrics }: { metrics: SystemMetrics }) => {
         <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">System Core</h1>
         <p className="text-slate-400 mt-1 font-medium italic">Kernel Diagnostics & Global Optimization Control</p>
       </header>
+
+      {/* Theme Selector */}
+      <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 backdrop-blur-md">
+        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6">Interface Theme</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {['dark', 'light', 'midnight', 'cyber'].map(t => (
+              <button 
+                key={t}
+                onClick={() => setTheme && setTheme(t)}
+                className={`p-4 rounded-xl border flex flex-col items-center gap-3 transition-all ${theme === t ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-black/20 border-slate-800 text-slate-500 hover:bg-slate-800 hover:text-white'}`}
+              >
+                <div className={`w-8 h-8 rounded-full border-2 ${t === 'light' ? 'bg-slate-50 border-slate-200' : t === 'midnight' ? 'bg-indigo-950 border-indigo-500' : t === 'cyber' ? 'bg-zinc-950 border-zinc-500' : 'bg-[#020617] border-slate-700'}`} />
+                <span className="text-xs font-black uppercase tracking-widest">{t}</span>
+              </button>
+            ))}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-slate-900/40 p-10 rounded-[2.5rem] border border-slate-800 backdrop-blur-md">
@@ -1825,7 +1842,7 @@ const DataplicityManager: React.FC = () => {
   );
 };
 
-const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout }: any) => {
+const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout, theme }: any) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -1841,8 +1858,34 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout }: any) =>
     { id: 'settings', label: 'System', icon: '⚙️' },
   ];
 
+  const getThemeClasses = () => {
+    switch (theme) {
+      case 'light': return 'bg-slate-50 text-slate-900 theme-light';
+      case 'midnight': return 'bg-indigo-950 text-indigo-100 theme-midnight';
+      case 'cyber': return 'bg-zinc-950 text-zinc-300 theme-cyber';
+      default: return 'bg-[#020617] text-slate-200 theme-dark';
+    }
+  };
+
   return (
-    <div className="flex h-screen bg-[#020617] text-slate-200 overflow-hidden font-sans selection:bg-blue-500/30">
+    <div className={`flex h-screen overflow-hidden font-sans selection:bg-blue-500/30 ${getThemeClasses()}`}>
+      {theme === 'light' && (
+        <style>{`
+          .theme-light .text-white { color: #0f172a !important; }
+          .theme-light .text-slate-500 { color: #475569 !important; }
+          .theme-light .text-slate-400 { color: #64748b !important; }
+          .theme-light .text-slate-300 { color: #334155 !important; }
+          .theme-light .text-blue-400 { color: #2563eb !important; }
+          .theme-light .text-emerald-400 { color: #059669 !important; }
+          .theme-light .text-amber-400 { color: #d97706 !important; }
+          .theme-light .text-rose-500 { color: #e11d48 !important; }
+          .theme-light .text-rose-400 { color: #e11d48 !important; }
+          .theme-light .bg-slate-900\\/40 { background-color: rgba(255,255,255,0.8) !important; border-color: #cbd5e1 !important; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1) !important; }
+          .theme-light .bg-\\[\\#0B0F1A\\] { background-color: #ffffff !important; border-color: #e2e8f0 !important; color: #334155 !important; }
+          .theme-light .border-slate-800 { border-color: #e2e8f0 !important; }
+          .theme-light .bg-black\\/20 { background-color: rgba(0,0,0,0.05) !important; }
+        `}</style>
+      )}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-[#0B0F1A] border-b border-slate-800 z-40 flex items-center px-4 justify-between">
         <div className="flex items-center gap-3">
           <button
@@ -2173,6 +2216,8 @@ const App = () => {
   };
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [theme, setTheme] = useState(() => localStorage.getItem('nexus_theme') || 'dark');
+  useEffect(() => { localStorage.setItem('nexus_theme', theme); }, [theme]);
   const [isLive, setIsLive] = useState(false);
   const [metrics, setMetrics] = useState<SystemMetrics>({ cpuUsage: 0, memoryUsage: '0', totalMem: '0', temp: '0', uptime: '', activeSessions: 0, dnsResolved: true, ipForwarding: true });
   const [interfaces, setInterfaces] = useState<WanInterface[]>([]);
@@ -2363,7 +2408,7 @@ const App = () => {
   }
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive} onLogout={handleLogout}>
+    <Layout activeTab={activeTab} setActiveTab={setActiveTab} isLive={isLive} onLogout={handleLogout} theme={theme}>
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'interfaces' && <Interfaces />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} appliedConfig={appliedConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
@@ -2374,7 +2419,7 @@ const App = () => {
       {activeTab === 'dataplicity' && <DataplicityManager />}
       {activeTab === 'updates' && <UpdateManager onApplyUpdate={handleUpdate} isUpdating={isApplying} />}
       {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
-      {activeTab === 'settings' && <SystemSettings metrics={metrics} />}
+      {activeTab === 'settings' && <SystemSettings metrics={metrics} theme={theme} setTheme={setTheme} />}
     </Layout>
   );
 };
