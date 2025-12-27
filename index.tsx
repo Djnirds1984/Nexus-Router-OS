@@ -80,7 +80,19 @@ interface NetworkConfig {
  */
 const getApiBase = () => {
   const host = window.location.hostname || 'localhost';
-  return `http://${host}:3000/api`;
+  const protocol = window.location.protocol;
+  const port = window.location.port ? `:${window.location.port}` : '';
+  
+  // If we are on HTTPS, we must use HTTPS for API calls (relative path or same origin)
+  // If on localhost development (port 5173 usually), we target 3000
+  // If served via wormhole/dataplicity (usually port 80/443), we might need relative path '/api'
+  
+  if (host === 'localhost' || host.startsWith('192.168.') || host.startsWith('127.')) {
+     return `http://${host}:3000/api`;
+  }
+  
+  // For Dataplicity / production builds served by same server
+  return `/api`;
 };
 
 const API_BASE = getApiBase();
