@@ -408,11 +408,7 @@ setInterval(async () => {
         totalMem: '16.0', 
         uptime: '1h 22m', 
         activeSessions: 42, 
-        dnsResolved: true,
-        motherboard: hardwareInfo.motherboard,
-        cpuInfo: { ...hardwareInfo.cpu, temp: 45 + Math.random() * 5 },
-        gpu: hardwareInfo.gpu,
-        storage: [{ disk: '/dev/nvme0n1p2', size: '1TB', used: '450GB', available: '550GB', percent: '45%', mount: '/' }]
+        dnsResolved: true
     };
     pollingBusy = false;
     return;
@@ -497,22 +493,6 @@ setInterval(async () => {
        cpuTemp = parseInt(thermal) / 1000;
     } catch (e) {}
 
-    let storage = [];
-    try {
-      const df = execSync('df -h --output=source,size,used,avail,pcent,target | grep "^/dev/"').toString();
-      storage = df.split('\n').filter(l => l.trim()).map(line => {
-        const parts = line.trim().split(/\s+/);
-        return {
-          disk: parts[0],
-          size: parts[1],
-          used: parts[2],
-          available: parts[3],
-          percent: parts[4],
-          mount: parts[5]
-        };
-      });
-    } catch (e) {}
-
     systemState.metrics = {
       cpuUsage: aggregateUsage,
       cores: coreMetrics,
@@ -520,11 +500,7 @@ setInterval(async () => {
       totalMem: memTotal.toFixed(2),
       uptime: lastUptimeStr || '',
       activeSessions: 0,
-      dnsResolved: true,
-      motherboard: hardwareInfo.motherboard,
-      cpuInfo: { ...hardwareInfo.cpu, temp: cpuTemp },
-      gpu: hardwareInfo.gpu,
-      storage: storage
+      dnsResolved: true
     };
   } catch (e) { log(`Poll Error: ${e.message}`); }
   finally {
@@ -570,13 +546,7 @@ app.get('/api/firewall/nat', (req, res) => {
 try {
   const staticDir = path.join(__dirname, 'dist');
   if (fs.existsSync(staticDir)) {
-    app.use(express.static(staticDir, {
-      setHeaders: (res, path) => {
-        if (path.endsWith('.js')) {
-          res.setHeader('Content-Type', 'application/javascript');
-        }
-      }
-    }));
+    app.use(express.static(staticDir));
     app.get('/', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
   }
 } catch (e) { log(`Static serve init failed: ${e.message}`); }
