@@ -1104,16 +1104,34 @@ function zeroTierStatus() {
 
 function getDataplicityStatus() {
   let installed = false, running = false, serial = '', version = '';
+  let serviceName = null;
   if (process.platform === 'linux') {
     try {
       if (fs.existsSync('/opt/dataplicity')) installed = true;
       if (installed) {
-        try { running = execSync('systemctl is-active dataplicity').toString().trim() === 'active'; } catch (e) {}
-        // Try to find serial - often in /opt/dataplicity/tuxtunnel/config or similar, but simpler to check logs or just assume installed
-        // Some versions allow `dataplicity version` or similar
+        // Check for service name (support both dataplicity.service and supervisor.service)
+        try {
+            if (execSync('systemctl list-units --full -all | grep -F "dataplicity.service" || true').toString().trim()) {
+                serviceName = 'dataplicity';
+            } else if (execSync('systemctl list-units --full -all | grep -F "supervisor.service" || true').toString().trim()) {
+                serviceName = 'supervisor';
+            }
+        } catch(e) {}
+
+        // Check running status - process check is most reliable for tuxtunnel
         try { 
-           // Attempt to find device serial if accessible
-           // Common location: /opt/dataplicity/tuxtunnel/device_id or serial
+           // Check for tuxtunnel process which is the actual agent
+           // Use ps aux to be compatible with most linuxes
+           const proc = execSync("ps aux | grep '[t]uxtunnel'").toString().trim();
+           if (proc) running = true;
+        } catch (e) {}
+
+        // Fallback to service status if process check fails or just to be sure
+        if (!running && serviceName) {
+           try { running = execSync(`systemctl is-active ${serviceName}`).toString().trim() === 'active'; } catch (e) {}
+        }
+
+        try { 
            if (fs.existsSync('/opt/dataplicity/tuxtunnel/serial')) {
              serial = fs.readFileSync('/opt/dataplicity/tuxtunnel/serial', 'utf8').trim();
            }
@@ -1121,7 +1139,7 @@ function getDataplicityStatus() {
       }
     } catch (e) {}
   }
-  return { installed, running, serial, version };
+  return { installed, running, serial, version, serviceName };
 }
 
 app.get('/api/dataplicity/status', (req, res) => res.json(getDataplicityStatus()));
@@ -1173,11 +1191,22 @@ app.post('/api/dataplicity/install', (req, res) => {
 app.post('/api/dataplicity/start', (req, res) => {
   try {
     if (process.platform === 'linux') {
-      execSync('sudo systemctl enable --now dataplicity');
-      // Wait a moment for it to start
-      setTimeout(() => {
-         res.json(getDataplicityStatus());
-      }, 2000);
+      const status = getDataplicityStatus();
+      if (status.serviceName) {
+          execSync(`sudo systemctl enable --now ${status.serviceName}`);
+          setTimeout(() => {
+             res.json(getDataplicityStatus());
+          }, 2000);
+      } else {
+          // If no service found but files exist, try to restart supervisor as a fallback
+          // or tell user to reinstall.
+          try {
+             execSync('sudo service supervisor restart');
+             setTimeout(() => { res.json(getDataplicityStatus()); }, 2000);
+          } catch(e) {
+             res.status(500).json({ error: 'Could not find dataplicity or supervisor service. Please try reinstalling.' });
+          }
+      }
     } else {
       res.json({ success: true, running: true }); // Mock
     }
