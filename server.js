@@ -1154,13 +1154,15 @@ app.post('/api/dataplicity/install', (req, res) => {
       if (stdout) try { fs.appendFileSync(installLog, stdout); } catch(e) {}
       if (stderr) try { fs.appendFileSync(installLog, stderr); } catch(e) {}
       
+      const output = (stdout || '') + '\n' + (stderr || '');
+
       if (error) {
          logInstall(`dataplicity-install-error: ${error.message}`);
-         return res.status(500).json({ error: 'Installation failed. Check logs.' });
+         return res.status(500).json({ error: 'Installation failed. Check logs.', output });
       }
       
       logInstall('dataplicity-install-complete');
-      res.json(getDataplicityStatus());
+      res.json({ ...getDataplicityStatus(), output });
     });
 
   } catch (e) {

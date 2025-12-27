@@ -1627,6 +1627,7 @@ const DataplicityManager: React.FC = () => {
   const [installing, setInstalling] = useState(false);
   const [installCmd, setInstallCmd] = useState('');
   const [error, setError] = useState('');
+  const [installLogs, setInstallLogs] = useState('');
 
   const fetchStatus = async () => {
     setLoading(true);
@@ -1651,6 +1652,7 @@ const DataplicityManager: React.FC = () => {
     if (!installCmd.trim()) return;
     setInstalling(true);
     setError('');
+    setInstallLogs('');
     
     // Extract ID if user pasted full command, or use as is if it's just the code?
     // Actually, backend can handle the parsing or just run the command if safe.
@@ -1665,9 +1667,14 @@ const DataplicityManager: React.FC = () => {
         body: JSON.stringify({ command: installCmd })
       });
       
+      const data = await res.json();
+      
+      if (data.output) {
+        setInstallLogs(data.output);
+      }
+
       if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || 'Installation failed');
+        throw new Error(data.error || 'Installation failed');
       }
       
       await fetchStatus();
@@ -1755,6 +1762,15 @@ const DataplicityManager: React.FC = () => {
                <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-bold">
                  Error: {error}
                </div>
+             )}
+             
+             {installLogs && (
+                <div className="p-4 bg-black border border-slate-800 rounded-xl">
+                  <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Installation Log</div>
+                  <pre className="text-[10px] font-mono text-slate-400 whitespace-pre-wrap overflow-x-auto max-h-40 scrollbar-thin scrollbar-thumb-slate-700">
+                    {installLogs}
+                  </pre>
+                </div>
              )}
 
              <button
