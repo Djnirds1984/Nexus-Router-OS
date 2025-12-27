@@ -348,13 +348,72 @@ function applyMultiWanKernel() {
   } catch (e) { log(`KERNEL SYNC ERROR: ${e.message}`); }
 }
 
+// Static Hardware Info Cache
+let hardwareInfo = {
+  motherboard: { manufacturer: 'Unknown', model: 'Unknown' },
+  cpu: { manufacturer: 'Unknown', brand: 'Unknown', speed: 'Unknown' },
+  gpu: { model: 'Unknown' },
+  ram: { type: 'Unknown' }
+};
+
+function initHardwareInfo() {
+  if (process.platform !== 'linux') {
+    hardwareInfo = {
+      motherboard: { manufacturer: 'ASUS', model: 'ROG MAXIMUS XIII' },
+      cpu: { manufacturer: 'Intel', brand: 'Core i9-11900K', speed: '3.50GHz' },
+      gpu: { model: 'NVIDIA GeForce RTX 3080' },
+      ram: { type: 'DDR4' }
+    };
+    return;
+  }
+
+  try {
+    hardwareInfo.motherboard.manufacturer = fs.readFileSync('/sys/devices/virtual/dmi/id/board_vendor', 'utf8').trim();
+    hardwareInfo.motherboard.model = fs.readFileSync('/sys/devices/virtual/dmi/id/board_name', 'utf8').trim();
+  } catch (e) {}
+
+  try {
+    const cpuInfo = fs.readFileSync('/proc/cpuinfo', 'utf8');
+    const modelName = cpuInfo.match(/model name\s+:\s+(.+)/)?.[1] || '';
+    if (modelName) {
+      if (modelName.includes('Intel')) hardwareInfo.cpu.manufacturer = 'Intel';
+      else if (modelName.includes('AMD')) hardwareInfo.cpu.manufacturer = 'AMD';
+      hardwareInfo.cpu.brand = modelName;
+      const speed = cpuInfo.match(/cpu MHz\s+:\s+(.+)/)?.[1];
+      if (speed) hardwareInfo.cpu.speed = (parseFloat(speed)/1000).toFixed(2) + ' GHz';
+    }
+  } catch (e) {}
+  
+  try {
+    const lspci = execSync('lspci | grep -i vga || lspci | grep -i 3d || true').toString();
+    if (lspci) {
+        const parts = lspci.split(':');
+        if (parts.length > 2) hardwareInfo.gpu.model = parts.slice(2).join(':').trim();
+    }
+  } catch (e) {}
+}
+
+initHardwareInfo();
+
 // 1s Polling for Real-Time Hardware Statistics
 setInterval(async () => {
   if (pollingBusy) return;
   pollingBusy = true;
   if (process.platform !== 'linux') {
     systemState.interfaces = [{ id: 'eth0', name: 'WAN1', interfaceName: 'eth0', status: 'UP', ipAddress: '192.168.1.10', gateway: '192.168.1.1', internetHealth: 'HEALTHY', latency: 12, throughput: { rx: 5.2, tx: 1.5 } }];
-    systemState.metrics = { cpuUsage: 15, cores: [10, 15, 20, 12], memoryUsage: '4.4', totalMem: '16.0', uptime: '1h 22m', activeSessions: 42, dnsResolved: true };
+    systemState.metrics = { 
+        cpuUsage: 15, 
+        cores: [10, 15, 20, 12], 
+        memoryUsage: '4.4', 
+        totalMem: '16.0', 
+        uptime: '1h 22m', 
+        activeSessions: 42, 
+        dnsResolved: true,
+        motherboard: hardwareInfo.motherboard,
+        cpuInfo: { ...hardwareInfo.cpu, temp: 45 + Math.random() * 5 },
+        gpu: hardwareInfo.gpu,
+        storage: [{ disk: '/dev/nvme0n1p2', size: '1TB', used: '450GB', available: '550GB', percent: '45%', mount: '/' }]
+    };
     pollingBusy = false;
     return;
   }

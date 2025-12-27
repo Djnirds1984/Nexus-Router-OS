@@ -40,9 +40,19 @@ export interface BridgeConfig {
 
 export interface SystemMetrics {
   cpuUsage: number;
-  memoryUsage: number;
+  cores?: number[];
+  memoryUsage: string; 
+  totalMem: string; 
+  temp: string;
   uptime: string;
   activeSessions: number;
+  dnsResolved: boolean;
+  ipForwarding: boolean;
+  bbrEnabled?: boolean;
+  motherboard?: { manufacturer: string; model: string; };
+  cpuInfo?: { manufacturer: string; brand: string; speed: string; temp: number };
+  gpu?: { model: string; };
+  storage?: Array<{ disk: string; size: string; used: string; available: string; percent: string; mount: string; }>;
 }
 
 export interface FirewallRule {

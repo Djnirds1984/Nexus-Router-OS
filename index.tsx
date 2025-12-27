@@ -55,6 +55,10 @@ interface SystemMetrics {
   dnsResolved: boolean;
   ipForwarding: boolean;
   bbrEnabled?: boolean;
+  motherboard?: { manufacturer: string; model: string; };
+  cpuInfo?: { manufacturer: string; brand: string; speed: string; temp: number };
+  gpu?: { model: string; };
+  storage?: Array<{ disk: string; size: string; used: string; available: string; percent: string; mount: string; }>;
 }
 
 interface FirewallRule {
