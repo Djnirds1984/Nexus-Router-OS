@@ -1,0 +1,74 @@
+{
+  "mode": "LOAD_BALANCER",
+  "wanInterfaces": [
+    {
+      "id": "WAN2",
+      "name": "WAN2",
+      "interfaceName": "WAN2",
+      "status": "UP",
+      "ipAddress": "N/A",
+      "gateway": "Detecting...",
+      "internetHealth": "OFFLINE",
+      "latency": 0,
+      "throughput": {
+        "rx": 0.001384735107421875,
+        "tx": 0
+      }
+    },
+    {
+      "id": "enp4s0",
+      "name": "ENP4S0",
+      "interfaceName": "enp4s0",
+      "status": "DOWN",
+      "ipAddress": "N/A",
+      "gateway": "Detecting...",
+      "internetHealth": "OFFLINE",
+      "latency": 0,
+      "throughput": {
+        "rx": 0,
+        "tx": 0
+      }
+    },
+    {
+      "id": "enp5s0",
+      "name": "ENP5S0",
+      "interfaceName": "enp5s0",
+      "status": "DOWN",
+      "ipAddress": "N/A",
+      "gateway": "Detecting...",
+      "internetHealth": "OFFLINE",
+      "latency": 0,
+      "throughput": {
+        "rx": 0,
+        "tx": 0
+      }
+    },
+    {
+      "id": "WAN1",
+      "name": "WAN1",
+      "interfaceName": "WAN1",
+      "status": "DOWN",
+      "ipAddress": "N/A",
+      "gateway": "Detecting...",
+      "internetHealth": "OFFLINE",
+      "latency": 0,
+      "throughput": {
+        "rx": 0,
+        "tx": 0
+      }
+    }
+  ],
+  "bridges": [],
+  "dhcp": {
+    "interfaceName": "LAN",
+    "enabled": true,
+    "start": "192.168.10.2",
+    "end": "192.168.10.254",
+    "leaseTime": "24h",
+    "dnsServers": "8.8.8.8,1.1.1.1"
+  },
+  "interfaceCustomNames": {},
+  "persistentInterfaceMap": {
+    "00:e0:4c:6a:2a:ce": "LAN"
+  }
+}

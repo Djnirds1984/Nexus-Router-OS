@@ -1,0 +1,21 @@
+[0;1;32m●[0m nexus-agent.service - Nexus Router Core Agent
+     Loaded: loaded (]8;;file://nexusos/etc/systemd/system/nexus-agent.service\/etc/systemd/system/nexus-agent.service]8;;\; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;32mactive (running)[0m since Fri 2025-12-26 16:46:23 PST; 3min 9s ago
+ Invocation: eb7bcb2c72f04a1fa32f2877c3ea77f2
+   Main PID: 37185 (node)
+      Tasks: 11[0;38;5;245m (limit: 3299)[0m
+     Memory: 27.9M (peak: 31.7M)
+        CPU: 48.436s
+     CGroup: /system.slice/nexus-agent.service
+             └─[0;38;5;245m37185 /usr/bin/node /var/www/html/Nexus-Router-Os/server.js[0m
+
+Dec 26 16:49:30 nexusos dhclient[48528]: xid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement
+Dec 26 16:49:30 nexusos dhclient[48528]: xid: rand init seed (0x69314d1b) built using gethostid
+Dec 26 16:49:31 nexusos dhclient[48562]: xid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement
+Dec 26 16:49:31 nexusos dhclient[48562]: xid: rand init seed (0x69314d1a) built using gethostid
+Dec 26 16:49:32 nexusos dhclient[48612]: xid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement
+Dec 26 16:49:32 nexusos dhclient[48612]: xid: rand init seed (0x69314d1d) built using gethostid
+Dec 26 16:49:32 nexusos dhclient[48646]: xid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement
+Dec 26 16:49:32 nexusos dhclient[48646]: xid: rand init seed (0x69314d1d) built using gethostid
+Dec 26 16:49:33 nexusos dhclient[48680]: xid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement
+Dec 26 16:49:33 nexusos dhclient[48680]: xid: rand init seed (0x69314d1c) built using gethostid
