@@ -491,6 +491,28 @@ setInterval(async () => {
       try { lastUptimeStr = execSync('uptime -p').toString().trim(); lastUptimeAt = Date.now(); } catch (e) {}
     }
 
+    let cpuTemp = 0;
+    try {
+       const thermal = fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8');
+       cpuTemp = parseInt(thermal) / 1000;
+    } catch (e) {}
+
+    let storage = [];
+    try {
+      const df = execSync('df -h --output=source,size,used,avail,pcent,target | grep "^/dev/"').toString();
+      storage = df.split('\n').filter(l => l.trim()).map(line => {
+        const parts = line.trim().split(/\s+/);
+        return {
+          disk: parts[0],
+          size: parts[1],
+          used: parts[2],
+          available: parts[3],
+          percent: parts[4],
+          mount: parts[5]
+        };
+      });
+    } catch (e) {}
+
     systemState.metrics = {
       cpuUsage: aggregateUsage,
       cores: coreMetrics,
@@ -498,7 +520,11 @@ setInterval(async () => {
       totalMem: memTotal.toFixed(2),
       uptime: lastUptimeStr || '',
       activeSessions: 0,
-      dnsResolved: true
+      dnsResolved: true,
+      motherboard: hardwareInfo.motherboard,
+      cpuInfo: { ...hardwareInfo.cpu, temp: cpuTemp },
+      gpu: hardwareInfo.gpu,
+      storage: storage
     };
   } catch (e) { log(`Poll Error: ${e.message}`); }
   finally {

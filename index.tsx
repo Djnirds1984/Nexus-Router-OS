@@ -540,7 +540,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
             >
                {logs.map((log, i) => (
                  <div key={i} className="text-slate-500 hover:text-blue-400 transition-colors">
-                    <span className="opacity-30 mr-2">></span>{log}
+                    <span className="opacity-30 mr-2">&gt;</span>{log}
                  </div>
                ))}
                {isUpdating && <div className="text-blue-400 animate-pulse tracking-widest italic font-black uppercase">COMMITTING CHANGES...</div>}
@@ -2178,6 +2178,71 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
           <div className="mt-2 text-[10px] text-slate-600 font-black uppercase tracking-widest italic">Used of {metrics.totalMem} GB Host Total</div>
           <div className="mt-3 w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-800/50">
              <div className="h-full bg-slate-400 transition-all duration-700" style={{ width: `${(parseFloat(metrics.memoryUsage)/parseFloat(metrics.totalMem || "1"))*100}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* System Specifications */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Hardware Info */}
+        <div className="bg-slate-900/40 p-6 rounded-[1.5rem] border border-slate-800 backdrop-blur-sm">
+          <div className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-4">System Hardware</div>
+          <div className="space-y-4">
+            <div>
+              <div className="text-[10px] text-slate-500 font-bold uppercase">Motherboard</div>
+              <div className="text-white font-mono font-bold text-sm truncate" title={`${metrics.motherboard?.manufacturer || ''} ${metrics.motherboard?.model || ''}`}>
+                {metrics.motherboard?.manufacturer || 'Unknown'} {metrics.motherboard?.model || ''}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500 font-bold uppercase">GPU</div>
+              <div className="text-white font-mono font-bold text-sm truncate" title={metrics.gpu?.model || ''}>
+                {metrics.gpu?.model || 'Integrated / N/A'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* CPU Details */}
+        <div className="bg-slate-900/40 p-6 rounded-[1.5rem] border border-slate-800 backdrop-blur-sm">
+          <div className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-4">Processor Status</div>
+          <div className="space-y-4">
+             <div>
+              <div className="text-[10px] text-slate-500 font-bold uppercase">Model</div>
+              <div className="text-white font-mono font-bold text-sm truncate" title={`${metrics.cpuInfo?.manufacturer || ''} ${metrics.cpuInfo?.brand || ''}`}>
+                {metrics.cpuInfo?.manufacturer || ''} {metrics.cpuInfo?.brand || 'Unknown CPU'}
+              </div>
+            </div>
+            <div className="flex justify-between items-end">
+              <div>
+                 <div className="text-[10px] text-slate-500 font-bold uppercase">Speed</div>
+                 <div className="text-white font-mono font-bold text-sm">{metrics.cpuInfo?.speed || 'N/A'}</div>
+              </div>
+              <div className="text-right">
+                 <div className="text-[10px] text-slate-500 font-bold uppercase">Temp</div>
+                 <div className={`text-xl font-black tabular-nums ${parseFloat(metrics.cpuInfo?.temp?.toString() || metrics.temp || '0') > 70 ? 'text-rose-500' : 'text-emerald-400'}`}>
+                   {metrics.cpuInfo?.temp || metrics.temp || 'N/A'}°C
+                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+         {/* Storage */}
+        <div className="bg-slate-900/40 p-6 rounded-[1.5rem] border border-slate-800 backdrop-blur-sm">
+          <div className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-4">Storage Status</div>
+          <div className="space-y-3 max-h-[120px] overflow-y-auto custom-scrollbar">
+            {metrics.storage?.map((disk: any, i: number) => (
+              <div key={i} className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold uppercase">
+                  <span className="text-slate-400 truncate max-w-[100px]" title={disk.mount}>{disk.mount}</span>
+                  <span className="text-slate-300">{disk.used} / {disk.size}</span>
+                </div>
+                <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                   <div className={`h-full ${parseInt(disk.percent) > 80 ? 'bg-rose-500' : 'bg-blue-500'}`} style={{ width: disk.percent }} />
+                </div>
+              </div>
+            )) || <div className="text-slate-500 text-xs italic">No storage info available</div>}
           </div>
         </div>
       </div>
