@@ -769,17 +769,25 @@ const SystemSettings = ({ metrics, theme, setTheme }: { metrics: SystemMetrics, 
       <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800 backdrop-blur-md">
         <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6">Interface Theme</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {['dark', 'light', 'midnight', 'cyber'].map(t => (
-              <button 
-                key={t}
-                onClick={() => setTheme && setTheme(t)}
-                className={`p-4 rounded-xl border flex flex-col items-center gap-3 transition-all ${theme === t ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-black/20 border-slate-800 text-slate-500 hover:bg-slate-800 hover:text-white'}`}
-              >
-                <div className={`w-8 h-8 rounded-full border-2 ${t === 'light' ? 'bg-slate-50 border-slate-200' : t === 'midnight' ? 'bg-indigo-950 border-indigo-500' : t === 'cyber' ? 'bg-zinc-950 border-zinc-500' : 'bg-[#020617] border-slate-700'}`} />
-                <span className="text-xs font-black uppercase tracking-widest">{t}</span>
-              </button>
-            ))}
-        </div>
+              {['dark', 'light', 'midnight', 'cyber', 'red', 'blue', 'orange'].map(t => (
+                <button 
+                  key={t}
+                  onClick={() => setTheme && setTheme(t)}
+                  className={`p-4 rounded-xl border flex flex-col items-center gap-3 transition-all ${theme === t ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-black/20 border-slate-800 text-slate-500 hover:bg-slate-800 hover:text-white'}`}
+                >
+                  <div className={`w-8 h-8 rounded-full border-2 ${
+                    t === 'light' ? 'bg-slate-50 border-slate-200' : 
+                    t === 'midnight' ? 'bg-indigo-950 border-indigo-500' : 
+                    t === 'cyber' ? 'bg-zinc-950 border-zinc-500' : 
+                    t === 'red' ? 'bg-red-950 border-red-500' :
+                    t === 'blue' ? 'bg-blue-950 border-blue-500' :
+                    t === 'orange' ? 'bg-orange-950 border-orange-500' :
+                    'bg-[#020617] border-slate-700'
+                  }`} />
+                  <span className="text-xs font-black uppercase tracking-widest">{t}</span>
+                </button>
+              ))}
+          </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -1863,6 +1871,9 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout, theme }: 
       case 'light': return 'bg-slate-50 text-slate-900 theme-light';
       case 'midnight': return 'bg-indigo-950 text-indigo-100 theme-midnight';
       case 'cyber': return 'bg-zinc-950 text-zinc-300 theme-cyber';
+      case 'red': return 'bg-red-950 text-red-100 theme-red';
+      case 'blue': return 'bg-blue-950 text-blue-100 theme-blue';
+      case 'orange': return 'bg-orange-950 text-orange-100 theme-orange';
       default: return 'bg-[#020617] text-slate-200 theme-dark';
     }
   };
@@ -1915,6 +1926,60 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout, theme }: 
           .theme-light .bg-emerald-600.text-white { color: #ffffff !important; }
           .theme-light .bg-blue-500.text-white { color: #ffffff !important; }
           .theme-light .bg-emerald-500.text-white { color: #ffffff !important; }
+        `}</style>
+      )}
+      {theme === 'red' && (
+        <style>{`
+          .theme-red .bg-slate-900\\/40 { background-color: #450a0a !important; border-color: #7f1d1d !important; }
+          .theme-red .bg-\\[\\#0B0F1A\\] { background-color: #450a0a !important; border-color: #7f1d1d !important; }
+          .theme-red .bg-\\[\\#020617\\] { background-color: #450a0a !important; }
+          .theme-red .bg-slate-950 { background-color: #450a0a !important; border-color: #7f1d1d !important; }
+          .theme-red .bg-slate-800 { background-color: #7f1d1d !important; border-color: #991b1b !important; }
+          .theme-red .border-slate-800 { border-color: #7f1d1d !important; }
+          .theme-red .border-slate-800\\/50 { border-color: #7f1d1d !important; }
+          .theme-red .text-slate-500 { color: #fca5a5 !important; }
+          .theme-red .text-slate-400 { color: #fca5a5 !important; }
+          .theme-red .text-slate-300 { color: #fecaca !important; }
+          .theme-red .text-slate-200 { color: #fecaca !important; }
+          .theme-red .text-slate-600 { color: #f87171 !important; }
+          .theme-red .bg-black\\/20 { background-color: #7f1d1d !important; border-color: #991b1b !important; }
+          .theme-red .bg-black\\/40 { background-color: #450a0a !important; border-color: #7f1d1d !important; }
+        `}</style>
+      )}
+      {theme === 'blue' && (
+        <style>{`
+          .theme-blue .bg-slate-900\\/40 { background-color: #172554 !important; border-color: #1e3a8a !important; }
+          .theme-blue .bg-\\[\\#0B0F1A\\] { background-color: #172554 !important; border-color: #1e3a8a !important; }
+          .theme-blue .bg-\\[\\#020617\\] { background-color: #172554 !important; }
+          .theme-blue .bg-slate-950 { background-color: #172554 !important; border-color: #1e3a8a !important; }
+          .theme-blue .bg-slate-800 { background-color: #1e3a8a !important; border-color: #1e40af !important; }
+          .theme-blue .border-slate-800 { border-color: #1e3a8a !important; }
+          .theme-blue .border-slate-800\\/50 { border-color: #1e3a8a !important; }
+          .theme-blue .text-slate-500 { color: #93c5fd !important; }
+          .theme-blue .text-slate-400 { color: #93c5fd !important; }
+          .theme-blue .text-slate-300 { color: #bfdbfe !important; }
+          .theme-blue .text-slate-200 { color: #bfdbfe !important; }
+          .theme-blue .text-slate-600 { color: #60a5fa !important; }
+          .theme-blue .bg-black\\/20 { background-color: #1e3a8a !important; border-color: #1e40af !important; }
+          .theme-blue .bg-black\\/40 { background-color: #172554 !important; border-color: #1e3a8a !important; }
+        `}</style>
+      )}
+      {theme === 'orange' && (
+        <style>{`
+          .theme-orange .bg-slate-900\\/40 { background-color: #431407 !important; border-color: #7c2d12 !important; }
+          .theme-orange .bg-\\[\\#0B0F1A\\] { background-color: #431407 !important; border-color: #7c2d12 !important; }
+          .theme-orange .bg-\\[\\#020617\\] { background-color: #431407 !important; }
+          .theme-orange .bg-slate-950 { background-color: #431407 !important; border-color: #7c2d12 !important; }
+          .theme-orange .bg-slate-800 { background-color: #7c2d12 !important; border-color: #9a3412 !important; }
+          .theme-orange .border-slate-800 { border-color: #7c2d12 !important; }
+          .theme-orange .border-slate-800\\/50 { border-color: #7c2d12 !important; }
+          .theme-orange .text-slate-500 { color: #fdba74 !important; }
+          .theme-orange .text-slate-400 { color: #fdba74 !important; }
+          .theme-orange .text-slate-300 { color: #fed7aa !important; }
+          .theme-orange .text-slate-200 { color: #fed7aa !important; }
+          .theme-orange .text-slate-600 { color: #fb923c !important; }
+          .theme-orange .bg-black\\/20 { background-color: #7c2d12 !important; border-color: #9a3412 !important; }
+          .theme-orange .bg-black\\/40 { background-color: #431407 !important; border-color: #7c2d12 !important; }
         `}</style>
       )}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-[#0B0F1A] border-b border-slate-800 z-40 flex items-center px-4 justify-between">
