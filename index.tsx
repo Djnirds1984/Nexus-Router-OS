@@ -1718,13 +1718,35 @@ const DataplicityManager: React.FC = () => {
                )}
             </div>
 
-            <button 
-              onClick={fetchStatus} 
-              disabled={loading}
-              className="mt-4 px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-black uppercase tracking-widest transition-all"
-            >
-              {loading ? 'REFRESHING...' : 'REFRESH STATUS'}
-            </button>
+            <div className="flex gap-4 mt-4">
+              <button 
+                onClick={fetchStatus} 
+                disabled={loading}
+                className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-black uppercase tracking-widest transition-all"
+              >
+                {loading ? 'REFRESHING...' : 'REFRESH STATUS'}
+              </button>
+
+              {!status.running && (
+                <button
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      await fetch(`${API_BASE}/dataplicity/start`, { method: 'POST' });
+                      // Add delay to allow service to start
+                      setTimeout(fetchStatus, 3000);
+                    } catch(e) {
+                      console.error(e);
+                      setLoading(false);
+                    }
+                  }}
+                  disabled={loading}
+                  className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/20"
+                >
+                  START SERVICE
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="bg-[#0B0F1A] p-8 rounded-[2.5rem] border border-slate-800 flex flex-col items-center justify-center text-center space-y-4">

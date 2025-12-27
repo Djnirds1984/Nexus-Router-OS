@@ -1170,6 +1170,22 @@ app.post('/api/dataplicity/install', (req, res) => {
   }
 });
 
+app.post('/api/dataplicity/start', (req, res) => {
+  try {
+    if (process.platform === 'linux') {
+      execSync('sudo systemctl enable --now dataplicity');
+      // Wait a moment for it to start
+      setTimeout(() => {
+         res.json(getDataplicityStatus());
+      }, 2000);
+    } else {
+      res.json({ success: true, running: true }); // Mock
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/zerotier/status', (req, res) => { res.json(zeroTierStatus()); });
 app.post('/api/zerotier/install', (req, res) => {
   try {
