@@ -13,16 +13,7 @@ const API_BASE = `http://${window.location.hostname || 'localhost'}:3000/api`;
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [metrics, setMetrics] = useState<SystemMetrics>({ 
-    cpuUsage: 0, 
-    memoryUsage: '0', 
-    totalMem: '0', 
-    temp: '0',
-    uptime: '0s', 
-    activeSessions: 0,
-    dnsResolved: false,
-    ipForwarding: false
-  });
+  const [metrics, setMetrics] = useState<SystemMetrics>({ cpuUsage: 0, memoryUsage: 0, uptime: '0s', activeSessions: 0 });
   const [currentConfig, setCurrentConfig] = useState<NetworkConfig>({
     mode: RouterMode.LOAD_BALANCER,
     wanInterfaces: [],
@@ -46,14 +37,14 @@ const App: React.FC = () => {
         const ifaces: WanInterface[] = await ifRes.json();
         const metData = await metRes.json();
         
-        // Update metrics state with all data including hardware info
+        // Convert string mem stats to numbers for the metrics state
         setMetrics({
-          ...metData,
-          temp: metData.cpuInfo?.temp || metData.temp || '0',
-          // Ensure memory strings are passed through if not already
-          memoryUsage: metData.memoryUsage,
-          totalMem: metData.totalMem
-        });
+          cpuUsage: metData.cpuUsage,
+          memoryUsage: parseFloat(metData.memoryUsage),
+          totalMem: parseFloat(metData.totalMem), // Added to metrics to show RAM stats
+          uptime: metData.uptime,
+          activeSessions: metData.activeSessions
+        } as any);
 
         setCurrentConfig(prev => {
           // Keep current user-adjusted weights/priorities if they haven't been committed yet

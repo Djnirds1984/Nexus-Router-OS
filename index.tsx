@@ -536,7 +536,7 @@ const UpdateManager = ({ onApplyUpdate, isUpdating }: { onApplyUpdate: () => voi
             >
                {logs.map((log, i) => (
                  <div key={i} className="text-slate-500 hover:text-blue-400 transition-colors">
-                    <span className="opacity-30 mr-2">&gt;</span>{log}
+                    <span className="opacity-30 mr-2">></span>{log}
                  </div>
                ))}
                {isUpdating && <div className="text-blue-400 animate-pulse tracking-widest italic font-black uppercase">COMMITTING CHANGES...</div>}
@@ -2177,8 +2177,6 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
           </div>
         </div>
       </div>
-
-
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="bg-[#0B0F1A] p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl">
