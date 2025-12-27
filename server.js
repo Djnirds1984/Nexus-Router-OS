@@ -969,23 +969,73 @@ app.get('/api/init/status', (req, res) => { const initialized = fs.existsSync(st
 function zeroTierStatus() {
   let installed = false, running = false, node = '', networks = [], iface = '';
   const plat = process.platform;
+  
+  const parseNetworks = (output, isJson = false) => {
+    try {
+      if (isJson) {
+        const data = JSON.parse(output);
+        return (Array.isArray(data) ? data : (data.networks || [])).map(n => ({
+          id: n.id || n.nwid,
+          name: n.name,
+          mac: n.mac,
+          status: n.status,
+          type: n.type,
+          dev: n.dev || n.portDeviceName,
+          ips: n.assignedAddresses || n.ipAssignments || []
+        }));
+      }
+      // Text fallback
+      // 200 listnetworks <nwid> <name> <mac> <status> <type> <dev> <ZT IPs...>
+      return output.trim().split('\n').map(line => {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 7 && (parts[1] === 'listnetworks' || parts[0].length === 16)) {
+           // Handle both raw lines and "200 listnetworks ..."
+           const offset = parts[1] === 'listnetworks' ? 2 : 0;
+           return {
+             id: parts[offset],
+             name: parts[offset+1],
+             mac: parts[offset+2],
+             status: parts[offset+3],
+             type: parts[offset+4],
+             dev: parts[offset+5],
+             ips: parts.slice(offset+6)
+           };
+        }
+        return null;
+      }).filter(n => n && n.id && n.id.length === 16);
+    } catch (e) { return []; }
+  };
+
   if (plat === 'win32') {
     try { const svc = execSync('powershell -NoProfile -Command "(Get-Service -Name \"ZeroTier One\").Status"').toString().trim().toLowerCase(); installed = !!svc; running = svc === 'running'; } catch (e) {}
     try { node = execSync('cmd /c zerotier-cli.bat info').toString().trim(); installed = installed || !!node; } catch (e) {}
     try {
-      const out = execSync('cmd /c zerotier-cli.bat listnetworks').toString().trim().split('\n').slice(1);
-      networks = out.map(l => { const p = l.trim().split(/\s+/); return { id: p[0], name: p[1], status: p[p.length-1] }; });
+      // Try JSON first on Windows
+      try {
+        const out = execSync('cmd /c zerotier-cli.bat -j listnetworks').toString().trim();
+        networks = parseNetworks(out, true);
+      } catch {
+        const out = execSync('cmd /c zerotier-cli.bat listnetworks').toString().trim();
+        networks = parseNetworks(out, false);
+      }
     } catch (e) {}
     try { iface = execSync('powershell -NoProfile -Command "(Get-NetAdapter | Where-Object {$_.Name -like \"*ZeroTier*\"} | Select-Object -First 1 -ExpandProperty Name)"').toString().trim(); } catch (e) {}
     return { installed, running, node, networks, iface };
   }
+  
+  // Linux
   try { execSync('command -v zerotier-cli'); installed = true; } catch (e) {}
   if (installed) { try { running = execSync('systemctl is-active zerotier-one').toString().trim() === 'active'; } catch (e) {} }
   if (installed) {
     try { node = execSync('zerotier-cli info').toString().trim(); } catch (e) {}
     try {
-      const out = execSync('zerotier-cli listnetworks').toString().trim().split('\n').slice(1);
-      networks = out.filter(Boolean).map(l => { const p = l.trim().split(/\s+/); return { id: p[0], name: p[1], status: p[p.length-1] }; });
+      try {
+         const out = execSync('zerotier-cli -j listnetworks').toString().trim();
+         networks = parseNetworks(out, true);
+      } catch {
+         const out = execSync('zerotier-cli listnetworks').toString().trim();
+         networks = parseNetworks(out, false);
+      }
     } catch (e) {}
     try { iface = execSync("ip -br link | awk '/zt/{print $1; exit}'").toString().trim(); } catch (e) {}
   }

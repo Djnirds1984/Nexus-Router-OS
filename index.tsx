@@ -77,7 +77,15 @@ type ZTStatus = {
   installed: boolean;
   running: boolean;
   node: string;
-  networks: { id: string; name?: string; status?: string }[];
+  networks: { 
+    id: string; 
+    name?: string; 
+    status?: string;
+    mac?: string;
+    type?: string;
+    dev?: string;
+    ips?: string[];
+  }[];
   iface?: string;
 };
 
@@ -206,13 +214,49 @@ useEffect(() => { (async () => { try { const r = await fetch(`${API_BASE}/system
               <div className="text-slate-500 text-xs font-black uppercase tracking-widest">No networks joined</div>
             ) : (
               status?.networks.map(n => (
-                <div key={n.id} className="flex items-center justify-between p-3 bg-slate-900/40 border border-slate-800 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className={`${n.status?.toLowerCase().includes('ok') ? 'bg-emerald-500' : 'bg-amber-500'} w-2 h-2 rounded-full`} />
-                    <div className="text-xs font-mono text-blue-400">{n.id}</div>
-                    <div className="text-[10px] text-slate-500 font-black uppercase">{n.name || 'Network'}</div>
+                <div key={n.id} className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl space-y-3 hover:border-blue-500/30 transition-all">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2.5 h-2.5 rounded-full ${n.status?.toLowerCase().includes('ok') ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`} />
+                      <div className="text-sm font-mono text-blue-400 font-bold">{n.name || 'Unnamed Network'}</div>
+                      <div className="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400 font-mono">{n.id}</div>
+                    </div>
+                    <button onClick={() => handleLeave(n.id)} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-rose-600/10 text-rose-400 border border-rose-500/20 hover:bg-rose-600/20 transition-colors">
+                      Leave
+                    </button>
                   </div>
-                  <button onClick={() => handleLeave(n.id)} className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-rose-600/20 text-rose-400 border border-rose-500/20 hover:bg-rose-600/30">Leave</button>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2 border-t border-slate-800/50">
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">Status</div>
+                      <div className="text-xs text-slate-300 font-mono">{n.status}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">Type</div>
+                      <div className="text-xs text-slate-300 font-mono">{n.type}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">MAC</div>
+                      <div className="text-xs text-slate-300 font-mono">{n.mac || 'N/A'}</div>
+                    </div>
+                     <div>
+                      <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">Interface</div>
+                      <div className="text-xs text-slate-300 font-mono">{n.dev || 'N/A'}</div>
+                    </div>
+                  </div>
+
+                  {n.ips && n.ips.length > 0 && (
+                    <div className="pt-2 border-t border-slate-800/50">
+                       <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-2">Managed IPs</div>
+                       <div className="flex flex-wrap gap-2">
+                         {n.ips.map((ip, idx) => (
+                           <div key={idx} className="bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-1 rounded text-xs font-mono">
+                             {ip}
+                           </div>
+                         ))}
+                       </div>
+                    </div>
+                  )}
                 </div>
               ))
             )}
