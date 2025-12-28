@@ -360,17 +360,9 @@ setInterval(async () => {
   }
 
   try {
-    const links = JSON.parse(execSync('ip -j link show').toString());
-    const addrs = JSON.parse(execSync('ip -j addr show').toString());
+    const ipData = JSON.parse(execSync('ip -j addr show').toString());
     const routes = JSON.parse(execSync('ip -j route show').toString());
-
-    const addrMap = {};
-    addrs.forEach(a => {
-      const inet = (a.addr_info || []).find(i => i.family === 'inet');
-      addrMap[a.ifname] = inet ? inet.local : '';
-    });
-
-    const newInterfaces = await Promise.all(links.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth') && !iface.ifname.startsWith('br')).map(async (iface) => {
+    const newInterfaces = await Promise.all(ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth') && !iface.ifname.startsWith('br')).map(async (iface) => {
       const gw = routes.find(r => r.dev === iface.ifname && r.dst === 'default')?.gateway || 'Detecting...';
 
       let health = { ok: true, latency: 0 };
@@ -384,7 +376,7 @@ setInterval(async () => {
 
       const throughput = getThroughputMbps(iface.ifname);
       const customName = (systemState.config.interfaceCustomNames || {})[iface.ifname];
-      const ipv4Addr = addrMap[iface.ifname] || 'N/A';
+      const ipv4Addr = ((iface.addr_info || []).find(a => a.family === 'inet') || {}).local || 'N/A';
       return {
         id: iface.ifname,
         name: customName || iface.ifname.toUpperCase(),
