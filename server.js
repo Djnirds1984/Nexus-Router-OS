@@ -277,8 +277,34 @@ function runInitialization() { try { validateEnvironment(); ensurePkg('dnsmasq')
 
 try { if (!fs.existsSync(stampPath)) { runInitialization(); } } catch (e) { logInstall('init-check-failed'); }
 
+function ensureBasicConnectivity() {
+  if (process.platform !== 'linux') return;
+  try {
+    // 1. Accept Loopback
+    execSync('iptables -C INPUT -i lo -j ACCEPT || iptables -A INPUT -i lo -j ACCEPT');
+    execSync('iptables -C OUTPUT -o lo -j ACCEPT || iptables -A OUTPUT -o lo -j ACCEPT');
+
+    // 2. Accept Established/Related
+    execSync('iptables -C INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT');
+
+    // 3. Accept SSH (22) - Critical for Admin
+    execSync('iptables -C INPUT -p tcp --dport 22 -j ACCEPT || iptables -A INPUT -p tcp --dport 22 -j ACCEPT');
+    
+    // 4. Accept Web UI (80, 443, 3000)
+    execSync('iptables -C INPUT -p tcp --dport 80 -j ACCEPT || iptables -A INPUT -p tcp --dport 80 -j ACCEPT');
+    execSync('iptables -C INPUT -p tcp --dport 443 -j ACCEPT || iptables -A INPUT -p tcp --dport 443 -j ACCEPT');
+    execSync('iptables -C INPUT -p tcp --dport 3000 -j ACCEPT || iptables -A INPUT -p tcp --dport 3000 -j ACCEPT');
+    
+    // 5. Accept ICMP (Ping)
+    execSync('iptables -C INPUT -p icmp -j ACCEPT || iptables -A INPUT -p icmp -j ACCEPT');
+
+    log('Basic connectivity rules (SSH, Web, Loopback) ensured.');
+  } catch (e) { log(`ensureBasicConnectivity error: ${e.message}`); }
+}
+
 // Initial DHCP/NAT setup on boot
 try {
+  ensureBasicConnectivity();
   ensureWanDhcpClients();
   ensureMasqueradeAllWan();
   ensureDhcpServerApplied();
@@ -1458,6 +1484,7 @@ app.post('/api/apply', (req, res) => {
     fs.writeFileSync(configPath, JSON.stringify(systemState.config));
     fs.writeFileSync(backupPath, JSON.stringify(systemState.config));
     applyMultiWanKernel();
+    ensureBasicConnectivity();
     applyDhcp(systemState.config.dhcp);
     ensureWanDhcpClients();
     ensureMasqueradeAllWan();
