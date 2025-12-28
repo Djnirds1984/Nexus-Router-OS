@@ -280,12 +280,22 @@ try {
 async function checkInternetHealth(ifaceName) {
   return new Promise((resolve) => {
     if (process.platform !== 'linux') return resolve({ ok: true, latency: 15 });
-    const cmd = `ping -I ${ifaceName} -c 1 -W 1 8.8.8.8`;
+    // Smart Check: Try Google first (3s), then Cloudflare (3s) to avoid false positives
+    const cmd = `ping -I ${ifaceName} -c 1 -W 3 8.8.8.8`;
     const start = Date.now();
     exec(cmd, (error) => {
-      const latency = Date.now() - start;
-      if (error) resolve({ ok: false, latency: 0 });
-      else resolve({ ok: true, latency });
+      if (!error) {
+        return resolve({ ok: true, latency: Date.now() - start });
+      }
+      // Fallback to 1.1.1.1
+      const cmd2 = `ping -I ${ifaceName} -c 1 -W 3 1.1.1.1`;
+      const start2 = Date.now();
+      exec(cmd2, (error2) => {
+        if (!error2) {
+          return resolve({ ok: true, latency: Date.now() - start2 });
+        }
+        resolve({ ok: false, latency: 0 });
+      });
     });
   });
 }
@@ -327,7 +337,10 @@ function applyMultiWanKernel() {
   log(`>>> ORCHESTRATING KERNEL: ${systemState.config.mode}`);
   try {
     const healthyWans = systemState.interfaces.filter(i => i.internetHealth === 'HEALTHY');
-    if (healthyWans.length === 0) return;
+    if (healthyWans.length === 0) {
+      log('SMART LB: All WANs offline. Retaining last known routes to prevent total blackout.');
+      return;
+    }
 
     if (systemState.config.mode === 'LOAD_BALANCER') {
       let routeCmd = 'ip route replace default';
@@ -1375,4 +1388,5 @@ app.post('/api/factory-reset', (req, res) => {
 app.listen(3000, '0.0.0.0', () => {
   log('Nexus Agent active on :3000');
 });
+
 
