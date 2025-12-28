@@ -428,10 +428,24 @@ setInterval(async () => {
 
     const newInterfaces = await Promise.all(links.filter(l => l.ifname !== 'lo' && !l.ifname.startsWith('veth') && !l.ifname.startsWith('br')).map(async (link) => {
       const ifaceName = link.ifname;
+      
+      // 1. Try to find Gateway in Main Routing Table (Standard)
       let gw = routes.find(r => r.dev === ifaceName && r.dst === 'default')?.gateway;
+
+      // 2. Try to find Gateway in Main Routing Table (Multipath/LoadBalancer)
+      if (!gw) {
+        const defaultRoute = routes.find(r => r.dst === 'default');
+        if (defaultRoute && defaultRoute.nexthops) {
+          const hop = defaultRoute.nexthops.find(h => h.dev === ifaceName);
+          if (hop) gw = hop.gateway;
+        }
+      }
+
+      // 3. Try to find Gateway in Lease File (DHCP)
       if (!gw) gw = getGatewayFromLease(ifaceName);
       
-      // Fallback: Assume Gateway is X.X.X.1 if we have a valid /24 IP
+      // 4. Fallback: Assume Gateway is X.X.X.1 if we have a valid /24 IP
+      // Only do this if we really have no other clue, to avoid breaking connectivity with wrong GW.
       if (!gw && addrMap[ifaceName] && addrMap[ifaceName].split('.').length === 4) {
         const parts = addrMap[ifaceName].split('.');
         gw = `${parts[0]}.${parts[1]}.${parts[2]}.1`;
