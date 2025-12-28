@@ -360,9 +360,17 @@ setInterval(async () => {
   }
 
   try {
-    const ipData = JSON.parse(execSync('ip -j addr show').toString());
+    const links = JSON.parse(execSync('ip -j link show').toString());
+    const addrs = JSON.parse(execSync('ip -j addr show').toString());
     const routes = JSON.parse(execSync('ip -j route show').toString());
-    const newInterfaces = await Promise.all(ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth') && !iface.ifname.startsWith('br')).map(async (iface) => {
+
+    const addrMap = {};
+    addrs.forEach(a => {
+      const inet = (a.addr_info || []).find(i => i.family === 'inet');
+      addrMap[a.ifname] = inet ? inet.local : '';
+    });
+
+    const newInterfaces = await Promise.all(links.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth') && !iface.ifname.startsWith('br')).map(async (iface) => {
       const gw = routes.find(r => r.dev === iface.ifname && r.dst === 'default')?.gateway || 'Detecting...';
 
       let health = { ok: true, latency: 0 };
@@ -376,7 +384,7 @@ setInterval(async () => {
 
       const throughput = getThroughputMbps(iface.ifname);
       const customName = (systemState.config.interfaceCustomNames || {})[iface.ifname];
-      const ipv4Addr = ((iface.addr_info || []).find(a => a.family === 'inet') || {}).local || 'N/A';
+      const ipv4Addr = addrMap[iface.ifname] || 'N/A';
       return {
         id: iface.ifname,
         name: customName || iface.ifname.toUpperCase(),
@@ -445,7 +453,7 @@ setInterval(async () => {
   finally {
     pollingBusy = false;
   }
-}, 2000);
+}, 1000);
 
 const app = express();
 app.use(cors());
@@ -1352,6 +1360,14 @@ app.post('/api/factory-reset', (req, res) => {
     systemState.metrics = { cpuUsage: 0, cores: [], memoryUsage: '0', totalMem: '0', uptime: '', activeSessions: 0, dnsResolved: true };
     systemState.config = { mode: 'LOAD_BALANCER', wanInterfaces: [], bridges: [], interfaceCustomNames: {} };
     try { if (fs.existsSync(configPath)) fs.unlinkSync(configPath); } catch (e) {}
+    try { if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath); } catch (e) {}
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2));
+    fs.writeFileSync(backupPath, JSON.stringify(systemState.config, null, 2));
+    res.json({ ok: true, rebootRecommended: process.platform === 'linux' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.listen(3000, '0.0.0.0', () => log('Nexus Agent active on :3000'));
     try { if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath); } catch (e) {}
     fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2));
     fs.writeFileSync(backupPath, JSON.stringify(systemState.config, null, 2));
