@@ -1372,12 +1372,7 @@ app.post('/api/factory-reset', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.listen(3000, '0.0.0.0', () => log('Nexus Agent active on :3000'));
-    try { if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath); } catch (e) {}
-    fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2));
-    fs.writeFileSync(backupPath, JSON.stringify(systemState.config, null, 2));
-    res.json({ ok: true, rebootRecommended: process.platform === 'linux' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+app.listen(3000, '0.0.0.0', () => {
+  log('Nexus Agent active on :3000');
 });
 
-app.listen(3000, '0.0.0.0', () => log('Nexus Agent active on :3000'));
