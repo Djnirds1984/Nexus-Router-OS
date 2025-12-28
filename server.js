@@ -48,11 +48,25 @@ let lastUptimeStr = '';
 let lastUptimeAt = 0;
 let dhcpSessions = {}; // { [iface]: { startedAt: number, client: string, attempts: number } }
 
+function resolveRealInterface(name) {
+  if (!name) return '';
+  try { execSync(`ip link show ${name} 2>/dev/null`); return name; } catch (e) {}
+  const map = systemState.config.persistentInterfaceMap || {};
+  const mac = Object.keys(map).find(k => map[k] === name);
+  if (!mac) return name;
+  try {
+    const links = JSON.parse(execSync('ip -j link show').toString());
+    const found = links.find(l => (l.address || '').toLowerCase() === mac.toLowerCase());
+    return found ? found.ifname : name;
+  } catch (e) { return name; }
+}
+
 // Start DHCP clients on WAN ports that lack IPv4 and ensure NAT
 function ensureWanDhcpClients() {
   try {
     if (process.platform !== 'linux') return;
-    const lan = ((systemState.config || {}).dhcp || {}).interfaceName || '';
+    let lan = ((systemState.config || {}).dhcp || {}).interfaceName || '';
+    lan = resolveRealInterface(lan);
     const links = JSON.parse(execSync('ip -j link show').toString());
     const addrs = JSON.parse(execSync('ip -j addr show').toString());
     const addrMap = {};
@@ -134,7 +148,8 @@ function ensureWanDhcpClients() {
 function ensureMasqueradeAllWan() {
   try {
     if (process.platform !== 'linux') return;
-    const lan = ((systemState.config || {}).dhcp || {}).interfaceName || '';
+    let lan = ((systemState.config || {}).dhcp || {}).interfaceName || '';
+    lan = resolveRealInterface(lan);
     const routes = JSON.parse(execSync('ip -j route show default').toString());
     const wanIfaces = [];
     routes.forEach(r => { if (r.dev && !wanIfaces.includes(r.dev)) wanIfaces.push(r.dev); });
@@ -1390,7 +1405,9 @@ function applyDhcp(dhcp) {
   try {
     if (!dhcp || !dhcp.enabled || !dhcp.interfaceName) return;
     const ipv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
-    const iface = dhcp.interfaceName;
+    let iface = dhcp.interfaceName;
+    iface = resolveRealInterface(iface);
+    
     const start = dhcp.start || '';
     const end = dhcp.end || '';
     if (!ipv4.test(start) || !ipv4.test(end)) { log('DHCP VALIDATION: invalid start/end'); return; }
