@@ -383,16 +383,20 @@ function ensurePolicyRouting(iface, ip, gateway) {
   } catch (e) {}
 }
 
-async function checkInternetHealth(ifaceName, ip) {
+async function checkInternetHealth(ifaceName, ip, isLan = false) {
   return new Promise((resolve) => {
     if (process.platform !== 'linux') return resolve({ ok: true, latency: 15 });
     
     // Use the interface IP to bind, which triggers policy routing
     const srcFlag = ip && ip !== 'N/A' ? `-I ${ip}` : `-I ${ifaceName}`;
     
-    // Smart Check: Try Google first (Send 2 packets, wait max 1s each)
+    // For LAN, we just ping ourselves (the gateway) to prove the interface stack is UP
+    const target = isLan ? (ip || '127.0.0.1') : '8.8.8.8'; 
+    const target2 = isLan ? '127.0.0.1' : '1.1.1.1';
+
+    // Smart Check: Try Target first (Send 2 packets, wait max 1s each)
     // We only need 1 response to consider it UP.
-    const cmd = `ping ${srcFlag} -c 2 -W 1 8.8.8.8`; // Google DNS
+    const cmd = `ping ${srcFlag} -c 2 -W 1 ${target}`; // Google DNS or Local IP
     const start = Date.now();
     exec(cmd, { timeout: 2500 }, (error, stdout) => {
       // If at least one packet received, it's a success
@@ -407,8 +411,8 @@ async function checkInternetHealth(ifaceName, ip) {
         return resolve({ ok: true, latency: realLatency });
       }
       
-      // Fallback: Cloudflare DNS (Only if Google fails)
-      const cmd2 = `ping ${srcFlag} -c 2 -W 1 1.1.1.1`;
+      // Fallback: Cloudflare DNS (Only if Google fails) or Loopback for LAN
+      const cmd2 = `ping ${srcFlag} -c 2 -W 1 ${target2}`;
       const start2 = Date.now();
       exec(cmd2, { timeout: 2500 }, (error2, stdout2) => {
         if (!error2 || (stdout2 && !stdout2.includes('100% packet loss'))) {
@@ -548,9 +552,11 @@ setInterval(async () => {
 
       let health = { ok: true, latency: 0 };
       const hc = healthCache[ifaceName];
+      const isLan = systemState.config.dhcp && systemState.config.dhcp.interfaceName === ifaceName;
+
       // Reduce cache to 2s for "Live" feeling
       if (!hc || (Date.now() - hc.ts) > 2000) {
-        health = await checkInternetHealth(ifaceName, ipAddr);
+        health = await checkInternetHealth(ifaceName, ipAddr, isLan);
         healthCache[ifaceName] = { data: health, ts: Date.now() };
       } else {
         health = hc.data;
@@ -1135,14 +1141,15 @@ function ensureDhcpServerApplied() {
   try {
     if (process.platform !== 'linux') return;
     const now = Date.now();
-    if (now - lastDhcpServerCheck < 30000) return; // Check every 30s
+    // Check more frequently (every 10s) to catch startup race conditions
+    if (now - lastDhcpServerCheck < 10000) return; 
     lastDhcpServerCheck = now;
 
     const desired = (systemState.config && systemState.config.dhcp) || {};
     const status = getDhcpStatus();
+    
+    // Case 1: Enabled in Config, but not Running OR Config Mismatch
     if (desired && desired.enabled && desired.interfaceName) {
-      // Force apply if not running or config mismatch
-      // Check if the config file actually exists and matches
       let configMatch = false;
       try {
         if (fs.existsSync('/etc/dnsmasq.d/nexus-dhcp.conf')) {
@@ -1154,19 +1161,21 @@ function ensureDhcpServerApplied() {
         }
       } catch(e) {}
 
-      const mismatch = (!status.running) || !configMatch;
-      
-      if (mismatch) {
-         log('DHCP: Configuration mismatch or not running. Re-applying...');
+      // If service is inactive, OR config file is missing/wrong, Apply it.
+      if (!status.running || !configMatch) {
+         log(`DHCP: State mismatch (Running: ${status.running}, Match: ${configMatch}). Enforcing config...`);
          applyDhcp(desired);
       }
-    } else {
+    } 
+    // Case 2: Disabled in Config, but Running
+    else {
       if (status.running) {
+        log('DHCP: Disabled in config but running. Stopping...');
         try { execSync('systemctl stop dnsmasq'); } catch (e) {}
         try { fs.unlinkSync('/etc/dnsmasq.d/nexus-dhcp.conf'); } catch (e) {}
       }
     }
-  } catch (e) {}
+  } catch (e) { log(`ensureDhcpServerApplied error: ${e.message}`); }
 }
 
 app.get('/api/dhcp/status', (req, res) => { res.json(getDhcpStatus()); });
