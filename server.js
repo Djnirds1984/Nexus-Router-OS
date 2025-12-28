@@ -280,23 +280,23 @@ try { if (!fs.existsSync(stampPath)) { runInitialization(); } } catch (e) { logI
 function ensureBasicConnectivity() {
   if (process.platform !== 'linux') return;
   try {
-    // 1. Accept Loopback
-    execSync('iptables -C INPUT -i lo -j ACCEPT || iptables -A INPUT -i lo -j ACCEPT');
-    execSync('iptables -C OUTPUT -o lo -j ACCEPT || iptables -A OUTPUT -o lo -j ACCEPT');
+    // 1. Accept Loopback (Insert at top)
+    execSync('iptables -C INPUT -i lo -j ACCEPT || iptables -I INPUT 1 -i lo -j ACCEPT');
+    execSync('iptables -C OUTPUT -o lo -j ACCEPT || iptables -I OUTPUT 1 -o lo -j ACCEPT');
 
-    // 2. Accept Established/Related
-    execSync('iptables -C INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT');
+    // 2. Accept Established/Related (Insert at top)
+    execSync('iptables -C INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -I INPUT 1 -m state --state RELATED,ESTABLISHED -j ACCEPT');
 
     // 3. Accept SSH (22) - Critical for Admin
-    execSync('iptables -C INPUT -p tcp --dport 22 -j ACCEPT || iptables -A INPUT -p tcp --dport 22 -j ACCEPT');
+    execSync('iptables -C INPUT -p tcp --dport 22 -j ACCEPT || iptables -I INPUT 1 -p tcp --dport 22 -j ACCEPT');
     
     // 4. Accept Web UI (80, 443, 3000)
-    execSync('iptables -C INPUT -p tcp --dport 80 -j ACCEPT || iptables -A INPUT -p tcp --dport 80 -j ACCEPT');
-    execSync('iptables -C INPUT -p tcp --dport 443 -j ACCEPT || iptables -A INPUT -p tcp --dport 443 -j ACCEPT');
-    execSync('iptables -C INPUT -p tcp --dport 3000 -j ACCEPT || iptables -A INPUT -p tcp --dport 3000 -j ACCEPT');
+    execSync('iptables -C INPUT -p tcp --dport 80 -j ACCEPT || iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT');
+    execSync('iptables -C INPUT -p tcp --dport 443 -j ACCEPT || iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT');
+    execSync('iptables -C INPUT -p tcp --dport 3000 -j ACCEPT || iptables -I INPUT 1 -p tcp --dport 3000 -j ACCEPT');
     
     // 5. Accept ICMP (Ping)
-    execSync('iptables -C INPUT -p icmp -j ACCEPT || iptables -A INPUT -p icmp -j ACCEPT');
+    execSync('iptables -C INPUT -p icmp -j ACCEPT || iptables -I INPUT 1 -p icmp -j ACCEPT');
 
     log('Basic connectivity rules (SSH, Web, Loopback) ensured.');
   } catch (e) { log(`ensureBasicConnectivity error: ${e.message}`); }
@@ -331,19 +331,24 @@ function ensurePolicyRouting(iface, ip, gateway) {
   try {
     // Generate a unique table ID (100-200 range based on char code sum)
     const id = (iface.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 100) + 100;
+    const pref = id + 1000; // Priority 1100-1200
     
     // Ensure rule exists
     try {
       const rules = execSync(`ip rule show`).toString();
       if (!rules.includes(`from ${ip} lookup ${id}`)) {
-        execSync(`ip rule add from ${ip} table ${id}`);
+        // Clean up any old rules for this IP to prevent duplicates
+        try { execSync(`ip rule del from ${ip} table ${id}`); } catch(e) {}
+        execSync(`ip rule add from ${ip} table ${id} pref ${pref}`);
       }
     } catch (e) {}
 
     // Ensure route exists in that table
     try {
+      // Precise check to avoid constant flapping
       const routes = execSync(`ip route show table ${id} 2>/dev/null`).toString();
-      if (!routes.includes('default') || !routes.includes(gateway)) {
+      const expected = `default via ${gateway} dev ${iface}`;
+      if (!routes.includes(expected)) {
         execSync(`ip route replace default via ${gateway} dev ${iface} table ${id}`);
       }
     } catch (e) {
@@ -360,18 +365,20 @@ async function checkInternetHealth(ifaceName, ip) {
     // Use the interface IP to bind, which triggers policy routing
     const srcFlag = ip && ip !== 'N/A' ? `-I ${ip}` : `-I ${ifaceName}`;
     
-    // Smart Check: Try Google first (3s)
-    const cmd = `ping ${srcFlag} -c 1 -W 3 8.8.8.8`;
+    // Smart Check: Try Google first (Send 2 packets, wait max 2s each)
+    // We only need 1 response to consider it UP.
+    const cmd = `ping ${srcFlag} -c 2 -W 2 8.8.8.8`;
     const start = Date.now();
-    exec(cmd, (error) => {
-      if (!error) {
+    exec(cmd, (error, stdout) => {
+      // If at least one packet received, it's a success
+      if (!error || (stdout && !stdout.includes('100% packet loss'))) {
         return resolve({ ok: true, latency: Date.now() - start });
       }
-      // Fallback: Cloudflare DNS (3s)
-      const cmd2 = `ping ${srcFlag} -c 1 -W 3 1.1.1.1`;
+      // Fallback: Cloudflare DNS
+      const cmd2 = `ping ${srcFlag} -c 2 -W 2 1.1.1.1`;
       const start2 = Date.now();
-      exec(cmd2, (error2) => {
-        if (!error2) {
+      exec(cmd2, (error2, stdout2) => {
+        if (!error2 || (stdout2 && !stdout2.includes('100% packet loss'))) {
           return resolve({ ok: true, latency: Date.now() - start2 });
         }
         resolve({ ok: false, latency: 0 });
@@ -1445,6 +1452,17 @@ function applyDhcp(dhcp) {
     execSync(`ip link set ${iface} up`);
     execSync(`ip addr flush dev ${iface}`);
     execSync(`ip addr add ${gw}/24 dev ${iface}`);
+    
+    // Ensure Local LAN traffic always uses Main table (Priority 500)
+    // This fixes accessing WAN IP from LAN (Policy Routing would otherwise force reply out WAN)
+    const subnet = `${baseS}.0/24`;
+    try {
+       const rules = execSync('ip rule show').toString();
+       if (!rules.includes(`to ${subnet} lookup main`)) {
+         execSync(`ip rule add to ${subnet} lookup main pref 500`);
+       }
+    } catch(e) {}
+
     const dnsOpt = (dhcp.dnsServers && (Array.isArray(dhcp.dnsServers) ? dhcp.dnsServers.join(',') : dhcp.dnsServers)) || '8.8.8.8,1.1.1.1';
     const conf = [
       `interface=${iface}`,
