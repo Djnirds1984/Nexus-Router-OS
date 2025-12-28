@@ -277,18 +277,54 @@ try {
 /**
  * SMART WAN MONITOR
  */
-async function checkInternetHealth(ifaceName) {
+function getGatewayFromLease(iface) {
+  try {
+    const content = fs.readFileSync(`/var/lib/nexus/dhclient-${iface}.lease`, 'utf8');
+    const match = content.match(/option routers ([0-9.]+);/);
+    return match ? match[1] : null;
+  } catch (e) { return null; }
+}
+
+function ensurePolicyRouting(iface, ip, gateway) {
+  if (process.platform !== 'linux' || !ip || !gateway || gateway === 'Detecting...') return;
+  try {
+    // Generate a unique table ID (100-200 range based on char code sum)
+    const id = (iface.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 100) + 100;
+    
+    // Ensure rule exists
+    try {
+      const rules = execSync(`ip rule show`).toString();
+      if (!rules.includes(`from ${ip} lookup ${id}`)) {
+        execSync(`ip rule add from ${ip} table ${id}`);
+      }
+    } catch (e) {}
+
+    // Ensure route exists in that table
+    try {
+      const routes = execSync(`ip route show table ${id}`).toString();
+      if (!routes.includes('default')) {
+        execSync(`ip route add default via ${gateway} dev ${iface} table ${id}`);
+      }
+    } catch (e) {}
+  } catch (e) {}
+}
+
+async function checkInternetHealth(ifaceName, ip) {
   return new Promise((resolve) => {
     if (process.platform !== 'linux') return resolve({ ok: true, latency: 15 });
-    // Smart Check: Try Google first (3s), then Cloudflare (3s) to avoid false positives
-    const cmd = `ping -I ${ifaceName} -c 1 -W 3 8.8.8.8`;
+    
+    // Use the interface IP to bind, which triggers policy routing
+    const srcFlag = ip && ip !== 'N/A' ? `-I ${ip}` : `-I ${ifaceName}`;
+    
+    // Smart Check: Try Google first (3s)
+    const cmd = `ping ${srcFlag} -c 1 -W 3 8.8.8.8`;
     const start = Date.now();
     exec(cmd, (error) => {
       if (!error) {
         return resolve({ ok: true, latency: Date.now() - start });
       }
-      // Fallback to 1.1.1.1
-      const cmd2 = `ping -I ${ifaceName} -c 1 -W 3 1.1.1.1`;
+      // Fallback: Cloudflare DNS (3s)
+      const cmd2 = `ping ${srcFlag} -c 1 -W 3 1.1.1.1`;
       const start2 = Date.now();
       exec(cmd2, (error2) => {
         if (!error2) {
@@ -389,12 +425,19 @@ setInterval(async () => {
 
     const newInterfaces = await Promise.all(links.filter(l => l.ifname !== 'lo' && !l.ifname.startsWith('veth') && !l.ifname.startsWith('br')).map(async (link) => {
       const ifaceName = link.ifname;
-      const gw = routes.find(r => r.dev === ifaceName && r.dst === 'default')?.gateway || 'Detecting...';
+      let gw = routes.find(r => r.dev === ifaceName && r.dst === 'default')?.gateway;
+      if (!gw) gw = getGatewayFromLease(ifaceName); // Fallback to lease file
+      gw = gw || 'Detecting...';
+
+      const ipAddr = addrMap[ifaceName] || 'N/A';
+      if (ipAddr !== 'N/A' && gw !== 'Detecting...') {
+        ensurePolicyRouting(ifaceName, ipAddr, gw);
+      }
 
       let health = { ok: true, latency: 0 };
       const hc = healthCache[ifaceName];
       if (!hc || (Date.now() - hc.ts) > 10000) {
-        health = await checkInternetHealth(ifaceName);
+        health = await checkInternetHealth(ifaceName, ipAddr);
         healthCache[ifaceName] = { data: health, ts: Date.now() };
       } else {
         health = hc.data;
