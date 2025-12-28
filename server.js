@@ -263,10 +263,14 @@ function runInitialization() { try { validateEnvironment(); ensurePkg('dnsmasq')
 try { if (!fs.existsSync(stampPath)) { runInitialization(); } } catch (e) { logInstall('init-check-failed'); }
 
 // Initial DHCP/NAT setup on boot
-ensureWanDhcpClients();
-ensureMasqueradeAllWan();
-ensureDhcpServerApplied();
-applyFirewallRules();
+try {
+  ensureWanDhcpClients();
+  ensureMasqueradeAllWan();
+  ensureDhcpServerApplied();
+  applyFirewallRules();
+} catch (e) {
+  log(`Startup Error: ${e.message}`);
+}
 
 
 
@@ -360,30 +364,39 @@ setInterval(async () => {
   }
 
   try {
-    const ipData = JSON.parse(execSync('ip -j addr show').toString());
+    const links = JSON.parse(execSync('ip -j link show').toString());
+    const addrs = JSON.parse(execSync('ip -j addr show').toString());
     const routes = JSON.parse(execSync('ip -j route show').toString());
-    const newInterfaces = await Promise.all(ipData.filter(iface => iface.ifname !== 'lo' && !iface.ifname.startsWith('veth') && !iface.ifname.startsWith('br')).map(async (iface) => {
-      const gw = routes.find(r => r.dev === iface.ifname && r.dst === 'default')?.gateway || 'Detecting...';
+
+    const addrMap = {};
+    addrs.forEach(a => {
+      const inet = (a.addr_info || []).find(i => i.family === 'inet');
+      addrMap[a.ifname] = inet ? inet.local : 'N/A';
+    });
+
+    const newInterfaces = await Promise.all(links.filter(l => l.ifname !== 'lo' && !l.ifname.startsWith('veth') && !l.ifname.startsWith('br')).map(async (link) => {
+      const ifaceName = link.ifname;
+      const gw = routes.find(r => r.dev === ifaceName && r.dst === 'default')?.gateway || 'Detecting...';
 
       let health = { ok: true, latency: 0 };
-      const hc = healthCache[iface.ifname];
+      const hc = healthCache[ifaceName];
       if (!hc || (Date.now() - hc.ts) > 10000) {
-        health = await checkInternetHealth(iface.ifname);
-        healthCache[iface.ifname] = { data: health, ts: Date.now() };
+        health = await checkInternetHealth(ifaceName);
+        healthCache[ifaceName] = { data: health, ts: Date.now() };
       } else {
         health = hc.data;
       }
 
-      const throughput = getThroughputMbps(iface.ifname);
-      const customName = (systemState.config.interfaceCustomNames || {})[iface.ifname];
-      const ipv4Addr = ((iface.addr_info || []).find(a => a.family === 'inet') || {}).local || 'N/A';
+      const throughput = getThroughputMbps(ifaceName);
+      const customName = (systemState.config.interfaceCustomNames || {})[ifaceName];
+      
       return {
-        id: iface.ifname,
-        name: customName || iface.ifname.toUpperCase(),
-        interfaceName: iface.ifname,
+        id: ifaceName,
+        name: customName || ifaceName.toUpperCase(),
+        interfaceName: ifaceName,
         customName: customName || undefined,
-        status: iface.operstate === 'UP' ? 'UP' : 'DOWN',
-        ipAddress: ipv4Addr,
+        status: link.operstate === 'UP' ? 'UP' : 'DOWN',
+        ipAddress: addrMap[ifaceName] || 'N/A',
         gateway: gw,
         internetHealth: health.ok ? 'HEALTHY' : 'OFFLINE',
         latency: health.latency,
