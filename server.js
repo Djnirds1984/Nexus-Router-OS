@@ -426,7 +426,14 @@ setInterval(async () => {
     const newInterfaces = await Promise.all(links.filter(l => l.ifname !== 'lo' && !l.ifname.startsWith('veth') && !l.ifname.startsWith('br')).map(async (link) => {
       const ifaceName = link.ifname;
       let gw = routes.find(r => r.dev === ifaceName && r.dst === 'default')?.gateway;
-      if (!gw) gw = getGatewayFromLease(ifaceName); // Fallback to lease file
+      if (!gw) gw = getGatewayFromLease(ifaceName);
+      
+      // Fallback: Assume Gateway is X.X.X.1 if we have a valid /24 IP
+      if (!gw && addrMap[ifaceName] && addrMap[ifaceName].split('.').length === 4) {
+        const parts = addrMap[ifaceName].split('.');
+        gw = `${parts[0]}.${parts[1]}.${parts[2]}.1`;
+      }
+      
       gw = gw || 'Detecting...';
 
       const ipAddr = addrMap[ifaceName] || 'N/A';
@@ -436,7 +443,8 @@ setInterval(async () => {
 
       let health = { ok: true, latency: 0 };
       const hc = healthCache[ifaceName];
-      if (!hc || (Date.now() - hc.ts) > 10000) {
+      // Reduce cache to 2s for "Live" feeling
+      if (!hc || (Date.now() - hc.ts) > 2000) {
         health = await checkInternetHealth(ifaceName, ipAddr);
         healthCache[ifaceName] = { data: health, ts: Date.now() };
       } else {
