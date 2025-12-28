@@ -392,19 +392,33 @@ async function checkInternetHealth(ifaceName, ip) {
     
     // Smart Check: Try Google first (Send 2 packets, wait max 1s each)
     // We only need 1 response to consider it UP.
-    const cmd = `ping ${srcFlag} -c 2 -W 1 8.8.8.8`;
+    const cmd = `ping ${srcFlag} -c 2 -W 1 8.8.8.8`; // Google DNS
     const start = Date.now();
     exec(cmd, { timeout: 2500 }, (error, stdout) => {
       // If at least one packet received, it's a success
       if (!error || (stdout && !stdout.includes('100% packet loss'))) {
-        return resolve({ ok: true, latency: Date.now() - start });
+        // Extract real latency from ping output to avoid Node.js overhead
+        const matches = (stdout || '').match(/time=([\d.]+)/g);
+        let realLatency = Date.now() - start;
+        if (matches && matches.length > 0) {
+           const sum = matches.map(m => parseFloat(m.split('=')[1])).reduce((a,b) => a+b, 0);
+           realLatency = Math.round(sum / matches.length);
+        }
+        return resolve({ ok: true, latency: realLatency });
       }
-      // Fallback: Cloudflare DNS
+      
+      // Fallback: Cloudflare DNS (Only if Google fails)
       const cmd2 = `ping ${srcFlag} -c 2 -W 1 1.1.1.1`;
       const start2 = Date.now();
       exec(cmd2, { timeout: 2500 }, (error2, stdout2) => {
         if (!error2 || (stdout2 && !stdout2.includes('100% packet loss'))) {
-          return resolve({ ok: true, latency: Date.now() - start2 });
+           const matches = (stdout2 || '').match(/time=([\d.]+)/g);
+           let realLatency = Date.now() - start2;
+           if (matches && matches.length > 0) {
+              const sum = matches.map(m => parseFloat(m.split('=')[1])).reduce((a,b) => a+b, 0);
+              realLatency = Math.round(sum / matches.length);
+           }
+           return resolve({ ok: true, latency: realLatency });
         }
         resolve({ ok: false, latency: 0 });
       });
