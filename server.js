@@ -1426,6 +1426,10 @@ function applyDhcp(dhcp) {
       execSync(`iptables -t nat -C POSTROUTING -o ${wan} -j MASQUERADE || iptables -t nat -A POSTROUTING -o ${wan} -j MASQUERADE`);
       execSync(`iptables -C FORWARD -i ${iface} -o ${wan} -j ACCEPT || iptables -A FORWARD -i ${iface} -o ${wan} -j ACCEPT`);
       execSync(`iptables -C FORWARD -i ${wan} -o ${iface} -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A FORWARD -i ${wan} -o ${iface} -m state --state RELATED,ESTABLISHED -j ACCEPT`);
+      
+      // Allow INPUT on WAN for local access if not blocked by specific firewall rules
+      // This enables accessing the router GUI via WAN IP
+      try { execSync(`iptables -C INPUT -i ${wan} -j ACCEPT || iptables -A INPUT -i ${wan} -j ACCEPT`); } catch(e) {}
     }
     execSync('systemctl restart dnsmasq');
   } catch (e) { log(`DHCP APPLY ERROR: ${e.message}`); }
