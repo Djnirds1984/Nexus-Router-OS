@@ -89,7 +89,7 @@ function ensureWanDhcpClients() {
             execSync(`ip link set ${iface} up`);
             if (hasMac && hasCarrier) {
               const sess = dhcpSessions[iface] || { startedAt: 0, client: '', attempts: 0 };
-              if (running && (!sess.startedAt || (Date.now() - sess.startedAt) > 15000)) {
+              if (running && (!sess.startedAt || (Date.now() - sess.startedAt) > 60000)) {
                 try { execSync(`bash -lc 'dhclient -r ${iface} || true'`); } catch (e) {}
                 try { execSync(`bash -lc 'pkill -f "dhclient.*${iface}" || true'`); } catch (e) {}
                 try { execSync(`bash -lc 'pkill -f "udhcpc.*${iface}" || true'`); } catch (e) {}
@@ -375,11 +375,12 @@ function applyMultiWanKernel() {
   if (process.platform !== 'linux') return;
   log(`>>> ORCHESTRATING KERNEL: ${systemState.config.mode}`);
   try {
-    const healthyWans = systemState.interfaces.filter(i => i.internetHealth === 'HEALTHY');
+    let healthyWans = systemState.interfaces.filter(i => i.internetHealth === 'HEALTHY');
     if (healthyWans.length === 0) {
-      log('SMART LB: All WANs offline. Retaining last known routes to prevent total blackout.');
-      return;
+      log('SMART LB: All WANs offline. Failing back to all available WANs to ensure connectivity.');
+      healthyWans = systemState.interfaces.filter(i => i.status === 'UP' && i.gateway && i.gateway !== 'Detecting...');
     }
+    if (healthyWans.length === 0) return;
 
     if (systemState.config.mode === 'LOAD_BALANCER') {
       let routeCmd = 'ip route replace default';
