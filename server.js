@@ -280,6 +280,11 @@ try { if (!fs.existsSync(stampPath)) { runInitialization(); } } catch (e) { logI
 function ensureBasicConnectivity() {
   if (process.platform !== 'linux') return;
   try {
+    // 0. Ensure Default Policies
+    try { execSync('iptables -P INPUT ACCEPT'); } catch(e) {} // Temp allow to prevent lockout
+    try { execSync('iptables -P OUTPUT ACCEPT'); } catch(e) {}
+    try { execSync('iptables -P FORWARD ACCEPT'); } catch(e) {}
+
     // 1. Accept Loopback (Insert at top)
     execSync('iptables -C INPUT -i lo -j ACCEPT || iptables -I INPUT 1 -i lo -j ACCEPT');
     execSync('iptables -C OUTPUT -o lo -j ACCEPT || iptables -I OUTPUT 1 -o lo -j ACCEPT');
@@ -326,8 +331,17 @@ function getGatewayFromLease(iface) {
   } catch (e) { return null; }
 }
 
+let lastRouteCheck = {}; // { [iface]: timestamp }
+
 function ensurePolicyRouting(iface, ip, gateway) {
   if (process.platform !== 'linux' || !ip || !gateway || gateway === 'Detecting...') return;
+  
+  // Debounce: Only check routes every 10 seconds to prevent blocking event loop with execSync
+  // unless we suspect a change (checking every 10s is sufficient for stability)
+  const now = Date.now();
+  if (lastRouteCheck[iface] && (now - lastRouteCheck[iface]) < 10000) return;
+  lastRouteCheck[iface] = now;
+
   try {
     // Generate a unique table ID (100-200 range based on char code sum)
     const id = (iface.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 100) + 100;
@@ -365,9 +379,9 @@ async function checkInternetHealth(ifaceName, ip) {
     // Use the interface IP to bind, which triggers policy routing
     const srcFlag = ip && ip !== 'N/A' ? `-I ${ip}` : `-I ${ifaceName}`;
     
-    // Smart Check: Try Google first (Send 2 packets, wait max 2s each)
+    // Smart Check: Try Google first (Send 2 packets, wait max 1s each)
     // We only need 1 response to consider it UP.
-    const cmd = `ping ${srcFlag} -c 2 -W 2 8.8.8.8`;
+    const cmd = `ping ${srcFlag} -c 2 -W 1 8.8.8.8`;
     const start = Date.now();
     exec(cmd, (error, stdout) => {
       // If at least one packet received, it's a success
@@ -375,7 +389,7 @@ async function checkInternetHealth(ifaceName, ip) {
         return resolve({ ok: true, latency: Date.now() - start });
       }
       // Fallback: Cloudflare DNS
-      const cmd2 = `ping ${srcFlag} -c 2 -W 2 1.1.1.1`;
+      const cmd2 = `ping ${srcFlag} -c 2 -W 1 1.1.1.1`;
       const start2 = Date.now();
       exec(cmd2, (error2, stdout2) => {
         if (!error2 || (stdout2 && !stdout2.includes('100% packet loss'))) {
