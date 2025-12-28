@@ -301,11 +301,14 @@ function ensurePolicyRouting(iface, ip, gateway) {
 
     // Ensure route exists in that table
     try {
-      const routes = execSync(`ip route show table ${id}`).toString();
-      if (!routes.includes('default')) {
-        execSync(`ip route add default via ${gateway} dev ${iface} table ${id}`);
+      const routes = execSync(`ip route show table ${id} 2>/dev/null`).toString();
+      if (!routes.includes('default') || !routes.includes(gateway)) {
+        execSync(`ip route replace default via ${gateway} dev ${iface} table ${id}`);
       }
-    } catch (e) {}
+    } catch (e) {
+      // If table check fails (e.g. FIB table does not exist), force create/replace the route
+      try { execSync(`ip route replace default via ${gateway} dev ${iface} table ${id}`); } catch (e2) {}
+    }
   } catch (e) {}
 }
 
