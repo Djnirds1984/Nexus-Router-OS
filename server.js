@@ -1050,12 +1050,25 @@ function ensureDhcpServerApplied() {
     const desired = (systemState.config && systemState.config.dhcp) || {};
     const status = getDhcpStatus();
     if (desired && desired.enabled && desired.interfaceName) {
-      const mismatch = (!status.running) ||
-        (status.interfaceName !== desired.interfaceName) ||
-        (status.start !== (desired.start || '')) ||
-        (status.end !== (desired.end || '')) ||
-        (status.leaseTime !== (desired.leaseTime || ''));
-      if (mismatch) applyDhcp(desired);
+      // Force apply if not running or config mismatch
+      // Check if the config file actually exists and matches
+      let configMatch = false;
+      try {
+        if (fs.existsSync('/etc/dnsmasq.d/nexus-dhcp.conf')) {
+           const currentConf = fs.readFileSync('/etc/dnsmasq.d/nexus-dhcp.conf', 'utf8');
+           if (currentConf.includes(`interface=${desired.interfaceName}`) && 
+               currentConf.includes(`dhcp-range=${desired.start},${desired.end}`)) {
+               configMatch = true;
+           }
+        }
+      } catch(e) {}
+
+      const mismatch = (!status.running) || !configMatch;
+      
+      if (mismatch) {
+         log('DHCP: Configuration mismatch or not running. Re-applying...');
+         applyDhcp(desired);
+      }
     } else {
       if (status.running) {
         try { execSync('systemctl stop dnsmasq'); } catch (e) {}
