@@ -47,6 +47,9 @@ let healthCache = {};
 let lastUptimeStr = '';
 let lastUptimeAt = 0;
 let dhcpSessions = {}; // { [iface]: { startedAt: number, client: string, attempts: number } }
+let lastDhcpClientCheck = 0;
+let lastMasqCheck = 0;
+let lastDhcpServerCheck = 0;
 
 function resolveRealInterface(name) {
   if (!name) return '';
@@ -65,6 +68,10 @@ function resolveRealInterface(name) {
 function ensureWanDhcpClients() {
   try {
     if (process.platform !== 'linux') return;
+    const now = Date.now();
+    if (now - lastDhcpClientCheck < 5000) return; // Check every 5s
+    lastDhcpClientCheck = now;
+
     let lan = ((systemState.config || {}).dhcp || {}).interfaceName || '';
     lan = resolveRealInterface(lan);
     const links = JSON.parse(execSync('ip -j link show').toString());
@@ -148,6 +155,10 @@ function ensureWanDhcpClients() {
 function ensureMasqueradeAllWan() {
   try {
     if (process.platform !== 'linux') return;
+    const now = Date.now();
+    if (now - lastMasqCheck < 10000) return; // Check every 10s
+    lastMasqCheck = now;
+
     let lan = ((systemState.config || {}).dhcp || {}).interfaceName || '';
     lan = resolveRealInterface(lan);
     const routes = JSON.parse(execSync('ip -j route show default').toString());
@@ -309,11 +320,11 @@ function ensureBasicConnectivity() {
 
 // Initial DHCP/NAT setup on boot
 try {
-  ensureBasicConnectivity();
   ensureWanDhcpClients();
   ensureMasqueradeAllWan();
   ensureDhcpServerApplied();
   applyFirewallRules();
+  ensureBasicConnectivity(); // Run last to ensure Admin Access is top priority
 } catch (e) {
   log(`Startup Error: ${e.message}`);
 }
@@ -383,7 +394,7 @@ async function checkInternetHealth(ifaceName, ip) {
     // We only need 1 response to consider it UP.
     const cmd = `ping ${srcFlag} -c 2 -W 1 8.8.8.8`;
     const start = Date.now();
-    exec(cmd, (error, stdout) => {
+    exec(cmd, { timeout: 2500 }, (error, stdout) => {
       // If at least one packet received, it's a success
       if (!error || (stdout && !stdout.includes('100% packet loss'))) {
         return resolve({ ok: true, latency: Date.now() - start });
@@ -391,7 +402,7 @@ async function checkInternetHealth(ifaceName, ip) {
       // Fallback: Cloudflare DNS
       const cmd2 = `ping ${srcFlag} -c 2 -W 1 1.1.1.1`;
       const start2 = Date.now();
-      exec(cmd2, (error2, stdout2) => {
+      exec(cmd2, { timeout: 2500 }, (error2, stdout2) => {
         if (!error2 || (stdout2 && !stdout2.includes('100% packet loss'))) {
           return resolve({ ok: true, latency: Date.now() - start2 });
         }
@@ -1109,6 +1120,10 @@ function getDhcpStatus() {
 function ensureDhcpServerApplied() {
   try {
     if (process.platform !== 'linux') return;
+    const now = Date.now();
+    if (now - lastDhcpServerCheck < 30000) return; // Check every 30s
+    lastDhcpServerCheck = now;
+
     const desired = (systemState.config && systemState.config.dhcp) || {};
     const status = getDhcpStatus();
     if (desired && desired.enabled && desired.interfaceName) {
