@@ -109,7 +109,7 @@ function ensureWanDhcpClients() {
             } catch (e) {}
             execSync(`ip link set ${iface} up`);
             if (hasMac && hasCarrier) {
-              const sess = dhcpSessions[iface] || { startedAt: 0, client: '', attempts: 0 };
+              const sess = dhcpSessions[iface] || { startedAt: 0, client: '', attempts: 0, lastAttempt: 0 };
               if (running && (!sess.startedAt || (Date.now() - sess.startedAt) > 60000)) {
                 try { execSync(`bash -lc 'dhclient -r ${iface} || true'`); } catch (e) {}
                 try { execSync(`bash -lc 'pkill -f "dhclient.*${iface}" || true'`); } catch (e) {}
@@ -120,6 +120,10 @@ function ensureWanDhcpClients() {
                 running = false;
               }
               if (!running) {
+                // Exponential backoff to prevent log spam (max 2 mins)
+                const backoff = Math.min((sess.attempts || 0) * 10000, 120000);
+                if (sess.lastAttempt && (Date.now() - sess.lastAttempt) < backoff) return;
+
                 let cmd = '';
                 const preferOrder = ['dhclient', 'udhcpc', 'dhcpcd'];
                 const prevIdx = preferOrder.indexOf(sess.client);
@@ -130,14 +134,33 @@ function ensureWanDhcpClients() {
                     if (c === 'dhclient') cmd = `nohup dhclient -4 -nw -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &`;
                     if (c === 'udhcpc') cmd = `nohup udhcpc -q -R -i ${iface} >/dev/null 2>&1 &`;
                     if (c === 'dhcpcd') cmd = `nohup dhcpcd -4 -q ${iface} >/dev/null 2>&1 &`;
-                    if (cmd) { dhcpSessions[iface] = { startedAt: Date.now(), client: c, attempts: (sess.attempts || 0) + 1 }; break; }
+                    if (cmd) { 
+                      dhcpSessions[iface] = { 
+                        startedAt: Date.now(), 
+                        lastAttempt: Date.now(),
+                        client: c, 
+                        attempts: (sess.attempts || 0) + 1 
+                      }; 
+                      break; 
+                    }
                   } catch (e) {}
                 }
                 if (!cmd) {
-                  try { ensurePkg('isc-dhcp-client'); cmd = `nohup dhclient -4 -nw -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &`; dhcpSessions[iface] = { startedAt: Date.now(), client: 'dhclient', attempts: (sess.attempts || 0) + 1 }; } catch (e) {}
+                  try { 
+                    ensurePkg('isc-dhcp-client'); 
+                    cmd = `nohup dhclient -4 -nw -pf /var/run/dhclient-${iface}.pid -lf /var/lib/nexus/dhclient-${iface}.lease ${iface} >/dev/null 2>&1 &`; 
+                    dhcpSessions[iface] = { 
+                      startedAt: Date.now(), 
+                      lastAttempt: Date.now(),
+                      client: 'dhclient', 
+                      attempts: (sess.attempts || 0) + 1 
+                    }; 
+                  } catch (e) {}
                 }
-                if (cmd) exec(`bash -lc '${cmd}'`);
-                log(`DHCP CLIENT STARTED: ${iface}`);
+                if (cmd) {
+                    exec(`bash -lc '${cmd}'`);
+                    log(`DHCP CLIENT STARTED: ${iface} (Attempt ${(sess.attempts || 0) + 1})`);
+                }
               }
             }
           } catch (e) { log(`DHCP CLIENT ERROR (${iface}): ${e.message}`); }
