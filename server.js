@@ -33,6 +33,26 @@ function log(msg) {
   try { fs.appendFileSync(logFile, entry); } catch (e) { }
 }
 
+// Global Error Handlers to prevent crash
+process.on('uncaughtException', (err) => {
+  log(`CRITICAL ERROR: ${err.message}\n${err.stack}`);
+  // Try to keep running, but if it's bad, systemd will restart
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log(`UNHANDLED REJECTION: ${reason}`);
+});
+
+// Global Error Handlers to prevent crash
+process.on('uncaughtException', (err) => {
+  log(`CRITICAL ERROR: ${err.message}\n${err.stack}`);
+  // Try to keep running, but if it's bad, systemd will restart
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log(`UNHANDLED REJECTION: ${reason}`);
+});
+
 let systemState = {
   interfaces: [],
   metrics: { cpuUsage: 0, cores: [], memoryUsage: '0', totalMem: '0', uptime: '', activeSessions: 0, dnsResolved: true },
@@ -69,7 +89,7 @@ function ensureWanDhcpClients() {
   try {
     if (process.platform !== 'linux') return;
     const now = Date.now();
-    if (now - lastDhcpClientCheck < 5000) return; // Check every 5s
+    if (now - lastDhcpClientCheck < 10000) return; // Check every 10s (Reduced from 5s)
     lastDhcpClientCheck = now;
 
     let lan = ((systemState.config || {}).dhcp || {}).interfaceName || '';
@@ -421,7 +441,7 @@ async function checkInternetHealth(ifaceName, ip, isLan = false) {
     // We only need 1 response to consider it UP.
     const cmd = `ping ${srcFlag} -c 2 -W 1 ${target}`; // Google DNS or Local IP
     const start = Date.now();
-    exec(cmd, { timeout: 2500 }, (error, stdout) => {
+    exec(cmd, { timeout: 4000 }, (error, stdout) => {
       // If at least one packet received, it's a success
       if (!error || (stdout && !stdout.includes('100% packet loss'))) {
         // Extract real latency from ping output to avoid Node.js overhead
@@ -437,7 +457,7 @@ async function checkInternetHealth(ifaceName, ip, isLan = false) {
       // Fallback: Cloudflare DNS (Only if Google fails) or Loopback for LAN
       const cmd2 = `ping ${srcFlag} -c 2 -W 1 ${target2}`;
       const start2 = Date.now();
-      exec(cmd2, { timeout: 2500 }, (error2, stdout2) => {
+      exec(cmd2, { timeout: 4000 }, (error2, stdout2) => {
         if (!error2 || (stdout2 && !stdout2.includes('100% packet loss'))) {
            const matches = (stdout2 || '').match(/time=([\d.]+)/g);
            let realLatency = Date.now() - start2;
@@ -577,8 +597,8 @@ setInterval(async () => {
       const hc = healthCache[ifaceName];
       const isLan = systemState.config.dhcp && systemState.config.dhcp.interfaceName === ifaceName;
 
-      // Reduce cache to 2s for "Live" feeling
-      if (!hc || (Date.now() - hc.ts) > 2000) {
+      // Reduce cache to 5s for stability (was 2s)
+      if (!hc || (Date.now() - hc.ts) > 5000) {
         health = await checkInternetHealth(ifaceName, ipAddr, isLan);
         healthCache[ifaceName] = { data: health, ts: Date.now() };
       } else {
@@ -656,7 +676,7 @@ setInterval(async () => {
   finally {
     pollingBusy = false;
   }
-}, 1000);
+}, 3000); // Increased from 1000ms to 3000ms to reduce load
 
 const app = express();
 app.use(cors());
