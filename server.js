@@ -1628,11 +1628,32 @@ function getWifiStatus() {
 
   // Fallback if nmcli failed but we found hardware (e.g. wlan0)
   if (wifiInterface) {
+      let mode = 'unmanaged';
+      let ssid = '';
+      let connected = false;
+
+      // Check if hostapd is running on this interface
+      try {
+        const pgrep = execSync('pgrep -a hostapd').toString();
+        if (pgrep.includes(wifiInterface)) {
+           mode = 'ap';
+           connected = true;
+           // Try to extract SSID from config
+           try {
+             const conf = fs.readFileSync('/etc/hostapd/hostapd.conf', 'utf8');
+             const m = conf.match(/ssid=(.+)/);
+             if (m) ssid = m[1];
+           } catch(e) {}
+        }
+      } catch(e) {}
+
       return { 
           available: true, 
           interface: wifiInterface, 
-          connected: false, 
-          state: 'unmanaged', 
+          connected, 
+          ssid,
+          state: mode === 'ap' ? 'active' : 'unmanaged', 
+          mode,
           error: nmcliWorks ? 'Interface not managed by NetworkManager' : 'NetworkManager not available' 
       };
   }
@@ -1655,36 +1676,120 @@ app.post('/api/wifi/ap/config', (req, res) => {
   const iface = status.interface;
   const conName = 'Nexus_Hotspot';
 
+  // Check if nmcli is available
+  let hasNmcli = false;
+  try { execSync('which nmcli'); hasNmcli = true; } catch(e) {}
+
   try {
-    // 1. Clean up existing hotspot connections to avoid conflicts
-    try {
-        const existing = execSync(`nmcli -g UUID,NAME connection show`).toString();
-        existing.split('\n').forEach(line => {
-            if (line.includes(conName)) {
-                const uuid = line.split(':')[0];
-                execSync(`nmcli connection delete ${uuid}`);
-            }
+    if (hasNmcli) {
+        // 1. Clean up existing hotspot connections to avoid conflicts
+        try {
+            const existing = execSync(`nmcli -g UUID,NAME connection show`).toString();
+            existing.split('\n').forEach(line => {
+                if (line.includes(conName)) {
+                    const uuid = line.split(':')[0];
+                    execSync(`nmcli connection delete ${uuid}`);
+                }
+            });
+        } catch(e) {}
+
+        // 2. Create new Hotspot connection
+        // Note: We use ipv4.method shared to provide DHCP/NAT automatically
+        let cmd = `nmcli con add type wifi ifname ${iface} con-name "${conName}" autoconnect yes ssid "${ssid}"`;
+        cmd += ` 802-11-wireless.mode ap 802-11-wireless.band bg ipv4.method shared`;
+        if (channel) cmd += ` 802-11-wireless.channel ${channel}`;
+        
+        // 3. Security
+        if (security === 'WPA2' && password) {
+            cmd += ` wifi-sec.key-mgmt wpa-psk wifi-sec.psk "${password}"`;
+        }
+
+        execSync(cmd);
+        
+        // 4. Bring it up
+        exec(`nmcli con up "${conName}"`, { timeout: 30000 }, (error, stdout, stderr) => {
+          if (error) return res.status(500).json({ error: stderr || error.message });
+          res.json({ success: true, message: 'Access Point started successfully' });
         });
-    } catch(e) {}
+    } else {
+        // Fallback: Use hostapd + dnsmasq directly
+        // Check if hostapd is installed
+        try { execSync('which hostapd'); } catch(e) {
+            return res.status(500).json({ error: 'hostapd not found. Please install hostapd to use AP mode without NetworkManager.' });
+        }
 
-    // 2. Create new Hotspot connection
-    // Note: We use ipv4.method shared to provide DHCP/NAT automatically
-    let cmd = `nmcli con add type wifi ifname ${iface} con-name "${conName}" autoconnect yes ssid "${ssid}"`;
-    cmd += ` 802-11-wireless.mode ap 802-11-wireless.band bg ipv4.method shared`;
-    if (channel) cmd += ` 802-11-wireless.channel ${channel}`;
-    
-    // 3. Security
-    if (security === 'WPA2' && password) {
-        cmd += ` wifi-sec.key-mgmt wpa-psk wifi-sec.psk "${password}"`;
+        // 1. Stop any existing hostapd
+        try { execSync('killall hostapd'); } catch(e) {}
+        try { execSync('systemctl stop hostapd'); } catch(e) {}
+
+        // 2. Generate hostapd.conf
+        const conf = [
+            `interface=${iface}`,
+            `driver=nl80211`,
+            `ssid=${ssid}`,
+            `hw_mode=g`,
+            `channel=${channel || 6}`,
+            `macaddr_acl=0`,
+            `auth_algs=1`,
+            `ignore_broadcast_ssid=0`,
+            `wpa=${security === 'WPA2' ? 2 : 0}`,
+            security === 'WPA2' ? `wpa_passphrase=${password}` : '',
+            security === 'WPA2' ? `wpa_key_mgmt=WPA-PSK` : '',
+            security === 'WPA2' ? `wpa_pairwise=TKIP` : '',
+            security === 'WPA2' ? `rsn_pairwise=CCMP` : ''
+        ].filter(l => l).join('\n');
+        
+        fs.writeFileSync('/etc/hostapd/hostapd.conf', conf);
+
+        // 3. Configure Network (Managed vs Standalone)
+        const dhcpConf = systemState.config.dhcp || {};
+        const managedIface = resolveRealInterface(dhcpConf.interfaceName);
+        const isManaged = managedIface === iface && dhcpConf.enabled;
+
+        if (isManaged) {
+             // Managed Mode: Rely on existing IP/DHCP config from Nexus Router OS
+             execSync(`ip link set ${iface} up`);
+             execSync('sysctl -w net.ipv4.ip_forward=1');
+             // Ensure no conflicting standalone dnsmasq exists
+             try { fs.unlinkSync('/etc/dnsmasq.d/nexus-hotspot.conf'); } catch(e) {}
+             execSync('systemctl restart dnsmasq');
+        } else {
+             // Standalone Mode: Configure static IP and dedicated DHCP
+             const gw = '192.168.12.1';
+             execSync(`ip link set ${iface} up`);
+             execSync(`ip addr flush dev ${iface}`);
+             execSync(`ip addr add ${gw}/24 dev ${iface}`);
+
+             const dconf = [
+                `interface=${iface}`,
+                `bind-interfaces`,
+                `dhcp-range=192.168.12.10,192.168.12.250,255.255.255.0,12h`,
+                `dhcp-option=3,${gw}`, // Gateway
+                `dhcp-option=6,8.8.8.8,1.1.1.1`, // DNS
+                `server=8.8.8.8`,
+                `log-queries`,
+                `log-dhcp`
+             ].join('\n');
+             fs.writeFileSync('/etc/dnsmasq.d/nexus-hotspot.conf', dconf);
+             execSync('systemctl restart dnsmasq');
+
+             // Enable NAT
+             execSync('sysctl -w net.ipv4.ip_forward=1');
+             let wan = '';
+             try { wan = execSync("ip route | grep default | awk '{print $5}'").toString().trim(); } catch(e) {}
+             if (wan) {
+                  execSync(`iptables -t nat -C POSTROUTING -o ${wan} -j MASQUERADE || iptables -t nat -A POSTROUTING -o ${wan} -j MASQUERADE`);
+                  execSync(`iptables -C FORWARD -i ${iface} -o ${wan} -j ACCEPT || iptables -A FORWARD -i ${iface} -o ${wan} -j ACCEPT`);
+                  execSync(`iptables -C FORWARD -i ${wan} -o ${iface} -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A FORWARD -i ${wan} -o ${iface} -m state --state RELATED,ESTABLISHED -j ACCEPT`);
+             }
+        }
+
+        // 4. Start hostapd in background
+        exec(`hostapd -B /etc/hostapd/hostapd.conf`, (error, stdout, stderr) => {
+            if (error) return res.status(500).json({ error: stderr || error.message });
+            res.json({ success: true, message: isManaged ? 'Access Point started (Managed IP)' : 'Access Point started (Standalone IP)' });
+        });
     }
-
-    execSync(cmd);
-    
-    // 4. Bring it up
-    exec(`nmcli con up "${conName}"`, { timeout: 30000 }, (error, stdout, stderr) => {
-      if (error) return res.status(500).json({ error: stderr || error.message });
-      res.json({ success: true, message: 'Access Point started successfully' });
-    });
 
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1694,12 +1799,30 @@ app.post('/api/wifi/ap/config', (req, res) => {
 app.post('/api/wifi/ap/disable', (req, res) => {
   try {
     const status = getWifiStatus();
-    if (status.interface) {
+    
+    // Check if nmcli is available
+    let hasNmcli = false;
+    try { execSync('which nmcli'); hasNmcli = true; } catch(e) {}
+
+    if (hasNmcli && status.interface) {
        // Disconnect interface to stop AP
        execSync(`nmcli device disconnect ${status.interface}`);
        res.json({ success: true });
     } else {
-       res.status(400).json({ error: 'No wifi interface' });
+       // Kill hostapd
+       execSync('killall hostapd || true');
+       // Remove dnsmasq config for hotspot
+       try { fs.unlinkSync('/etc/dnsmasq.d/nexus-hotspot.conf'); } catch(e) {}
+       execSync('systemctl restart dnsmasq');
+       
+       // Only flush IP if it was NOT managed
+       const dhcpConf = systemState.config.dhcp || {};
+       const managedIface = resolveRealInterface(dhcpConf.interfaceName);
+       if (status.interface && status.interface !== managedIface) {
+          execSync(`ip addr flush dev ${status.interface}`);
+       }
+       
+       res.json({ success: true });
     }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
