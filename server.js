@@ -646,8 +646,11 @@ setInterval(async () => {
       const isLan = systemState.config.dhcp && systemState.config.dhcp.interfaceName === ifaceName;
 
       // Reduce cache to 5s for stability (was 2s)
-      if (!hc || (Date.now() - hc.ts) > 5000) {
-        health = await checkInternetHealth(ifaceName, ipAddr, isLan);
+      // Exclude LAN from WAN health checks
+      if (isLan) {
+        health = { ok: true, latency: 0 };
+      } else if (!hc || (Date.now() - hc.ts) > 5000) {
+        health = await checkInternetHealth(ifaceName, ipAddr, false);
         healthCache[ifaceName] = { data: health, ts: Date.now() };
       } else {
         health = hc.data;
@@ -671,8 +674,10 @@ setInterval(async () => {
     }));
 
     const healthChanged = JSON.stringify(newInterfaces.map(i => i.internetHealth)) !== JSON.stringify(systemState.interfaces.map(i => i.internetHealth));
+    const ipChanged = JSON.stringify(newInterfaces.map(i => i.ipAddress)) !== JSON.stringify(systemState.interfaces.map(i => i.ipAddress));
+    
     systemState.interfaces = newInterfaces;
-    if (healthChanged) applyMultiWanKernel();
+    if (healthChanged || ipChanged) applyMultiWanKernel();
     ensureWanDhcpClients();
     ensureMasqueradeAllWan();
     ensureDhcpServerApplied();
