@@ -423,6 +423,28 @@ function ensurePolicyRouting(iface, ip, gateway) {
       // If table check fails (e.g. FIB table does not exist), force create/replace the route
       try { execSync(`ip route replace default via ${gateway} dev ${iface} table ${id}`); } catch (e2) {}
     }
+
+    // Ensure ALL local subnet routes exist in that table to allow LAN communication
+    try {
+      const allSubnets = execSync(`ip route show scope link`).toString().trim().split('\n');
+      allSubnets.forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        // Format: 192.168.1.0/24 dev eth0 ...
+        if (parts.length >= 3 && parts[0].includes('/') && parts[1] === 'dev') {
+          const subnet = parts[0];
+          const dev = parts[2];
+          
+          try {
+            const tblRoutes = execSync(`ip route show table ${id}`).toString();
+            if (!tblRoutes.includes(`${subnet} dev ${dev}`)) {
+              execSync(`ip route add ${subnet} dev ${dev} scope link table ${id}`);
+            }
+          } catch(e) {
+            try { execSync(`ip route add ${subnet} dev ${dev} scope link table ${id}`); } catch(e2) {}
+          }
+        }
+      });
+    } catch (e) {}
   } catch (e) {}
 }
 
@@ -1631,5 +1653,3 @@ app.post('/api/factory-reset', (req, res) => {
 app.listen(3000, '0.0.0.0', () => {
   log('Nexus Agent active on :3000');
 });
-
-
