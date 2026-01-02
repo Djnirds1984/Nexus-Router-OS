@@ -1694,9 +1694,25 @@ app.post('/api/wifi/ap/config', (req, res) => {
         } catch(e) {}
 
         // 2. Create new Hotspot connection
-        // Note: We use ipv4.method shared to provide DHCP/NAT automatically
+        const dhcpConf = systemState.config.dhcp || {};
+        const managedIface = resolveRealInterface(dhcpConf.interfaceName);
+        const isManaged = managedIface === iface && dhcpConf.enabled;
+
         let cmd = `nmcli con add type wifi ifname ${iface} con-name "${conName}" autoconnect yes ssid "${ssid}"`;
-        cmd += ` 802-11-wireless.mode ap 802-11-wireless.band bg ipv4.method shared`;
+        cmd += ` 802-11-wireless.mode ap 802-11-wireless.band bg`;
+        
+        if (isManaged) {
+            // Managed Mode: Use Manual IP from DHCP config
+            // This prevents NM from starting its own dnsmasq and creating a new subnet
+            const start = dhcpConf.start || '192.168.1.10';
+            const base = start.split('.').slice(0,3).join('.');
+            const gw = `${base}.1`;
+            cmd += ` ipv4.method manual ipv4.addresses ${gw}/24`;
+        } else {
+            // Standalone Mode: Shared (NAT + NM dnsmasq)
+            cmd += ` ipv4.method shared`;
+        }
+
         if (channel) cmd += ` 802-11-wireless.channel ${channel}`;
         
         // 3. Security

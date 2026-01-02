@@ -12,8 +12,6 @@ This project MUST be installed in `/var/www/html/Nexus-Router-Os` on an Ubuntu L
 ```bash
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y dnsmasq iproute2 iptables jq curl git nodejs npm
-# If iptables is unavailable:
-sudo apt install -y nftables
 # Enable IPv4 forwarding (persistent)
 echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-nexus-forward.conf
 sudo sysctl --system
