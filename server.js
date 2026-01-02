@@ -424,6 +424,27 @@ function ensurePolicyRouting(iface, ip, gateway) {
       try { execSync(`ip route replace default via ${gateway} dev ${iface} table ${id}`); } catch (e2) {}
     }
 
+    // Ensure local subnet routes exist in that table to allow LAN communication
+    try {
+      const subnets = execSync(`ip route show dev ${iface} scope link`).toString().trim().split('\n');
+      subnets.forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length > 0 && parts[0].includes('/')) {
+          const subnet = parts[0];
+          // Check if it exists in table to avoid spamming commands
+          try {
+            const tblRoutes = execSync(`ip route show table ${id}`).toString();
+            if (!tblRoutes.includes(subnet)) {
+              execSync(`ip route add ${subnet} dev ${iface} scope link table ${id}`);
+            }
+          } catch(e) {
+            // If check fails, try adding it anyway
+            try { execSync(`ip route add ${subnet} dev ${iface} scope link table ${id}`); } catch(e2) {}
+          }
+        }
+      });
+    } catch (e) {}
+
     // Ensure ALL local subnet routes exist in that table to allow LAN communication
     try {
       const allSubnets = execSync(`ip route show scope link`).toString().trim().split('\n');
