@@ -552,15 +552,10 @@ function applyMultiWanKernel() {
   if (process.platform !== 'linux') return;
   log(`>>> ORCHESTRATING KERNEL: ${systemState.config.mode}`);
   try {
-    const dhcpIface = resolveRealInterface((systemState.config.dhcp || {}).interfaceName);
-    
-    // Filter out LAN interface from WAN candidates
-    const candidates = systemState.interfaces.filter(i => i.interfaceName !== dhcpIface);
-
-    let healthyWans = candidates.filter(i => i.internetHealth === 'HEALTHY');
+    let healthyWans = systemState.interfaces.filter(i => i.internetHealth === 'HEALTHY');
     if (healthyWans.length === 0) {
       log('SMART LB: All WANs offline. Failing back to all available WANs to ensure connectivity.');
-      healthyWans = candidates.filter(i => i.status === 'UP' && i.gateway && i.gateway !== 'Detecting...');
+      healthyWans = systemState.interfaces.filter(i => i.status === 'UP' && i.gateway && i.gateway !== 'Detecting...');
     }
     if (healthyWans.length === 0) return;
 
@@ -1949,9 +1944,6 @@ function applyDhcp(dhcp) {
     fs.writeFileSync('/etc/dnsmasq.d/nexus-dhcp.conf', conf);
     execSync('sysctl -w net.ipv4.ip_forward=1');
     try { execSync('sysctl --system'); } catch (e) {}
-
-    // Refresh Routing Table (Crucial when LAN IP changes)
-    applyMultiWanKernel();
 
     let wanList = [];
     try {
