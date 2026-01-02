@@ -947,6 +947,122 @@ app.post('/api/interfaces/rename', (req, res) => {
   }
 });
 
+/**
+ * PPPoE Management
+ */
+function ensurePPPoEPackage() {
+    try {
+        if (process.platform !== 'linux') return;
+        try { execSync('command -v pppoe-server'); } catch(e) {
+             log('Installing PPPoE package...');
+             execSync('apt-get update && apt-get install -y pppoe'); 
+        }
+    } catch (e) {
+        log('Failed to install pppoe package: ' + e.message);
+    }
+}
+
+function applyPPPoESettings() {
+    if (process.platform !== 'linux') return;
+    const pppoe = systemState.config.pppoe || { servers: [], secrets: [], profiles: [] };
+    
+    // 1. Secrets (CHAP/PAP)
+    // Format: "username" * "password" *
+    let secretsContent = '# Nexus Generated Secrets\n';
+    pppoe.secrets.forEach(s => {
+        if (s.enabled) {
+            secretsContent += `"${s.username}" * "${s.password}" ${s.localAddress || '*'} \n`;
+        }
+    });
+    
+    try {
+        fs.writeFileSync('/etc/ppp/chap-secrets', secretsContent);
+        fs.writeFileSync('/etc/ppp/pap-secrets', secretsContent);
+    } catch (e) { log('Error writing secrets: ' + e.message); }
+    
+    // 2. Servers
+    // Kill existing servers managed by Nexus (simple approach: kill all pppoe-server instances and restart enabled ones)
+    try { execSync('killall pppoe-server || true'); } catch(e) {}
+    
+    pppoe.servers.forEach(srv => {
+        if (srv.enabled) {
+            // pppoe-server -I <interface> -L <local_ip> -R <remote_ip_start> -N <max_sessions>
+            // We need to map profiles to actual pppd options. 
+            // For simplicity in this version, we will use basic arguments.
+            
+            // Note: pppoe-server usually requires -L (Local IP) and -R (Remote IP start).
+            // We'll try to find a default profile or use reasonable defaults if not fully specified.
+            const profile = pppoe.profiles.find(p => p.name === srv.defaultProfile);
+            const localIp = (profile && profile.localAddress) ? profile.localAddress : '10.0.0.1';
+            const remoteIpPool = (profile && profile.remoteAddressPool) ? profile.remoteAddressPool : '10.0.0.2';
+            
+            // Basic command: pppoe-server -I eth1 -L 10.0.0.1 -R 10.0.0.2 -N 100
+            // -C is Service Name
+            const cmd = `pppoe-server -I ${srv.interfaceName} -L ${localIp} -R ${remoteIpPool} -N 100 -C ${srv.serviceName || 'Nexus'}`;
+            try {
+                execSync(cmd);
+                log(`Started PPPoE Server on ${srv.interfaceName}`);
+            } catch (e) {
+                log(`Failed to start PPPoE Server on ${srv.interfaceName}: ${e.message}`);
+            }
+        }
+    });
+}
+
+app.get('/api/pppoe/config', (req, res) => {
+    if (!systemState.config.pppoe) {
+        systemState.config.pppoe = { servers: [], secrets: [], profiles: [] };
+    }
+    res.json(systemState.config.pppoe);
+});
+
+app.post('/api/pppoe/config', (req, res) => {
+    const { servers, secrets, profiles } = req.body;
+    systemState.config.pppoe = { 
+        servers: servers || [], 
+        secrets: secrets || [], 
+        profiles: profiles || [] 
+    };
+    
+    try {
+        fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2));
+        ensurePPPoEPackage();
+        applyPPPoESettings();
+        res.json({ status: 'ok' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/pppoe/active', (req, res) => {
+    if (process.platform !== 'linux') {
+        // Mock data for Windows dev
+        return res.json([
+            { id: '1', username: 'test_user', interface: 'ppp0', remoteAddress: '10.0.0.50', uptime: '10m', callerId: '00:11:22:33:44:55' }
+        ]);
+    }
+    
+    // Parse /proc/net/dev or ppp logs to find active sessions
+    // Or use `ip addr show` to find ppp interfaces
+    try {
+        const interfaces = execSync('ip -j addr show').toString();
+        const parsed = JSON.parse(interfaces);
+        const pppIfaces = parsed.filter(i => i.ifname.startsWith('ppp'));
+        
+        const active = pppIfaces.map((i, idx) => ({
+            id: i.ifname,
+            username: 'unknown', // Hard to get without pppd logs parsing
+            interface: i.ifname,
+            remoteAddress: i.addr_info[0]?.local || 'N/A',
+            uptime: 'N/A',
+            callerId: 'N/A'
+        }));
+        res.json(active);
+    } catch (e) {
+        res.json([]);
+    }
+});
+
 app.post('/api/system/restart', (req, res) => {
   log('System restart requested via API');
   res.json({ status: 'restarting' });

@@ -62,6 +62,11 @@ export interface NetworkConfig {
   firewallRules?: FirewallRule[];
   dhcp?: { interfaceName: string; enabled: boolean; start: string; end: string; leaseTime: string };
   bridges?: any[];
+  pppoe?: {
+    servers: PPPoEServerConfig[];
+    secrets: PPPoESecret[];
+    profiles: PPPoEProfile[];
+  };
 }
 
 export interface TerminalLog {
@@ -69,4 +74,45 @@ export interface TerminalLog {
   type: 'info' | 'command' | 'success' | 'error';
   message: string;
   timestamp: Date;
+}
+
+export interface PPPoEServerConfig {
+  id: string;
+  interfaceName: string;
+  serviceName: string;
+  defaultProfile: string; // Profile name
+  authentication: 'pap' | 'chap' | 'mschap1' | 'mschap2';
+  enabled: boolean;
+}
+
+export interface PPPoESecret {
+  id: string;
+  username: string;
+  password: string;
+  service: string; // 'pppoe' usually
+  callerId: string; // MAC address or 'any'
+  profile: string; // Profile name
+  localAddress: string;
+  remoteAddress: string;
+  comment?: string;
+  enabled: boolean;
+}
+
+export interface PPPoEProfile {
+  id: string;
+  name: string;
+  localAddress: string;
+  remoteAddressPool: string;
+  dnsServer: string;
+  rateLimit: string; // e.g. "10M/10M"
+  onlyOne: boolean; // Only one session per user
+}
+
+export interface PPPoEActiveConnection {
+  id: string;
+  username: string;
+  interface: string;
+  remoteAddress: string;
+  uptime: string;
+  callerId: string; // MAC
 }

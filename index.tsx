@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import PPPoEManager from './components/PPPoEManager';
 // WifiManager imported inline
 
 
@@ -2089,6 +2090,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout, theme }: 
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'interfaces', label: 'Interfaces', icon: '🔌' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
+    { id: 'pppoe', label: 'PPPoE', icon: '📡' },
     { id: 'firewall', label: 'Firewall', icon: '🛡️' },
     { id: 'devices', label: 'Devices', icon: '💻' },
     { id: 'dhcp', label: 'DHCP Management', icon: '🌉' },
@@ -2741,6 +2743,7 @@ const App = () => {
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'interfaces' && <Interfaces />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} appliedConfig={appliedConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
+      {activeTab === 'pppoe' && <PPPoEManager />}
       {activeTab === 'firewall' && <FirewallManager config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'devices' && <DeviceList />}
       {activeTab === 'dhcp' && <DhcpManagement config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} availableInterfaces={interfaces} />}
