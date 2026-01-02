@@ -1571,6 +1571,103 @@ app.delete('/api/zerotier/forwarding/:id', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/**
+ * WIFI MANAGEMENT (nmcli based)
+ */
+function getWifiStatus() {
+  if (process.platform !== 'linux') return { available: false, connected: false };
+  try {
+    const devices = execSync('nmcli -t -f DEVICE,TYPE,STATE device').toString();
+    const wifiLine = devices.split('\n').find(l => l.includes(':wifi:'));
+    if (!wifiLine) return { available: false, connected: false };
+
+    const [device, type, state] = wifiLine.split(':');
+    const connected = state === 'connected';
+    let ssid = '';
+    
+    if (connected) {
+      try {
+        const conInfo = execSync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${device}`).toString();
+        const activeLine = conInfo.split('\n').find(l => l.startsWith('yes:'));
+        if (activeLine) ssid = activeLine.split(':')[1];
+      } catch (e) {}
+    }
+
+    return { available: true, interface: device, connected, ssid, state };
+  } catch (e) {
+    return { available: false, error: e.message };
+  }
+}
+
+app.get('/api/wifi/status', (req, res) => {
+  res.json(getWifiStatus());
+});
+
+app.get('/api/wifi/scan', (req, res) => {
+  if (process.platform !== 'linux') return res.json([]);
+  try {
+    // SSID,SIGNAL,SECURITY,BARS
+    const output = execSync('nmcli -t -f SSID,SIGNAL,SECURITY device wifi list').toString();
+    const networks = output.split('\n')
+      .filter(l => l.trim())
+      .map(line => {
+        // Handle escaped colons if necessary, but nmcli -t usually handles it well enough for simple parsing
+        // SSID can contain colons, so we split carefully? Actually nmcli -t escapes with backslash
+        const parts = line.split(/(?<!\\):/); 
+        return {
+          ssid: parts[0].replace(/\\:/g, ':'),
+          signal: parseInt(parts[1] || '0'),
+          security: parts[2] || 'OPEN',
+        };
+      })
+      .filter(n => n.ssid); // Filter hidden or empty
+      
+    // Deduplicate by SSID, keeping strongest signal
+    const deduped = {};
+    networks.forEach(n => {
+      if (!deduped[n.ssid] || deduped[n.ssid].signal < n.signal) {
+        deduped[n.ssid] = n;
+      }
+    });
+    
+    res.json(Object.values(deduped).sort((a,b) => b.signal - a.signal));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/wifi/connect', (req, res) => {
+  if (process.platform !== 'linux') return res.status(400).json({ error: 'Linux only' });
+  const { ssid, password } = req.body;
+  if (!ssid) return res.status(400).json({ error: 'SSID required' });
+  
+  try {
+    let cmd = `nmcli device wifi connect "${ssid}"`;
+    if (password) cmd += ` password "${password}"`;
+    
+    exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
+      if (error) {
+        return res.status(500).json({ error: stderr || error.message });
+      }
+      res.json({ success: true, message: stdout });
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/wifi/disconnect', (req, res) => {
+  try {
+    const status = getWifiStatus();
+    if (status.interface) {
+      execSync(`nmcli device disconnect ${status.interface}`);
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ error: 'No wifi interface' });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 function applyDhcp(dhcp) {
   if (process.platform !== 'linux') return;
   try {

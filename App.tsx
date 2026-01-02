@@ -7,6 +7,7 @@ import AIAdvisor from './components/AIAdvisor';
 import UpdateManager from './components/UpdateManager';
 import Terminal from './components/Terminal';
 import DeviceList from './components/DeviceList';
+import WifiManager from './components/WifiManager';
 import { NetworkConfig, RouterMode, SystemMetrics, TerminalLog, WanInterface } from './types';
 
 const API_BASE = `http://${window.location.hostname || 'localhost'}:3000/api`;
@@ -132,9 +133,15 @@ const App: React.FC = () => {
         return <UpdateManager onApplyUpdate={handleApplyUpdate} isUpdating={isUpdating} />;
       case 'settings':
         return (
-          <div className="space-y-8 p-12 text-center">
-            <h1 className="text-3xl font-bold text-white uppercase italic tracking-widest">System Diagnostics</h1>
-            <div className="bg-slate-900/50 p-20 rounded-3xl border border-slate-800 border-dashed max-w-2xl mx-auto">
+          <div className="space-y-8 p-12 max-w-5xl mx-auto">
+            <div className="text-center mb-8">
+              <h1 className="text-3xl font-bold text-white uppercase italic tracking-widest">System Settings</h1>
+              <p className="text-slate-400 mt-2">Hardware Configuration & Diagnostics</p>
+            </div>
+            
+            <WifiManager />
+
+            <div className="bg-slate-900/50 p-10 rounded-3xl border border-slate-800 border-dashed text-center">
                <div className="text-emerald-500 font-mono text-sm mb-4">KERNEL_VERSION: {metrics.uptime ? 'STABLE' : 'LINKING...'}</div>
                <p className="text-slate-500 text-xs uppercase tracking-widest font-black">All hardware systems nominal.</p>
             </div>
