@@ -1913,6 +1913,7 @@ function applyDhcp(dhcp) {
     const baseE = end.split('.').slice(0,3).join('.');
     if (baseS !== baseE) { log('DHCP VALIDATION: range not in same /24'); return; }
     const gw = `${baseS}.1`;
+    try { execSync(`ip link set ${iface} down`); } catch(e) {}
     execSync(`ip link set ${iface} up`);
     execSync(`ip addr flush dev ${iface}`);
     execSync(`ip addr add ${gw}/24 dev ${iface}`);
@@ -1942,20 +1943,31 @@ function applyDhcp(dhcp) {
     fs.writeFileSync('/etc/dnsmasq.d/nexus-dhcp.conf', conf);
     execSync('sysctl -w net.ipv4.ip_forward=1');
     try { execSync('sysctl --system'); } catch (e) {}
-    let wan = '';
+
+    let wanList = [];
     try {
       const routes = JSON.parse(execSync('ip -j route show default').toString());
-      wan = (routes[0] || {}).dev || '';
+      wanList = routes.map(r => r.dev).filter(d => d);
     } catch (e) {}
-    if (wan) {
-      execSync(`iptables -t nat -C POSTROUTING -o ${wan} -j MASQUERADE || iptables -t nat -A POSTROUTING -o ${wan} -j MASQUERADE`);
-      execSync(`iptables -C FORWARD -i ${iface} -o ${wan} -j ACCEPT || iptables -A FORWARD -i ${iface} -o ${wan} -j ACCEPT`);
-      execSync(`iptables -C FORWARD -i ${wan} -o ${iface} -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A FORWARD -i ${wan} -o ${iface} -m state --state RELATED,ESTABLISHED -j ACCEPT`);
-      
-      // Allow INPUT on WAN for local access if not blocked by specific firewall rules
-      // This enables accessing the router GUI via WAN IP
-      try { execSync(`iptables -C INPUT -i ${wan} -j ACCEPT || iptables -A INPUT -i ${wan} -j ACCEPT`); } catch(e) {}
+
+    // Fallback: If no default route yet, use configured WAN interfaces
+    if (wanList.length === 0 && systemState.config.wanInterfaces) {
+      wanList = systemState.config.wanInterfaces.map(w => w.interfaceName);
     }
+    wanList = [...new Set(wanList)];
+
+    wanList.forEach(wan => {
+      if (wan === iface) return; 
+      try {
+        execSync(`iptables -t nat -C POSTROUTING -o ${wan} -j MASQUERADE || iptables -t nat -A POSTROUTING -o ${wan} -j MASQUERADE`);
+        execSync(`iptables -C FORWARD -i ${iface} -o ${wan} -j ACCEPT || iptables -A FORWARD -i ${iface} -o ${wan} -j ACCEPT`);
+        execSync(`iptables -C FORWARD -i ${wan} -o ${iface} -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A FORWARD -i ${wan} -o ${iface} -m state --state RELATED,ESTABLISHED -j ACCEPT`);
+        
+        // Allow INPUT on WAN for local access if not blocked by specific firewall rules
+        try { execSync(`iptables -C INPUT -i ${wan} -j ACCEPT || iptables -A INPUT -i ${wan} -j ACCEPT`); } catch(e) {}
+      } catch (e) { log(`DHCP NAT ERROR (${wan}): ${e.message}`); }
+    });
+
     execSync('systemctl restart dnsmasq');
   } catch (e) { log(`DHCP APPLY ERROR: ${e.message}`); }
 }
