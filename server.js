@@ -1240,7 +1240,8 @@ function ensureDhcpServerApplied() {
       try {
         if (fs.existsSync('/etc/dnsmasq.d/nexus-dhcp.conf')) {
            const currentConf = fs.readFileSync('/etc/dnsmasq.d/nexus-dhcp.conf', 'utf8');
-           if (currentConf.includes(`interface=${desired.interfaceName}`) && 
+           const realIface = resolveRealInterface(desired.interfaceName);
+           if (currentConf.includes(`interface=${realIface}`) && 
                currentConf.includes(`dhcp-range=${desired.start},${desired.end}`)) {
                configMatch = true;
            }
