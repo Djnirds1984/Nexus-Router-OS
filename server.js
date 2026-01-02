@@ -1576,27 +1576,52 @@ app.delete('/api/zerotier/forwarding/:id', (req, res) => {
  */
 function getWifiStatus() {
   if (process.platform !== 'linux') return { available: false, connected: false };
+  
+  let wifiInterface = null;
+  let nmcliWorks = false;
+
+  // 1. Try to find interface via /sys/class/net (more reliable for hardware detection)
+  try {
+     const ifaces = fs.readdirSync('/sys/class/net');
+     // Look for wlan* or wl* (common wireless prefixes)
+     wifiInterface = ifaces.find(i => i.startsWith('wlan') || i.startsWith('wl'));
+  } catch (e) {}
+
+  // 2. Try nmcli
   try {
     const devices = execSync('nmcli -t -f DEVICE,TYPE,STATE device').toString();
+    nmcliWorks = true;
     const wifiLine = devices.split('\n').find(l => l.includes(':wifi:'));
-    if (!wifiLine) return { available: false, connected: false };
-
-    const [device, type, state] = wifiLine.split(':');
-    const connected = state === 'connected';
-    let ssid = '';
     
-    if (connected) {
-      try {
-        const conInfo = execSync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${device}`).toString();
-        const activeLine = conInfo.split('\n').find(l => l.startsWith('yes:'));
-        if (activeLine) ssid = activeLine.split(':')[1];
-      } catch (e) {}
+    if (wifiLine) {
+        const [device, type, state] = wifiLine.split(':');
+        const connected = state === 'connected';
+        let ssid = '';
+        if (connected) {
+             try {
+                const conInfo = execSync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${device}`).toString();
+                const activeLine = conInfo.split('\n').find(l => l.startsWith('yes:'));
+                if (activeLine) ssid = activeLine.split(':')[1];
+             } catch (e) {}
+        }
+        return { available: true, interface: device, connected, ssid, state };
     }
-
-    return { available: true, interface: device, connected, ssid, state };
   } catch (e) {
-    return { available: false, error: e.message };
+      // nmcli failed or not installed
   }
+
+  // Fallback if nmcli failed but we found hardware (e.g. wlan0)
+  if (wifiInterface) {
+      return { 
+          available: true, 
+          interface: wifiInterface, 
+          connected: false, 
+          state: 'unmanaged', 
+          error: nmcliWorks ? 'Interface not managed by NetworkManager' : 'NetworkManager not available' 
+      };
+  }
+
+  return { available: false };
 }
 
 app.get('/api/wifi/status', (req, res) => {
