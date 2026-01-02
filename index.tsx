@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import WifiManager from './components/WifiManager';
 
 
 /**
@@ -2515,7 +2516,12 @@ const App = () => {
       {activeTab === 'dataplicity' && <DataplicityManager />}
       {activeTab === 'updates' && <UpdateManager onApplyUpdate={handleUpdate} isUpdating={isApplying} />}
       {activeTab === 'advisor' && <div className="p-32 text-center text-slate-700 font-mono text-xs tracking-widest uppercase opacity-40">AI Advisor Online</div>}
-      {activeTab === 'settings' && <SystemSettings metrics={metrics} theme={theme} setTheme={setTheme} />}
+      {activeTab === 'settings' && (
+        <div className="space-y-8">
+          <SystemSettings metrics={metrics} theme={theme} setTheme={setTheme} />
+          <WifiManager />
+        </div>
+      )}
     </Layout>
   );
 };
