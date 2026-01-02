@@ -91,6 +91,9 @@ interface WifiStatus {
   state?: string;
   error?: string;
   mode?: 'client' | 'ap';
+  channel?: string;
+  security?: string;
+  password?: string;
 }
 
 
@@ -734,9 +737,10 @@ const DhcpManagement = ({ config, setConfig, onApply, isApplying, availableInter
  */
 const WifiManager: React.FC = () => {
   const [status, setStatus] = useState<WifiStatus>({ available: false, connected: false });
-  const [apConfig, setApConfig] = useState({ ssid: 'Nexus-WiFi', password: '', security: 'WPA2', channel: '6' });
+  const [apConfig, setApConfig] = useState({ ssid: 'Nexus-WiFi', password: '', security: 'WPA2', channel: '6', dhcpSource: 'shared' });
   const [configuring, setConfiguring] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
+  const [initialized, setInitialized] = useState(false);
 
   const addLog = (msg: string) => setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`].slice(-5));
 
@@ -745,10 +749,23 @@ const WifiManager: React.FC = () => {
       const res = await fetch(`${API_BASE}/wifi/status`);
       const data = await res.json();
       setStatus(data);
+      
+      // Sync local state with running AP if detected and not yet initialized or if user hasn't edited
+      if (data.mode === 'ap' && data.ssid && !initialized) {
+          setApConfig(prev => ({
+              ...prev,
+              ssid: data.ssid || prev.ssid,
+              channel: data.channel || prev.channel,
+              security: data.security || prev.security,
+              password: data.password || prev.password, // Only if backend provides it (hostapd/nmcli-show-secrets)
+              dhcpSource: (data.state === 'active' || data.state === 'connected') ? 'managed' : 'shared' // Heuristic, better to store in backend or infer
+          }));
+          setInitialized(true);
+      }
     } catch (e) {
       // console.error(e);
     }
-  }, []);
+  }, [initialized]);
 
   useEffect(() => {
     fetchStatus();
@@ -825,14 +842,13 @@ const WifiManager: React.FC = () => {
             </div>
           </div>
           <div className="flex gap-2">
-             {status.mode === 'ap' && (
-              <button 
+             <button 
                 onClick={handleDisableAp}
-                className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold rounded-xl transition-all"
+                className={`px-4 py-2 ${status.mode === 'ap' ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400' : 'bg-slate-800 text-slate-500 cursor-not-allowed'} text-xs font-bold rounded-xl transition-all`}
+                disabled={status.mode !== 'ap'}
               >
                 STOP AP
               </button>
-            )}
           </div>
         </div>
 
@@ -864,6 +880,22 @@ const WifiManager: React.FC = () => {
                         <option value="WPA2">WPA2 Personal (Recommended)</option>
                         <option value="OPEN">Open (No Password)</option>
                     </select>
+                </div>
+                <div>
+                     <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 block">DHCP Mode</label>
+                     <select 
+                        value={apConfig.dhcpSource}
+                        onChange={e => setApConfig({...apConfig, dhcpSource: e.target.value})}
+                        className="w-full bg-black/20 border border-slate-700 rounded-xl p-3 text-white focus:border-blue-500 outline-none font-bold appearance-none"
+                    >
+                        <option value="shared">Hotspot (NAT / Shared IP)</option>
+                        <option value={status.interface || 'managed'}>System Managed (Use Interface IP)</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                        {apConfig.dhcpSource === 'shared' 
+                            ? 'Clients get IP from internal NAT (10.42.x.x).' 
+                            : 'Clients get IP from your configured DHCP Server.'}
+                    </p>
                 </div>
             </div>
             <div className="space-y-4">

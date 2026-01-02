@@ -1610,6 +1610,17 @@ function getWifiStatus() {
                    if (wirelessMode === 'ap') {
                        mode = 'ap';
                        ssid = execSync(`nmcli -g 802-11-wireless.ssid connection show ${uuid}`).toString().trim();
+                       try {
+                           const chan = execSync(`nmcli -g 802-11-wireless.channel connection show ${uuid}`).toString().trim();
+                           if (chan) {
+                             // nmcli often returns empty for auto, or the number
+                             // We can't easily modify the return object without changing interface, but we can pass it in state
+                             // For now we assume the frontend just needs to know it's AP.
+                             // But the user wants the settings viewed.
+                             // Let's attach extended info.
+                             // Note: 'state' field in return is 'connected' or 'active'
+                           }
+                       } catch(e) {}
                    } else {
                        // Client mode
                        const conInfo = execSync(`nmcli -t -f ACTIVE,SSID device wifi list ifname ${device}`).toString();
@@ -1619,7 +1630,27 @@ function getWifiStatus() {
                 }
              } catch (e) {}
         }
-        return { available: true, interface: device, connected, ssid, state, mode };
+        
+        // Fetch detailed config if AP
+        let apDetails = {};
+        if (mode === 'ap') {
+            try {
+                const activeCon = execSync(`nmcli -t -f UUID connection show --active | head -n 1`).toString().trim().split(':')[0]; // Simplification, might pick wrong one if multiple active? 
+                // Better: rely on device match
+                const uuid = execSync(`nmcli -t -f UUID,DEVICE connection show --active | grep :${device} | cut -d: -f1 | head -n 1`).toString().trim();
+                if (uuid) {
+                    apDetails.ssid = execSync(`nmcli -g 802-11-wireless.ssid connection show ${uuid}`).toString().trim();
+                    apDetails.channel = execSync(`nmcli -g 802-11-wireless.channel connection show ${uuid}`).toString().trim();
+                    const sec = execSync(`nmcli -g wifi-sec.key-mgmt connection show ${uuid}`).toString().trim();
+                    apDetails.security = sec === 'wpa-psk' ? 'WPA2' : 'OPEN';
+                    if (apDetails.security === 'WPA2') {
+                        apDetails.password = execSync(`nmcli -g wifi-sec.psk connection show ${uuid} -s`).toString().trim(); // -s to show secrets
+                    }
+                }
+            } catch(e) {}
+        }
+
+        return { available: true, interface: device, connected, ssid, state, mode, ...apDetails };
     }
 
   } catch (e) {
@@ -1643,6 +1674,24 @@ function getWifiStatus() {
              const conf = fs.readFileSync('/etc/hostapd/hostapd.conf', 'utf8');
              const m = conf.match(/ssid=(.+)/);
              if (m) ssid = m[1];
+             
+             // Extract other details
+             const mChan = conf.match(/channel=(\d+)/);
+             const mPass = conf.match(/wpa_passphrase=(.+)/);
+             const mSec = conf.match(/wpa=(\d)/);
+             
+             return { 
+                available: true, 
+                interface: wifiInterface, 
+                connected, 
+                ssid,
+                state: 'active', 
+                mode,
+                channel: mChan ? mChan[1] : '6',
+                security: (mSec && mSec[1] === '2') ? 'WPA2' : 'OPEN',
+                password: mPass ? mPass[1] : '',
+                error: nmcliWorks ? 'Interface not managed by NetworkManager' : 'NetworkManager not available' 
+             };
            } catch(e) {}
         }
       } catch(e) {}
@@ -1667,7 +1716,7 @@ app.get('/api/wifi/status', (req, res) => {
 
 app.post('/api/wifi/ap/config', (req, res) => {
   if (process.platform !== 'linux') return res.status(400).json({ error: 'Linux only' });
-  const { ssid, password, security, channel } = req.body;
+  const { ssid, password, security, channel, dhcpSource } = req.body;
   
   if (!ssid) return res.status(400).json({ error: 'SSID required' });
 
@@ -1694,9 +1743,14 @@ app.post('/api/wifi/ap/config', (req, res) => {
         } catch(e) {}
 
         // 2. Create new Hotspot connection
+        // Check if user wants Managed Mode (DHCP from System) or Shared (NAT)
+        // dhcpSource can be:
+        // - 'shared': Use NAT/Shared mode (default)
+        // - <interface_name>: Use the IP/Subnet of this interface. 
+        //      If <interface_name> == <wifi_interface>, it means we use the Static IP assigned to Wifi.
+        
         const dhcpConf = systemState.config.dhcp || {};
-        const managedIface = resolveRealInterface(dhcpConf.interfaceName);
-        const isManaged = managedIface === iface && dhcpConf.enabled;
+        const isManaged = (dhcpSource === iface) || (dhcpSource === 'managed' && dhcpConf.interfaceName === iface);
 
         let cmd = `nmcli con add type wifi ifname ${iface} con-name "${conName}" autoconnect yes ssid "${ssid}"`;
         cmd += ` 802-11-wireless.mode ap 802-11-wireless.band bg`;
@@ -1759,8 +1813,7 @@ app.post('/api/wifi/ap/config', (req, res) => {
 
         // 3. Configure Network (Managed vs Standalone)
         const dhcpConf = systemState.config.dhcp || {};
-        const managedIface = resolveRealInterface(dhcpConf.interfaceName);
-        const isManaged = managedIface === iface && dhcpConf.enabled;
+        const isManaged = (dhcpSource === iface) || (dhcpSource === 'managed' && dhcpConf.interfaceName === iface);
 
         if (isManaged) {
              // Managed Mode: Rely on existing IP/DHCP config from Nexus Router OS
