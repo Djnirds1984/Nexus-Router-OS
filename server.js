@@ -2040,10 +2040,24 @@ function applyDhcp(dhcp) {
     const baseE = end.split('.').slice(0,3).join('.');
     if (baseS !== baseE) { log('DHCP VALIDATION: range not in same /24'); return; }
     const gw = `${baseS}.1`;
-    try { execSync(`ip link set ${iface} down`); } catch(e) {}
-    execSync(`ip link set ${iface} up`);
-    execSync(`ip addr flush dev ${iface}`);
-    execSync(`ip addr add ${gw}/24 dev ${iface}`);
+    
+    // Only reset interface IP if it has changed to avoid disconnecting active sessions
+    let currentIp = '';
+    try {
+       const addrShow = execSync(`ip -j addr show ${iface}`).toString();
+       const addrJson = JSON.parse(addrShow);
+       if (addrJson[0] && addrJson[0].addr_info) {
+          const inet = addrJson[0].addr_info.find(a => a.family === 'inet');
+          if (inet) currentIp = inet.local;
+       }
+    } catch(e) {}
+
+    if (currentIp !== gw) {
+        try { execSync(`ip link set ${iface} down`); } catch(e) {}
+        execSync(`ip link set ${iface} up`);
+        execSync(`ip addr flush dev ${iface}`);
+        execSync(`ip addr add ${gw}/24 dev ${iface}`);
+    }
     
     // Ensure Local LAN traffic always uses Main table (Priority 500)
     // This fixes accessing WAN IP from LAN (Policy Routing would otherwise force reply out WAN)
