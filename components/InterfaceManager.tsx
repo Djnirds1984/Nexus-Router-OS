@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { NetworkConfig, RouterMode, WanStatus, WanInterface } from '../types';
 
 interface ExtendedWanInterface extends WanInterface {
@@ -57,6 +57,61 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
   };
 
   const [ifaceConfigs, setIfaceConfigs] = useState<Record<string, { role: 'WAN' | 'NONE'; method: 'DHCP' | 'STATIC' | 'PPPOE'; staticIp?: string; netmask?: string; gateway?: string; pppoeUser?: string; pppoePass?: string }>>({});
+
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [availableInterfaces, setAvailableInterfaces] = useState<string[]>([]);
+  const [newWan, setNewWan] = useState<Partial<WanInterface>>({
+    method: 'DHCP',
+    role: 'WAN',
+    weight: 50,
+    priority: 1
+  });
+
+  useEffect(() => {
+    if (isAddModalOpen) {
+      const used = config.wanInterfaces.map(w => w.interfaceName);
+      const avail = interfaces
+        .filter(i => !used.includes(i.interfaceName))
+        .map(i => i.interfaceName);
+      setAvailableInterfaces(avail);
+    }
+  }, [isAddModalOpen, config.wanInterfaces, interfaces]);
+
+  const handleAddWan = async () => {
+    if (!newWan.interfaceName) return;
+    
+    // Atomic operation: Add via API immediately
+    try {
+        const res = await fetch('/api/wan/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                interfaceName: newWan.interfaceName,
+                method: newWan.method,
+                staticIp: newWan.staticIp,
+                netmask: newWan.netmask,
+                gateway: newWan.gateway,
+                name: newWan.name
+            })
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            // Update local config to reflect change immediately without waiting for full reload
+            setConfig({
+                ...config,
+                wanInterfaces: [...config.wanInterfaces, data.wan]
+            });
+            setIsAddModalOpen(false);
+            setNewWan({ method: 'DHCP', role: 'WAN', weight: 50, priority: 1 });
+        } else {
+            alert('Failed to add WAN interface');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error adding WAN interface');
+    }
+  };
 
   return (
     <div className="space-y-8 pb-32 animate-in fade-in duration-700">
@@ -226,12 +281,94 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
           );
         })}
 
-        <div className="h-full border-2 border-dashed border-slate-800 rounded-[2.5rem] flex flex-col items-center justify-center p-16 text-slate-600 hover:text-blue-400 hover:border-blue-500/40 hover:bg-blue-500/5 transition-all group cursor-not-allowed">
-          <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform">🔒</div>
-          <span className="font-black tracking-tight text-sm uppercase">Expand Topology</span>
-          <span className="text-[10px] opacity-60 mt-2 uppercase font-black tracking-widest">Probing physical slots...</span>
-        </div>
+        <button 
+          onClick={() => setIsAddModalOpen(true)}
+          className="h-full border-2 border-dashed border-slate-800 rounded-[2.5rem] flex flex-col items-center justify-center p-16 text-slate-600 hover:text-blue-400 hover:border-blue-500/40 hover:bg-blue-500/5 transition-all group cursor-pointer"
+        >
+          <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform">+</div>
+          <span className="font-black tracking-tight text-sm uppercase">Add WAN Interface</span>
+          <span className="text-[10px] opacity-60 mt-2 uppercase font-black tracking-widest">Configure new uplink</span>
+        </button>
       </div>
+
+      {/* Add WAN Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-lg w-full shadow-2xl space-y-6">
+            <h3 className="text-2xl font-black text-white tracking-tighter uppercase italic">Add WAN Interface</h3>
+            
+            <div className="space-y-4">
+                <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Physical Interface</label>
+                    <select 
+                        value={newWan.interfaceName || ''} 
+                        onChange={e => setNewWan({...newWan, interfaceName: e.target.value})}
+                        className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500"
+                    >
+                        <option value="">Select Interface...</option>
+                        {availableInterfaces.map(iface => (
+                            <option key={iface} value={iface}>{iface}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Connection Type</label>
+                    <div className="flex gap-2 mt-1">
+                        {['DHCP', 'STATIC'].map(m => (
+                            <button
+                                key={m}
+                                onClick={() => setNewWan({...newWan, method: m as any})}
+                                className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${newWan.method === m ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                            >
+                                {m}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {newWan.method === 'STATIC' && (
+                    <div className="grid grid-cols-1 gap-3 animate-in fade-in slide-in-from-top-2">
+                        <input 
+                            placeholder="IP Address (e.g. 192.168.1.10)" 
+                            value={newWan.staticIp || ''}
+                            onChange={e => setNewWan({...newWan, staticIp: e.target.value})}
+                            className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500"
+                        />
+                        <input 
+                            placeholder="Netmask (e.g. 255.255.255.0)" 
+                            value={newWan.netmask || ''}
+                            onChange={e => setNewWan({...newWan, netmask: e.target.value})}
+                            className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500"
+                        />
+                        <input 
+                            placeholder="Gateway (e.g. 192.168.1.1)" 
+                            value={newWan.gateway || ''}
+                            onChange={e => setNewWan({...newWan, gateway: e.target.value})}
+                            className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500"
+                        />
+                    </div>
+                )}
+            </div>
+
+            <div className="flex gap-4 pt-4">
+                <button 
+                    onClick={() => setIsAddModalOpen(false)}
+                    className="flex-1 py-4 rounded-xl text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-slate-800 transition-all"
+                >
+                    Cancel
+                </button>
+                <button 
+                    onClick={handleAddWan}
+                    disabled={!newWan.interfaceName || (newWan.method === 'STATIC' && (!newWan.staticIp || !newWan.netmask))}
+                    className="flex-1 py-4 rounded-xl text-xs font-black uppercase tracking-widest bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                    Add Interface
+                </button>
+            </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

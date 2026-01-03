@@ -195,6 +195,120 @@ function ensureWanDhcpClients() {
   } catch (e) { log(`ensureWanDhcpClients error: ${e.message}`); }
 }
 
+function netmaskToCidr(netmask) {
+  if (!netmask) return 24;
+  try {
+    return (netmask.split('.').map(Number).map(part => (part >>> 0).toString(2)).join('').match(/1/g) || []).length;
+  } catch (e) { return 24; }
+}
+
+function applyWanInterfaceConfig(wan) {
+  if (process.platform !== 'linux') return;
+  const iface = wan.interfaceName;
+  if (!iface) return;
+
+  try {
+    // Bring interface up
+    try { execSync(`ip link set ${iface} up`); } catch(e) {}
+
+    if (wan.method === 'STATIC') {
+      // Stop DHCP client if running
+      try { execSync(`pkill -f "dhclient.*${iface}"`); } catch(e) {}
+      
+      const cidr = netmaskToCidr(wan.netmask);
+      const addr = `${wan.staticIp}/${cidr}`;
+      
+      // Check current IP to avoid unnecessary flush/reset
+      let currentIp = '';
+      try {
+         const addrShow = execSync(`ip -j addr show ${iface}`).toString();
+         const addrJson = JSON.parse(addrShow);
+         if (addrJson[0] && addrJson[0].addr_info) {
+            const inet = addrJson[0].addr_info.find(a => a.family === 'inet');
+            if (inet) currentIp = `${inet.local}/${inet.prefixlen}`;
+         }
+      } catch(e) {}
+
+      if (currentIp !== addr) {
+          try { execSync(`ip addr flush dev ${iface}`); } catch(e) {}
+          try { execSync(`ip addr add ${addr} dev ${iface}`); } catch(e) {}
+      }
+      
+      // Note: Gateway routing is handled by applyMultiWanKernel or system routing table management
+
+    } else if (wan.method === 'DHCP') {
+      // Ensure dhclient is running if not already
+       try {
+          const pgrep = execSync(`pgrep -f "dhclient.*${iface}"`).toString();
+          if (!pgrep) {
+             exec(`dhclient ${iface}`);
+          }
+       } catch(e) {
+          exec(`dhclient ${iface}`);
+       }
+    }
+  } catch (e) {
+    log(`WAN CONFIG ERROR (${iface}): ${e.message}`);
+  }
+}
+
+function netmaskToCidr(netmask) {
+  if (!netmask) return 24;
+  try {
+    return (netmask.split('.').map(Number).map(part => (part >>> 0).toString(2)).join('').match(/1/g) || []).length;
+  } catch (e) { return 24; }
+}
+
+function applyWanInterfaceConfig(wan) {
+  if (process.platform !== 'linux') return;
+  const iface = wan.interfaceName;
+  if (!iface) return;
+
+  try {
+    // Bring interface up
+    try { execSync(`ip link set ${iface} up`); } catch(e) {}
+
+    if (wan.method === 'STATIC') {
+      // Stop DHCP client if running
+      try { execSync(`pkill -f "dhclient.*${iface}"`); } catch(e) {}
+      
+      const cidr = netmaskToCidr(wan.netmask);
+      const addr = `${wan.staticIp}/${cidr}`;
+      
+      // Check current IP to avoid unnecessary flush/reset
+      let currentIp = '';
+      try {
+         const addrShow = execSync(`ip -j addr show ${iface}`).toString();
+         const addrJson = JSON.parse(addrShow);
+         if (addrJson[0] && addrJson[0].addr_info) {
+            const inet = addrJson[0].addr_info.find(a => a.family === 'inet');
+            if (inet) currentIp = `${inet.local}/${inet.prefixlen}`;
+         }
+      } catch(e) {}
+
+      if (currentIp !== addr) {
+          try { execSync(`ip addr flush dev ${iface}`); } catch(e) {}
+          try { execSync(`ip addr add ${addr} dev ${iface}`); } catch(e) {}
+      }
+      
+      // Note: Gateway routing is handled by applyMultiWanKernel or system routing table management
+
+    } else if (wan.method === 'DHCP') {
+      // Ensure dhclient is running if not already
+       try {
+          const pgrep = execSync(`pgrep -f "dhclient.*${iface}"`).toString();
+          if (!pgrep) {
+             exec(`dhclient ${iface}`);
+          }
+       } catch(e) {
+          exec(`dhclient ${iface}`);
+       }
+    }
+  } catch (e) {
+    log(`WAN CONFIG ERROR (${iface}): ${e.message}`);
+  }
+}
+
 function ensureMasqueradeAllWan() {
   try {
     if (process.platform !== 'linux') return;
@@ -606,7 +720,11 @@ setInterval(async () => {
 
     const newInterfaces = await Promise.all(links.filter(l => l.ifname !== 'lo' && !l.ifname.startsWith('veth') && !l.ifname.startsWith('br')).map(async (link) => {
       const ifaceName = link.ifname;
+      const configWan = systemState.config.wanInterfaces.find(w => w.interfaceName === ifaceName);
       
+      // 0. If Configured as Static, use Configured Gateway
+      let gw = (configWan && configWan.method === 'STATIC') ? configWan.gateway : null;
+
       // 1. Try to find Gateway in Main Routing Table (Standard)
       let gw = routes.find(r => r.dev === ifaceName && r.dst === 'default')?.gateway;
 
@@ -796,7 +914,7 @@ app.get('/api/netdevs', (req, res) => {
     links.forEach(l => { if (l.master) { masterMap[l.master] = masterMap[l.master] || []; masterMap[l.master].push(l.ifname); } });
     const list = [];
     for (const l of links) {
-      if (l.ifname === 'lo' || (l.ifname || '').startsWith('veth')) continue;
+      if (l.ifname === 'lo' || l.ifname.startsWith('veth') || l.ifname.startsWith('docker') || l.ifname.startsWith('cni') || l.ifname.startsWith('flannel')) continue;
       const isBridge = (l.linkinfo && l.linkinfo.info_kind === 'bridge') || (l.ifname || '').startsWith('br');
       let speed = null;
       if (!isBridge) {
@@ -2115,6 +2233,7 @@ app.post('/api/apply', (req, res) => {
     fs.writeFileSync(backupPath, JSON.stringify(systemState.config));
     applyMultiWanKernel();
     ensureBasicConnectivity();
+    (systemState.config.wanInterfaces || []).forEach(applyWanInterfaceConfig);
     applyDhcp(systemState.config.dhcp);
     ensureWanDhcpClients();
     ensureMasqueradeAllWan();
@@ -2143,6 +2262,156 @@ app.post('/api/factory-reset', (req, res) => {
     fs.writeFileSync(backupPath, JSON.stringify(systemState.config, null, 2));
     res.json({ ok: true, rebootRecommended: process.platform === 'linux' });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/wan/add', (req, res) => {
+  try {
+    const { interfaceName, method, staticIp, netmask, gateway, name } = req.body;
+    if (!interfaceName) return res.status(400).json({ error: 'Interface name required' });
+    
+    // Check if already exists
+    if (systemState.config.wanInterfaces.find(w => w.interfaceName === interfaceName)) {
+      return res.status(400).json({ error: 'Interface already configured as WAN' });
+    }
+
+    const newWan = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: name || interfaceName.toUpperCase(),
+      interfaceName,
+      method: method || 'DHCP',
+      staticIp,
+      netmask,
+      gateway,
+      status: 'UP',
+      weight: 50,
+      priority: systemState.config.wanInterfaces.length + 1
+    };
+
+    systemState.config.wanInterfaces.push(newWan);
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    
+    // Apply configuration immediately
+    applyWanInterfaceConfig(newWan);
+    
+    res.json({ success: true, wan: newWan });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/wan/remove', (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: 'ID required' });
+    
+    const wan = systemState.config.wanInterfaces.find(w => w.id === id);
+    if (wan) {
+        // Optional: Reset interface state? 
+        // For now, we just remove it from WAN config.
+    }
+
+    systemState.config.wanInterfaces = systemState.config.wanInterfaces.filter(w => w.id !== id);
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/wan/update', (req, res) => {
+  try {
+    const { id, ...updates } = req.body;
+    if (!id) return res.status(400).json({ error: 'ID required' });
+
+    systemState.config.wanInterfaces = systemState.config.wanInterfaces.map(w => {
+      if (w.id === id) {
+        const updated = { ...w, ...updates };
+        applyWanInterfaceConfig(updated);
+        return updated;
+      }
+      return w;
+    });
+    
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/wan/add', (req, res) => {
+  try {
+    const { interfaceName, method, staticIp, netmask, gateway, name } = req.body;
+    if (!interfaceName) return res.status(400).json({ error: 'Interface name required' });
+    
+    // Check if already exists
+    if (systemState.config.wanInterfaces.find(w => w.interfaceName === interfaceName)) {
+      return res.status(400).json({ error: 'Interface already configured as WAN' });
+    }
+
+    const newWan = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: name || interfaceName.toUpperCase(),
+      interfaceName,
+      method: method || 'DHCP',
+      staticIp,
+      netmask,
+      gateway,
+      status: 'UP',
+      weight: 50,
+      priority: systemState.config.wanInterfaces.length + 1
+    };
+
+    systemState.config.wanInterfaces.push(newWan);
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    
+    // Apply configuration immediately
+    applyWanInterfaceConfig(newWan);
+    
+    res.json({ success: true, wan: newWan });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/wan/remove', (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: 'ID required' });
+    
+    const wan = systemState.config.wanInterfaces.find(w => w.id === id);
+    if (wan) {
+        // Optional: Reset interface state? 
+        // For now, we just remove it from WAN config.
+    }
+
+    systemState.config.wanInterfaces = systemState.config.wanInterfaces.filter(w => w.id !== id);
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/wan/update', (req, res) => {
+  try {
+    const { id, ...updates } = req.body;
+    if (!id) return res.status(400).json({ error: 'ID required' });
+
+    systemState.config.wanInterfaces = systemState.config.wanInterfaces.map(w => {
+      if (w.id === id) {
+        const updated = { ...w, ...updates };
+        applyWanInterfaceConfig(updated);
+        return updated;
+      }
+      return w;
+    });
+    
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.listen(3000, '0.0.0.0', () => {
