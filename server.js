@@ -1488,6 +1488,25 @@ app.delete('/api/dhcp', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/dhcp/config', (req, res) => {
+  try {
+    const dhcp = req.body || {};
+    const prev = systemState.config || {};
+    const lanIface = (dhcp && dhcp.interfaceName) ? resolveRealInterface(dhcp.interfaceName) : '';
+    const filteredWans = (prev.wanInterfaces || []).filter(w => resolveRealInterface(w.interfaceName) !== lanIface);
+    systemState.config = { ...prev, dhcp, wanInterfaces: filteredWans };
+    fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    fs.writeFileSync(backupPath, JSON.stringify(systemState.config));
+    ensureBasicConnectivity();
+    applyDhcp(systemState.config.dhcp);
+    applyMultiWanKernel();
+    ensureWanDhcpClients();
+    ensureMasqueradeAllWan();
+    applyFirewallRules();
+    res.json({ success: true, dhcp: systemState.config.dhcp });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 function getConnectedDevices() {
   if (process.platform !== 'linux') {
     return [
@@ -2214,13 +2233,15 @@ app.post('/api/apply', (req, res) => {
       firewallRules: incoming.firewallRules !== undefined ? incoming.firewallRules : prev.firewallRules,
       interfaceCustomNames: incoming.interfaceCustomNames !== undefined ? incoming.interfaceCustomNames : prev.interfaceCustomNames
     };
-    systemState.config = merged;
+    const lanIface = (merged.dhcp && merged.dhcp.interfaceName) ? resolveRealInterface(merged.dhcp.interfaceName) : '';
+    const filteredWans = (merged.wanInterfaces || []).filter(w => resolveRealInterface(w.interfaceName) !== lanIface);
+    systemState.config = { ...merged, wanInterfaces: filteredWans };
     fs.writeFileSync(configPath, JSON.stringify(systemState.config));
     fs.writeFileSync(backupPath, JSON.stringify(systemState.config));
-    applyMultiWanKernel();
     ensureBasicConnectivity();
-    (systemState.config.wanInterfaces || []).forEach(applyWanInterfaceConfig);
     applyDhcp(systemState.config.dhcp);
+    (systemState.config.wanInterfaces || []).forEach(applyWanInterfaceConfig);
+    applyMultiWanKernel();
     ensureWanDhcpClients();
     ensureMasqueradeAllWan();
     applyFirewallRules();
@@ -2258,6 +2279,11 @@ app.post('/api/wan/add', (req, res) => {
     // Check if already exists
     if (systemState.config.wanInterfaces.find(w => w.interfaceName === interfaceName)) {
       return res.status(400).json({ error: 'Interface already configured as WAN' });
+    }
+
+    const lanIface = (systemState.config.dhcp && systemState.config.dhcp.interfaceName) ? resolveRealInterface(systemState.config.dhcp.interfaceName) : '';
+    if (lanIface && resolveRealInterface(interfaceName) === lanIface) {
+      return res.status(400).json({ error: 'Interface is configured as LAN (DHCP). Choose a different WAN interface' });
     }
 
     const newWan = {

@@ -3633,14 +3633,28 @@ const App = () => {
   const handleApplyConfig = async () => {
     setIsApplying(true);
     try {
-      const res = await fetch(`${API_BASE}/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentConfig)
-      });
-      if (res.ok) {
-        setAppliedConfig({ ...currentConfig });
-        alert("KERNEL SYNC: Configuration tables updated successfully.");
+      if (activeTab === 'dhcp') {
+        const res = await fetch(`${API_BASE}/dhcp/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(currentConfig.dhcp || {})
+        });
+        if (res.ok) {
+          setAppliedConfig(prev => ({ ...prev, dhcp: { ...(currentConfig.dhcp || prev.dhcp) } }));
+          alert("DHCP: Configuration saved and applied.");
+        } else {
+          alert("DHCP: Failed to save configuration.");
+        }
+      } else {
+        const res = await fetch(`${API_BASE}/apply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...currentConfig, dhcp: undefined })
+        });
+        if (res.ok) {
+          setAppliedConfig({ ...currentConfig });
+          alert("KERNEL SYNC: Configuration tables updated successfully.");
+        }
       }
     } catch (e) { alert("AGENT ERROR: Communication lost."); }
     finally { setIsApplying(false); }
