@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { PPPoEServerConfig, PPPoESecret, PPPoEProfile, PPPoEActiveConnection } from './types';
+import InterfaceManager from './components/InterfaceManager';
 // WifiManager imported inline
 
 
@@ -24,6 +25,10 @@ interface WanInterface {
   throughput: { rx: number; tx: number; };
   latency: number;
   internetHealth?: 'HEALTHY' | 'OFFLINE';
+  method?: 'DHCP' | 'STATIC' | 'PPPOE';
+  staticIp?: string;
+  netmask?: string;
+  dnsServers?: string[];
 }
 
 interface BridgeConfig {
@@ -76,6 +81,7 @@ interface NetworkConfig {
   bridges: BridgeConfig[];
   dhcp?: DhcpConfig;
   firewallRules?: FirewallRule[];
+  dnsServers?: string[];
 }
 
 interface WifiNetwork {
@@ -1202,8 +1208,9 @@ const SystemSettings = ({ metrics, theme, setTheme }: { metrics: SystemMetrics, 
 
 /**
  * COMPONENT: INTERFACE MANAGER (MULTI-WAN)
+ * [DEPRECATED: Replaced by imported InterfaceManager from ./components/InterfaceManager.tsx]
  */
-const InterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }: any) => {
+const DeprecatedInterfaceManager = ({ interfaces, config, setConfig, onApply, isApplying }: any) => {
   const updateInterface = (id: string, updates: Partial<WanInterface>) => {
     setConfig((prev: NetworkConfig) => ({
       ...prev,
@@ -2843,7 +2850,8 @@ const App = () => {
     mode: RouterMode.LOAD_BALANCER,
     wanInterfaces: [],
     bridges: [],
-    dhcp: { interfaceName: '', enabled: false, start: '', end: '', leaseTime: '24h' }
+    dhcp: { interfaceName: '', enabled: false, start: '', end: '', leaseTime: '24h' },
+    dnsServers: ['8.8.8.8', '1.1.1.1']
   });
   const [appliedConfig, setAppliedConfig] = useState<NetworkConfig>(currentConfig);
   const [isApplying, setIsApplying] = useState(false);
