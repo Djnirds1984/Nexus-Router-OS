@@ -8,6 +8,7 @@ import UpdateManager from './components/UpdateManager';
 import Terminal from './components/Terminal';
 import DeviceList from './components/DeviceList';
 import WifiManager from './components/WifiManager';
+import PPPoEManager from './components/PPPoEManager';
 import { NetworkConfig, RouterMode, SystemMetrics, TerminalLog, WanInterface } from './types';
 
 const API_BASE = `http://${window.location.hostname || 'localhost'}:3000/api`;
@@ -127,6 +128,8 @@ const App: React.FC = () => {
         );
       case 'devices':
         return <DeviceList />;
+      case 'pppoe':
+        return <PPPoEManager />;
       case 'advisor':
         return <AIAdvisor config={currentConfig} />;
       case 'updates':
