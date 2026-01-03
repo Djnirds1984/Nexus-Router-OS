@@ -2514,7 +2514,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
 };
 
 const PPPoEManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'servers' | 'secrets' | 'active' | 'profiles'>('servers');
+  const [activeTab, setActiveTab] = useState<'servers' | 'secrets' | 'active' | 'profiles' | 'billing'>('servers');
   const [config, setConfig] = useState<{
     servers: PPPoEServerConfig[];
     secrets: PPPoESecret[];
@@ -2524,6 +2524,7 @@ const PPPoEManager: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [newSecret, setNewSecret] = useState<{ username: string; password: string; profile: string; dueDate?: string }>({ username: '', password: '', profile: '' });
+  const [newBilling, setNewBilling] = useState<{ name: string; price: string; profile: string }>({ name: '', price: '', profile: '' });
   const [netdevs, setNetdevs] = useState<Array<{ name: string; customName?: string; type?: string }>>([]);
 
   useEffect(() => {
@@ -2720,6 +2721,12 @@ const PPPoEManager: React.FC = () => {
         >
           Profiles
         </button>
+        <button
+          onClick={() => setActiveTab('billing')}
+          className={`px-6 py-3 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${activeTab === 'billing' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          Billing
+        </button>
       </div>
 
       {activeTab === 'servers' && (
@@ -2784,6 +2791,58 @@ const PPPoEManager: React.FC = () => {
         </div>
       )}
 
+      {activeTab === 'billing' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
+            <input
+              placeholder="Billing Name"
+              value={newBilling.name}
+              onChange={(e) => setNewBilling({ ...newBilling, name: e.target.value })}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+            />
+            <input
+              placeholder="Price"
+              value={newBilling.price}
+              onChange={(e) => setNewBilling({ ...newBilling, price: e.target.value })}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+            />
+            <select
+              value={newBilling.profile}
+              onChange={(e) => setNewBilling({ ...newBilling, profile: e.target.value })}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none appearance-none"
+            >
+              <option value="">Select Profile</option>
+              {config.profiles.map(p => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                if (!newBilling.name || !newBilling.price || !newBilling.profile) return;
+                const priceNum = Number(newBilling.price || 0);
+                const updated = config.profiles.map(p => p.name === newBilling.profile ? { ...p, billingName: newBilling.name, price: priceNum, currency: p.currency || 'USD' } : p);
+                setNewBilling({ name: '', price: '', profile: '' });
+                saveConfig({ ...config, profiles: updated });
+              }}
+              className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest"
+            >
+              Add Billing
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            {config.profiles.filter(p => typeof p.price === 'number').map(p => (
+              <div key={p.id} className="bg-slate-900/40 border border-slate-800 p-6 rounded-3xl">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="text-xs font-black text-slate-400 uppercase tracking-widest">Billing Name</div>
+                  <div className="text-sm font-bold text-slate-200">{p.billingName || '-'}</div>
+                  <div className="text-xs font-black text-slate-400 uppercase tracking-widest">Price</div>
+                  <div className="text-sm font-bold text-emerald-400">{(p.price||0)} {(p.currency||'USD')}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Profiles tab */}
       {activeTab === 'secrets' && (
         <div className="space-y-4">

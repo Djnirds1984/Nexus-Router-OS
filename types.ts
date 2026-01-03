@@ -108,6 +108,7 @@ export interface PPPoEProfile {
   dnsServer: string;
   rateLimit: string; // e.g. "10M/10M"
   onlyOne: boolean; // Only one session per user
+  billingName?: string;
   price?: number;
   currency?: string;
   billingPeriodDays?: number;
