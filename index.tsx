@@ -2832,11 +2832,13 @@ const PPPoEManager: React.FC = () => {
           <div className="grid grid-cols-1 gap-4">
             {config.profiles.filter(p => typeof p.price === 'number').map(p => (
               <div key={p.id} className="bg-slate-900/40 border border-slate-800 p-6 rounded-3xl">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                   <div className="text-xs font-black text-slate-400 uppercase tracking-widest">Billing Name</div>
                   <div className="text-sm font-bold text-slate-200">{p.billingName || '-'}</div>
                   <div className="text-xs font-black text-slate-400 uppercase tracking-widest">Price</div>
                   <div className="text-sm font-bold text-emerald-400">{(p.price||0)} {(p.currency||'USD')}</div>
+                  <div className="text-xs font-black text-slate-400 uppercase tracking-widest">Profile</div>
+                  <div className="text-sm font-bold text-slate-200">{p.name}</div>
                 </div>
               </div>
             ))}
