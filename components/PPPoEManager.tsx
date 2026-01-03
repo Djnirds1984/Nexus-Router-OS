@@ -14,6 +14,8 @@ const PPPoEManager: React.FC = () => {
   const [netdevs, setNetdevs] = useState<Array<{ name: string; customName?: string; type: 'physical' | 'bridge' }>>([]);
   const [netdevsError, setNetdevsError] = useState<string | null>(null);
   const [serverErrors, setServerErrors] = useState<Record<string, { interface?: string; serverIp?: string; serviceName?: string }>>({});
+  // Server IP edit buffer per-server to allow user typing without immediate persistence
+  const [serverIpEdit, setServerIpEdit] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchConfig();
@@ -36,6 +38,13 @@ const PPPoEManager: React.FC = () => {
         secrets: data.secrets || [],
         profiles: data.profiles || []
       });
+      // Initialize server IP edit buffers from matching default profile.localAddress
+      const ipMap: Record<string, string> = {};
+      (data.servers || []).forEach((srv: PPPoEServerConfig) => {
+        const prof = (data.profiles || []).find((p: PPPoEProfile) => p.name === (srv.defaultProfile || ''));
+        ipMap[srv.id] = prof?.localAddress || '';
+      });
+      setServerIpEdit(ipMap);
       setIsLoading(false);
     } catch (e) {
       console.error(e);
@@ -257,16 +266,25 @@ const PPPoEManager: React.FC = () => {
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Server IP</label>
                   <input
-                    value={getProfileByName(srv.defaultProfile || '')?.localAddress || ''}
+                    // Use buffered value and only persist on blur to avoid premature invalid states
+                    value={serverIpEdit[srv.id] ?? ''}
                     onChange={(e) => {
                       const ip = e.target.value;
-                      if (!ip || !isValidIPv4(ip)) {
+                      setServerIpEdit(prev => ({ ...prev, [srv.id]: ip }));
+                      if (ip && !isValidIPv4(ip)) {
                         setServerError(srv.id, 'serverIp')('Invalid IPv4 address');
-                        return;
+                      } else {
+                        setServerError(srv.id, 'serverIp')(undefined);
                       }
-                      setServerError(srv.id, 'serverIp')(undefined);
+                    }}
+                    onBlur={() => {
+                      const ip = (serverIpEdit[srv.id] || '').trim();
+                      // Persist only if empty or valid IPv4; empty clears validation but skips save
+                      if (!ip) { setServerError(srv.id, 'serverIp')(undefined); return; }
+                      if (!isValidIPv4(ip)) { setServerError(srv.id, 'serverIp')('Invalid IPv4 address'); return; }
                       const prof = getProfileByName(srv.defaultProfile || '');
-                      if (prof) {
+                      if (prof && prof.localAddress !== ip) {
+                        // Persist to profiles to maintain backward-compatible storage
                         upsertProfile({ ...prof, localAddress: ip });
                       }
                     }}
@@ -377,49 +395,7 @@ const PPPoEManager: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quick Username</label>
-                    <input
-                      value={(config.secrets.find(s => s.profile === profile.name)?.username) || ''}
-                      onChange={(e) => {
-                        const existing = config.secrets.find(s => s.profile === profile.name);
-                        if (existing) {
-                          const updated = { ...existing, username: e.target.value };
-                          saveConfig({ ...config, secrets: config.secrets.map(s => s.id === existing.id ? updated : s) });
-                        } else {
-                          const newSecret: PPPoESecret = {
-                            id: Math.random().toString(36).slice(2),
-                            username: e.target.value,
-                            password: 'password',
-                            service: 'pppoe',
-                            callerId: 'any',
-                            profile: profile.name,
-                            localAddress: profile.localAddress,
-                            remoteAddress: profile.remoteAddressPool.split('-')[0] || '',
-                            enabled: true
-                          };
-                          saveConfig({ ...config, secrets: [...config.secrets, newSecret] });
-                        }
-                      }}
-                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quick Password</label>
-                    <input
-                      type="password"
-                      value={(config.secrets.find(s => s.profile === profile.name)?.password) || ''}
-                      onChange={(e) => {
-                        const existing = config.secrets.find(s => s.profile === profile.name);
-                        if (existing) {
-                          const updated = { ...existing, password: e.target.value };
-                          saveConfig({ ...config, secrets: config.secrets.map(s => s.id === existing.id ? updated : s) });
-                        }
-                      }}
-                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
-                    />
-                  </div>
+                {/* Credentials are managed in the Secrets tab only; Profiles handles non-credential attributes */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Apply to Server</label>
                     <select
