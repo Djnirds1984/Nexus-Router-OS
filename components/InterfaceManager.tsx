@@ -66,6 +66,21 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
     weight: 50,
     priority: 1
   });
+  const [dnsInput, setDnsInput] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    if (!newWan.interfaceName) newErrors.interfaceName = 'Interface is required';
+    if (newWan.method === 'STATIC') {
+      const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+      if (!newWan.staticIp || !ipRegex.test(newWan.staticIp)) newErrors.staticIp = 'Valid IP required';
+      if (!newWan.netmask || !ipRegex.test(newWan.netmask)) newErrors.netmask = 'Valid Netmask required';
+      if (newWan.gateway && !ipRegex.test(newWan.gateway)) newErrors.gateway = 'Valid Gateway IP required';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   useEffect(() => {
     if (isAddModalOpen) {
@@ -78,8 +93,10 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
   }, [isAddModalOpen, config.wanInterfaces, interfaces]);
 
   const handleAddWan = async () => {
-    if (!newWan.interfaceName) return;
+    if (!validateForm()) return;
     
+    const dnsServers = dnsInput.split(',').map(s => s.trim()).filter(s => s);
+
     // Atomic operation: Add via API immediately
     try {
         const res = await fetch('/api/wan/add', {
@@ -91,6 +108,7 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
                 staticIp: newWan.staticIp,
                 netmask: newWan.netmask,
                 gateway: newWan.gateway,
+                dnsServers,
                 name: newWan.name
             })
         });
@@ -104,6 +122,8 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
             });
             setIsAddModalOpen(false);
             setNewWan({ method: 'DHCP', role: 'WAN', weight: 50, priority: 1 });
+            setDnsInput('');
+            setErrors({});
         } else {
             alert('Failed to add WAN interface');
         }
@@ -329,26 +349,45 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
 
                 {newWan.method === 'STATIC' && (
                     <div className="grid grid-cols-1 gap-3 animate-in fade-in slide-in-from-top-2">
-                        <input 
-                            placeholder="IP Address (e.g. 192.168.1.10)" 
-                            value={newWan.staticIp || ''}
-                            onChange={e => setNewWan({...newWan, staticIp: e.target.value})}
-                            className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500"
-                        />
-                        <input 
-                            placeholder="Netmask (e.g. 255.255.255.0)" 
-                            value={newWan.netmask || ''}
-                            onChange={e => setNewWan({...newWan, netmask: e.target.value})}
-                            className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500"
-                        />
-                        <input 
-                            placeholder="Gateway (e.g. 192.168.1.1)" 
-                            value={newWan.gateway || ''}
-                            onChange={e => setNewWan({...newWan, gateway: e.target.value})}
-                            className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500"
-                        />
+                        <div>
+                            <input 
+                                placeholder="IP Address (e.g. 192.168.1.10)" 
+                                value={newWan.staticIp || ''}
+                                onChange={e => setNewWan({...newWan, staticIp: e.target.value})}
+                                className={`w-full bg-black/40 border ${errors.staticIp ? 'border-rose-500' : 'border-slate-800'} rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500`}
+                            />
+                            {errors.staticIp && <p className="text-[10px] text-rose-500 font-bold mt-1 ml-1">{errors.staticIp}</p>}
+                        </div>
+                        <div>
+                            <input 
+                                placeholder="Netmask (e.g. 255.255.255.0)" 
+                                value={newWan.netmask || ''}
+                                onChange={e => setNewWan({...newWan, netmask: e.target.value})}
+                                className={`w-full bg-black/40 border ${errors.netmask ? 'border-rose-500' : 'border-slate-800'} rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500`}
+                            />
+                            {errors.netmask && <p className="text-[10px] text-rose-500 font-bold mt-1 ml-1">{errors.netmask}</p>}
+                        </div>
+                        <div>
+                            <input 
+                                placeholder="Gateway (e.g. 192.168.1.1)" 
+                                value={newWan.gateway || ''}
+                                onChange={e => setNewWan({...newWan, gateway: e.target.value})}
+                                className={`w-full bg-black/40 border ${errors.gateway ? 'border-rose-500' : 'border-slate-800'} rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500`}
+                            />
+                             {errors.gateway && <p className="text-[10px] text-rose-500 font-bold mt-1 ml-1">{errors.gateway}</p>}
+                        </div>
                     </div>
                 )}
+                
+                <div>
+                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">DNS Servers</label>
+                     <input 
+                        placeholder="8.8.8.8, 1.1.1.1" 
+                        value={dnsInput}
+                        onChange={e => setDnsInput(e.target.value)}
+                        className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-300 outline-none focus:border-blue-500 mt-1"
+                     />
+                </div>
             </div>
 
             <div className="flex gap-4 pt-4">

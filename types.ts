@@ -1,4 +1,3 @@
-
 export enum WanStatus {
   UP = 'UP',
   DOWN = 'DOWN',
@@ -24,6 +23,11 @@ export interface WanInterface {
     tx: number;
   };
   latency: number;
+  method?: 'DHCP' | 'STATIC' | 'PPPOE';
+  staticIp?: string;
+  netmask?: string;
+  dnsServers?: string[];
+  internetHealth?: 'HEALTHY' | 'OFFLINE';
 }
 
 export interface BridgeConfig {

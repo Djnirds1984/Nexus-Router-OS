@@ -612,10 +612,20 @@ function applyMultiWanKernel() {
   if (process.platform !== 'linux') return;
   log(`>>> ORCHESTRATING KERNEL: ${systemState.config.mode}`);
   try {
-    let healthyWans = systemState.interfaces.filter(i => i.internetHealth === 'HEALTHY');
+    const lanIface = (systemState.config.dhcp && systemState.config.dhcp.interfaceName) || '';
+    
+    // Filter healthy WANs, explicitly excluding LAN interface
+    let healthyWans = systemState.interfaces.filter(i => i.internetHealth === 'HEALTHY' && i.interfaceName !== lanIface);
+    
     if (healthyWans.length === 0) {
       log('SMART LB: All WANs offline. Failing back to all available WANs to ensure connectivity.');
-      healthyWans = systemState.interfaces.filter(i => i.status === 'UP' && i.gateway && i.gateway !== 'Detecting...');
+      // Fallback: Use any UP interface with a gateway, but still exclude LAN
+      healthyWans = systemState.interfaces.filter(i => 
+        i.status === 'UP' && 
+        i.gateway && 
+        i.gateway !== 'Detecting...' && 
+        i.interfaceName !== lanIface
+      );
     }
     if (healthyWans.length === 0) return;
 
@@ -2112,10 +2122,14 @@ function applyDhcp(dhcp) {
     } catch(e) {}
 
     if (currentIp !== gw) {
-        try { execSync(`ip link set ${iface} down`); } catch(e) {}
-        execSync(`ip link set ${iface} up`);
-        execSync(`ip addr flush dev ${iface}`);
-        execSync(`ip addr add ${gw}/24 dev ${iface}`);
+        // Update IP without taking interface down to maintain connectivity
+        try {
+            execSync(`ip addr flush dev ${iface}`);
+            execSync(`ip addr add ${gw}/24 dev ${iface}`);
+            execSync(`ip link set ${iface} up`);
+        } catch(e) {
+            log(`DHCP IP UPDATE FAILED: ${e.message}`);
+        }
     }
     
     // Ensure Local LAN traffic always uses Main table (Priority 500)
@@ -2212,7 +2226,7 @@ app.post('/api/factory-reset', (req, res) => {
 
 app.post('/api/wan/add', (req, res) => {
   try {
-    const { interfaceName, method, staticIp, netmask, gateway, name } = req.body;
+    const { interfaceName, method, staticIp, netmask, gateway, dnsServers, name } = req.body;
     if (!interfaceName) return res.status(400).json({ error: 'Interface name required' });
     
     // Check if already exists
@@ -2228,6 +2242,7 @@ app.post('/api/wan/add', (req, res) => {
       staticIp,
       netmask,
       gateway,
+      dnsServers: dnsServers || [],
       status: 'UP',
       weight: 50,
       priority: systemState.config.wanInterfaces.length + 1
