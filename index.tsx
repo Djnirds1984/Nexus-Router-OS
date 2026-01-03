@@ -2514,7 +2514,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
 };
 
 const PPPoEManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'servers' | 'secrets' | 'active'>('servers');
+  const [activeTab, setActiveTab] = useState<'servers' | 'secrets' | 'active' | 'profiles'>('servers');
   const [config, setConfig] = useState<{
     servers: PPPoEServerConfig[];
     secrets: PPPoESecret[];
@@ -2523,6 +2523,7 @@ const PPPoEManager: React.FC = () => {
   const [activeSessions, setActiveSessions] = useState<PPPoEActiveConnection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [newSecret, setNewSecret] = useState<{ username: string; password: string; profile: string; dueDate?: string }>({ username: '', password: '', profile: '' });
 
   useEffect(() => {
     fetchConfig();
@@ -2596,6 +2597,41 @@ const PPPoEManager: React.FC = () => {
     saveConfig({ ...config, servers: config.servers.filter(s => s.id !== id) });
   };
 
+  const isValidIPv4 = (ip: string) => {
+    const parts = ip.trim().split('.');
+    if (parts.length !== 4) return false;
+    return parts.every(p => /^[0-9]+$/.test(p) && Number(p) >= 0 && Number(p) <= 255);
+  };
+
+  const deriveRangeFromCIDR = (cidr: string): { start: string; end: string } | null => {
+    const [base, prefixStr] = cidr.split('/');
+    const prefix = Number(prefixStr);
+    if (!isValidIPv4(base) || isNaN(prefix) || prefix < 0 || prefix > 32) return null;
+    const ipToInt = (ip: string) => ip.split('.').reduce((acc, n) => (acc << 8) + Number(n), 0) >>> 0;
+    const intToIp = (n: number) => [24,16,8,0].map(s => ((n >>> s) & 255)).join('.');
+    const baseInt = ipToInt(base);
+    const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+    const network = baseInt & mask;
+    const hostCount = (1 << (32 - prefix)) - 1;
+    const start = intToIp(network + 1);
+    const end = intToIp(network + hostCount - 1);
+    return { start, end };
+  };
+
+  const normalizePool = (val: string): { ok: boolean; remoteRange?: string } => {
+    const v = (val || '').trim();
+    if (!v) return { ok: true, remoteRange: '' };
+    if (v.includes('/')) {
+      const r = deriveRangeFromCIDR(v);
+      if (!r) return { ok: false };
+      return { ok: true, remoteRange: `${r.start}-${r.end}` };
+    }
+    const parts = v.split('-');
+    if (parts.length === 2 && isValidIPv4(parts[0]) && isValidIPv4(parts[1])) {
+      return { ok: true, remoteRange: `${parts[0]}-${parts[1]}` };
+    }
+    return { ok: false };
+  };
   // Inline PPPoE page keeps minimal helpers; profiles/secrets managed elsewhere
 
   const addSecret = () => {
@@ -2655,6 +2691,12 @@ const PPPoEManager: React.FC = () => {
         >
           Active Sessions
         </button>
+        <button
+          onClick={() => setActiveTab('profiles')}
+          className={`px-6 py-3 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${activeTab === 'profiles' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          Profiles
+        </button>
       </div>
 
       {activeTab === 'servers' && (
@@ -2709,24 +2751,109 @@ const PPPoEManager: React.FC = () => {
         </div>
       )}
 
-      {/* Profiles tab removed in inline page */}
+      {/* Profiles tab */}
       {activeTab === 'secrets' && (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={addSecret} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all">
-              + Add User
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
+            <input
+              placeholder="Username"
+              value={newSecret.username}
+              onChange={(e) => setNewSecret({ ...newSecret, username: e.target.value })}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={newSecret.password}
+              onChange={(e) => setNewSecret({ ...newSecret, password: e.target.value })}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+            />
+            <select
+              value={newSecret.profile}
+              onChange={(e) => {
+                const name = e.target.value;
+                const prof = config.profiles.find(p => p.name === name);
+                const period = prof?.billingPeriodDays || 30;
+                const due = prof?.defaultDueDate || new Date(Date.now() + period * 86400000).toISOString().slice(0,10);
+                setNewSecret({ ...newSecret, profile: name, dueDate: due });
+              }}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none appearance-none"
+            >
+              <option value="">Select Profile</option>
+              {config.profiles.map(p => (
+                <option key={p.id} value={p.name}>{p.name} • {(p.price||0)} {(p.currency||'USD')} • {(p.billingPeriodDays||30)}d</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={newSecret.dueDate || ''}
+              onChange={(e) => setNewSecret({ ...newSecret, dueDate: e.target.value })}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+            />
+            <button
+              onClick={() => {
+                if (!newSecret.username || !newSecret.password || !newSecret.profile) return;
+                const prof = config.profiles.find(p => p.name === newSecret.profile);
+                const period = prof?.billingPeriodDays || 30;
+                const due = newSecret.dueDate || new Date(Date.now() + period * 86400000).toISOString().slice(0,10);
+                const created: PPPoESecret = {
+                  id: Math.random().toString(36).slice(2),
+                  username: newSecret.username,
+                  password: newSecret.password,
+                  service: 'pppoe',
+                  callerId: 'any',
+                  profile: newSecret.profile,
+                  localAddress: prof?.localAddress || '10.0.0.1',
+                  remoteAddress: (prof?.remoteAddressPool?.split('-')[0] || ''),
+                  enabled: true,
+                  dueDate: due,
+                  status: 'ACTIVE'
+                };
+                setNewSecret({ username: '', password: '', profile: '' });
+                saveConfig({ ...config, secrets: [...config.secrets, created] });
+              }}
+              className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest"
+            >
+              Create Secret
             </button>
           </div>
           <div className="grid grid-cols-1 gap-4">
             {config.secrets.map(secret => (
               <div key={secret.id} className="bg-slate-900/40 border border-slate-800 p-6 rounded-3xl backdrop-blur-md hover:border-blue-500/20 transition-all">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Username</label>
                     <input 
                       value={secret.username} 
                       onChange={(e) => updateSecret(secret.id, { username: e.target.value })}
                       className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Profile</label>
+                    <select
+                      value={secret.profile}
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        const prof = config.profiles.find(p => p.name === name);
+                        const period = prof?.billingPeriodDays || 30;
+                        const due = prof?.defaultDueDate || new Date(Date.now() + period * 86400000).toISOString().slice(0,10);
+                        updateSecret(secret.id, { profile: name, dueDate: due });
+                      }}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none appearance-none"
+                    >
+                      {config.profiles.map(p => (
+                        <option key={p.id} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Due Date</label>
+                    <input
+                      type="date"
+                      value={secret.dueDate || ''}
+                      onChange={(e) => updateSecret(secret.id, { dueDate: e.target.value })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
                     />
                   </div>
                   <div className="space-y-2">
@@ -2754,6 +2881,22 @@ const PPPoEManager: React.FC = () => {
                     >
                       {secret.enabled ? 'Active' : 'Disabled'}
                     </button>
+                  </div>
+                  <div className="col-span-1 md:col-span-2 lg:col-span-6">
+                    <div className="text-[10px] font-black uppercase tracking-widest">
+                      {(() => {
+                        const prof = config.profiles.find(p => p.name === secret.profile);
+                        const grace = prof?.gracePeriodDays || 0;
+                        const due = secret.dueDate ? new Date(secret.dueDate).getTime() : 0;
+                        const now = Date.now();
+                        const diffDays = Math.ceil((due - now) / 86400000);
+                        const expired = now > (due + grace * 86400000);
+                        const inGrace = !expired && now > due;
+                        const label = expired ? 'EXPIRED' : inGrace ? 'GRACE' : diffDays <= 3 ? `DUE IN ${diffDays} DAYS` : 'ACTIVE';
+                        const cls = expired ? 'text-rose-400' : inGrace ? 'text-amber-400' : 'text-emerald-400';
+                        return <span className={cls}>{label}</span>;
+                      })()}
+                    </div>
                   </div>
                   <div className="flex items-end justify-end">
                     <button onClick={() => deleteSecret(secret.id)} className="text-rose-500 hover:text-rose-400 font-black text-xs uppercase tracking-widest px-4 py-3">
