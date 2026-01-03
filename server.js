@@ -2202,7 +2202,19 @@ function applyDhcp(dhcp) {
 
 app.post('/api/apply', (req, res) => {
   try {
-    systemState.config = req.body;
+    const incoming = req.body || {};
+    const prev = systemState.config || {};
+    const merged = {
+      ...prev,
+      ...incoming,
+      wanInterfaces: Array.isArray(incoming.wanInterfaces) ? incoming.wanInterfaces : (prev.wanInterfaces || []),
+      dhcp: incoming.dhcp !== undefined ? incoming.dhcp : (prev.dhcp !== undefined ? prev.dhcp : { interfaceName: '', enabled: false, start: '', end: '', leaseTime: '24h' }),
+      pppoe: incoming.pppoe !== undefined ? incoming.pppoe : (prev.pppoe !== undefined ? prev.pppoe : { servers: [], secrets: [], profiles: [] }),
+      bridges: incoming.bridges !== undefined ? incoming.bridges : (prev.bridges || []),
+      firewallRules: incoming.firewallRules !== undefined ? incoming.firewallRules : prev.firewallRules,
+      interfaceCustomNames: incoming.interfaceCustomNames !== undefined ? incoming.interfaceCustomNames : prev.interfaceCustomNames
+    };
+    systemState.config = merged;
     fs.writeFileSync(configPath, JSON.stringify(systemState.config));
     fs.writeFileSync(backupPath, JSON.stringify(systemState.config));
     applyMultiWanKernel();
