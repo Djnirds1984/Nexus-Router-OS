@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { NetworkConfig, RouterMode, WanStatus, WanInterface } from '../types';
+import { NetworkConfig, RouterMode, WanStatus, WanInterface } from '../types.ts';
 
 interface ExtendedWanInterface extends WanInterface {
   internetHealth?: 'HEALTHY' | 'OFFLINE';

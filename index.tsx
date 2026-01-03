@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { PPPoEServerConfig, PPPoESecret, PPPoEProfile, PPPoEActiveConnection } from './types';
-import InterfaceManager from './components/InterfaceManager';
+import InterfaceManager from './components/InterfaceManager.tsx';
 // WifiManager imported inline
 
 

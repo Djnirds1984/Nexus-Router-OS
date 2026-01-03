@@ -841,6 +841,10 @@ try {
   if (fs.existsSync(staticDir)) {
     app.use(express.static(staticDir));
     app.get('/', (req, res) => res.sendFile(path.join(staticDir, 'index.html')));
+  } else {
+    // Dev Fallback: Serve root if dist missing
+    app.use(express.static(__dirname));
+    app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
   }
 } catch (e) { log(`Static serve init failed: ${e.message}`); }
 
