@@ -195,62 +195,7 @@ function ensureWanDhcpClients() {
   } catch (e) { log(`ensureWanDhcpClients error: ${e.message}`); }
 }
 
-function netmaskToCidr(netmask) {
-  if (!netmask) return 24;
-  try {
-    return (netmask.split('.').map(Number).map(part => (part >>> 0).toString(2)).join('').match(/1/g) || []).length;
-  } catch (e) { return 24; }
-}
-
-function applyWanInterfaceConfig(wan) {
-  if (process.platform !== 'linux') return;
-  const iface = wan.interfaceName;
-  if (!iface) return;
-
-  try {
-    // Bring interface up
-    try { execSync(`ip link set ${iface} up`); } catch(e) {}
-
-    if (wan.method === 'STATIC') {
-      // Stop DHCP client if running
-      try { execSync(`pkill -f "dhclient.*${iface}"`); } catch(e) {}
-      
-      const cidr = netmaskToCidr(wan.netmask);
-      const addr = `${wan.staticIp}/${cidr}`;
-      
-      // Check current IP to avoid unnecessary flush/reset
-      let currentIp = '';
-      try {
-         const addrShow = execSync(`ip -j addr show ${iface}`).toString();
-         const addrJson = JSON.parse(addrShow);
-         if (addrJson[0] && addrJson[0].addr_info) {
-            const inet = addrJson[0].addr_info.find(a => a.family === 'inet');
-            if (inet) currentIp = `${inet.local}/${inet.prefixlen}`;
-         }
-      } catch(e) {}
-
-      if (currentIp !== addr) {
-          try { execSync(`ip addr flush dev ${iface}`); } catch(e) {}
-          try { execSync(`ip addr add ${addr} dev ${iface}`); } catch(e) {}
-      }
-      
-      // Note: Gateway routing is handled by applyMultiWanKernel or system routing table management
-
-    } else if (wan.method === 'DHCP') {
-      // Ensure dhclient is running if not already
-       try {
-          const pgrep = execSync(`pgrep -f "dhclient.*${iface}"`).toString();
-          if (!pgrep) {
-             exec(`dhclient ${iface}`);
-          }
-       } catch(e) {
-          exec(`dhclient ${iface}`);
-       }
-    }
-  } catch (e) {
-    log(`WAN CONFIG ERROR (${iface}): ${e.message}`);
-  }
-}
+/* Duplicated functions removed */
 
 function netmaskToCidr(netmask) {
   if (!netmask) return 24;
@@ -309,6 +254,7 @@ function applyWanInterfaceConfig(wan) {
   }
 }
 
+// Ensure Masquerade for ALL WAN interfaces (NAT)
 function ensureMasqueradeAllWan() {
   try {
     if (process.platform !== 'linux') return;
