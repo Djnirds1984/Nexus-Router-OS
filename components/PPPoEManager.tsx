@@ -14,6 +14,7 @@ const PPPoEManager: React.FC = () => {
   const [netdevs, setNetdevs] = useState<Array<{ name: string; customName?: string; type: 'physical' | 'bridge' }>>([]);
   const [netdevsError, setNetdevsError] = useState<string | null>(null);
   const [serverErrors, setServerErrors] = useState<Record<string, { interface?: string; serverIp?: string; serviceName?: string }>>({});
+  const [newSecret, setNewSecret] = useState<{ username: string; password: string; profile: string; dueDate?: string }>({ username: '', password: '', profile: '' });
   // Server IP edit buffer per-server to allow user typing without immediate persistence
   const [serverIpEdit, setServerIpEdit] = useState<Record<string, string>>({});
 
@@ -149,6 +150,36 @@ const PPPoEManager: React.FC = () => {
     const exists = config.profiles.find(p => p.id === profile.id);
     const profiles = exists ? config.profiles.map(p => p.id === profile.id ? profile : p) : [...config.profiles, profile];
     saveConfig({ ...config, profiles });
+  };
+
+  const deriveRangeFromCIDR = (cidr: string): { start: string; end: string } | null => {
+    const [base, prefixStr] = cidr.split('/');
+    const prefix = Number(prefixStr);
+    if (!isValidIPv4(base) || isNaN(prefix) || prefix < 0 || prefix > 32) return null;
+    const ipToInt = (ip: string) => ip.split('.').reduce((acc, n) => (acc << 8) + Number(n), 0) >>> 0;
+    const intToIp = (n: number) => [24,16,8,0].map(s => ((n >>> s) & 255)).join('.');
+    const baseInt = ipToInt(base);
+    const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+    const network = baseInt & mask;
+    const hostCount = (1 << (32 - prefix)) - 1;
+    const start = intToIp(network + 1);
+    const end = intToIp(network + hostCount - 1);
+    return { start, end };
+  };
+
+  const normalizePool = (val: string): { ok: boolean; remoteRange?: string } => {
+    const v = (val || '').trim();
+    if (!v) return { ok: true, remoteRange: '' };
+    if (v.includes('/')) {
+      const r = deriveRangeFromCIDR(v);
+      if (!r) return { ok: false };
+      return { ok: true, remoteRange: `${r.start}-${r.end}` };
+    }
+    const parts = v.split('-');
+    if (parts.length === 2 && isValidIPv4(parts[0]) && isValidIPv4(parts[1])) {
+      return { ok: true, remoteRange: `${parts[0]}-${parts[1]}` };
+    }
+    return { ok: false };
   };
 
   return (
@@ -332,7 +363,13 @@ const PPPoEManager: React.FC = () => {
                   remoteAddressPool: '10.0.0.100-10.0.0.200',
                   dnsServer: '8.8.8.8',
                   rateLimit: '10M/10M',
-                  onlyOne: true
+                  onlyOne: true,
+                  price: 0,
+                  currency: 'USD',
+                  billingPeriodDays: 30,
+                  defaultDueDate: '',
+                  gracePeriodDays: 0,
+                  ipPool: '10.0.0.100-10.0.0.200'
                 };
                 saveConfig({ ...config, profiles: [...config.profiles, newProf] });
               }}
@@ -362,10 +399,15 @@ const PPPoEManager: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Remote Pool</label>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">IP Pool (CIDR or Range)</label>
                     <input
-                      value={profile.remoteAddressPool}
-                      onChange={(e) => upsertProfile({ ...profile, remoteAddressPool: e.target.value })}
+                      value={profile.ipPool || profile.remoteAddressPool}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const norm = normalizePool(val);
+                        if (!norm.ok) return;
+                        upsertProfile({ ...profile, ipPool: val, remoteAddressPool: norm.remoteRange || '' });
+                      }}
                       className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
                     />
                   </div>
@@ -393,6 +435,47 @@ const PPPoEManager: React.FC = () => {
                     >
                       {profile.onlyOne ? 'Enabled' : 'Disabled'}
                     </button>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Price</label>
+                    <input
+                      value={typeof profile.price === 'number' ? String(profile.price) : ''}
+                      onChange={(e) => upsertProfile({ ...profile, price: Number(e.target.value || 0) })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Currency</label>
+                    <input
+                      value={profile.currency || 'USD'}
+                      onChange={(e) => upsertProfile({ ...profile, currency: e.target.value })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Billing Period (days)</label>
+                    <input
+                      value={String(profile.billingPeriodDays || 30)}
+                      onChange={(e) => upsertProfile({ ...profile, billingPeriodDays: Number(e.target.value || 30) })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Default Due Date</label>
+                    <input
+                      type="date"
+                      value={profile.defaultDueDate || ''}
+                      onChange={(e) => upsertProfile({ ...profile, defaultDueDate: e.target.value })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Grace Period (days)</label>
+                    <input
+                      value={String(profile.gracePeriodDays || 0)}
+                      onChange={(e) => upsertProfile({ ...profile, gracePeriodDays: Number(e.target.value || 0) })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
                   </div>
                 </div>
                 {/* Credentials are managed in the Secrets tab only; Profiles handles non-credential attributes */}
@@ -435,15 +518,73 @@ const PPPoEManager: React.FC = () => {
 
       {activeTab === 'secrets' && (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={addSecret} className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all">
-              + Add User
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-900/40 border border-slate-800 p-4 rounded-2xl">
+            <input
+              placeholder="Username"
+              value={newSecret.username}
+              onChange={(e) => setNewSecret({ ...newSecret, username: e.target.value })}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={newSecret.password}
+              onChange={(e) => setNewSecret({ ...newSecret, password: e.target.value })}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+            />
+            <select
+              value={newSecret.profile}
+              onChange={(e) => {
+                const name = e.target.value;
+                const prof = config.profiles.find(p => p.name === name);
+                const period = prof?.billingPeriodDays || 30;
+                const due = prof?.defaultDueDate || new Date(Date.now() + period * 86400000).toISOString().slice(0,10);
+                setNewSecret({ ...newSecret, profile: name, dueDate: due });
+              }}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none appearance-none"
+            >
+              <option value="">Select Profile</option>
+              {config.profiles.map(p => (
+                <option key={p.id} value={p.name}>{p.name} • {(p.price||0)} {(p.currency||'USD')} • {(p.billingPeriodDays||30)}d</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={newSecret.dueDate || ''}
+              onChange={(e) => setNewSecret({ ...newSecret, dueDate: e.target.value })}
+              className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+            />
+            <button
+              onClick={() => {
+                if (!newSecret.username || !newSecret.password || !newSecret.profile) return;
+                const prof = config.profiles.find(p => p.name === newSecret.profile);
+                const period = prof?.billingPeriodDays || 30;
+                const due = newSecret.dueDate || new Date(Date.now() + period * 86400000).toISOString().slice(0,10);
+                const created: PPPoESecret = {
+                  id: Math.random().toString(36).slice(2),
+                  username: newSecret.username,
+                  password: newSecret.password,
+                  service: 'pppoe',
+                  callerId: 'any',
+                  profile: newSecret.profile,
+                  localAddress: prof?.localAddress || '10.0.0.1',
+                  remoteAddress: (prof?.remoteAddressPool?.split('-')[0] || ''),
+                  enabled: true,
+                  dueDate: due,
+                  status: 'ACTIVE'
+                };
+                setNewSecret({ username: '', password: '', profile: '' });
+                saveConfig({ ...config, secrets: [...config.secrets, created] });
+              }}
+              className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest"
+            >
+              Create Secret
             </button>
           </div>
           <div className="grid grid-cols-1 gap-4">
             {config.secrets.map(secret => (
               <div key={secret.id} className="bg-slate-900/40 border border-slate-800 p-6 rounded-3xl backdrop-blur-md hover:border-blue-500/20 transition-all">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Username</label>
                     <input 
@@ -462,6 +603,33 @@ const PPPoEManager: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Profile</label>
+                    <select
+                      value={secret.profile}
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        const prof = config.profiles.find(p => p.name === name);
+                        const period = prof?.billingPeriodDays || 30;
+                        const due = prof?.defaultDueDate || new Date(Date.now() + period * 86400000).toISOString().slice(0,10);
+                        updateSecret(secret.id, { profile: name, dueDate: due });
+                      }}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none appearance-none"
+                    >
+                      {config.profiles.map(p => (
+                        <option key={p.id} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Due Date</label>
+                    <input
+                      type="date"
+                      value={secret.dueDate || ''}
+                      onChange={(e) => updateSecret(secret.id, { dueDate: e.target.value })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Remote Address</label>
                     <input 
                       value={secret.remoteAddress} 
@@ -477,6 +645,22 @@ const PPPoEManager: React.FC = () => {
                     >
                       {secret.enabled ? 'Active' : 'Disabled'}
                     </button>
+                  </div>
+                  <div className="col-span-1 md:col-span-2 lg:col-span-6">
+                    <div className="text-[10px] font-black uppercase tracking-widest">
+                      {(() => {
+                        const prof = config.profiles.find(p => p.name === secret.profile);
+                        const grace = prof?.gracePeriodDays || 0;
+                        const due = secret.dueDate ? new Date(secret.dueDate).getTime() : 0;
+                        const now = Date.now();
+                        const diffDays = Math.ceil((due - now) / 86400000);
+                        const expired = now > (due + grace * 86400000);
+                        const inGrace = !expired && now > due;
+                        const label = expired ? 'EXPIRED' : inGrace ? 'GRACE' : diffDays <= 3 ? `DUE IN ${diffDays} DAYS` : 'ACTIVE';
+                        const cls = expired ? 'text-rose-400' : inGrace ? 'text-amber-400' : 'text-emerald-400';
+                        return <span className={cls}>{label}</span>;
+                      })()}
+                    </div>
                   </div>
                   <div className="flex items-end justify-end">
                     <button onClick={() => deleteSecret(secret.id)} className="text-rose-500 hover:text-rose-400 font-black text-xs uppercase tracking-widest px-4 py-3">

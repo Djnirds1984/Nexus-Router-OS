@@ -96,6 +96,8 @@ export interface PPPoESecret {
   remoteAddress: string;
   comment?: string;
   enabled: boolean;
+  dueDate?: string;
+  status?: 'ACTIVE' | 'GRACE' | 'EXPIRED';
 }
 
 export interface PPPoEProfile {
@@ -106,6 +108,12 @@ export interface PPPoEProfile {
   dnsServer: string;
   rateLimit: string; // e.g. "10M/10M"
   onlyOne: boolean; // Only one session per user
+  price?: number;
+  currency?: string;
+  billingPeriodDays?: number;
+  defaultDueDate?: string;
+  gracePeriodDays?: number;
+  ipPool?: string;
 }
 
 export interface PPPoEActiveConnection {
