@@ -2981,6 +2981,34 @@ const PPPoEManager: React.FC = () => {
                       className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Bandwidth RX</label>
+                    <input
+                      placeholder="e.g. 10M"
+                      value={(profile.rateLimit || '').split('/')[0] || ''}
+                      onChange={(e) => {
+                        const rx = e.target.value;
+                        const tx = (profile.rateLimit || '').split('/')[1] || '';
+                        const next = rx && tx ? `${rx}/${tx}` : rx;
+                        saveConfig({ ...config, profiles: config.profiles.map(p => p.id === profile.id ? { ...p, rateLimit: next } : p) });
+                      }}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Bandwidth TX</label>
+                    <input
+                      placeholder="e.g. 10M"
+                      value={(profile.rateLimit || '').split('/')[1] || ''}
+                      onChange={(e) => {
+                        const tx = e.target.value;
+                        const rx = (profile.rateLimit || '').split('/')[0] || '';
+                        const next = rx && tx ? `${rx}/${tx}` : tx;
+                        saveConfig({ ...config, profiles: config.profiles.map(p => p.id === profile.id ? { ...p, rateLimit: next } : p) });
+                      }}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+                    />
+                  </div>
                 </div>
               </div>
             ))}
