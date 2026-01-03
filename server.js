@@ -1105,6 +1105,12 @@ app.post('/api/pppoe/config', (req, res) => {
     };
     
     try {
+        try {
+            const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+            const dir = path.join(path.dirname(configPath), 'pppoe-backups');
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, `pppoe_${stamp}.json`), JSON.stringify(systemState.config.pppoe, null, 2));
+        } catch {}
         fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2));
         ensurePPPoEPackage();
         applyPPPoESettings();

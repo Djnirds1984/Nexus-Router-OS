@@ -45,5 +45,14 @@ Nexus Router OS centralizes edge networking tasks under a single, secure control
 ## Documentation
 For installation and deployment instructions, see `deployment.md`.
 
+### PPPoE Management Enhancements
+- Interface selection now uses a dynamic dropdown powered by `/api/netdevs`, listing Physical, Bridge, and VLAN interfaces (VLANs detected by `iface.subiface` naming).
+- Server IP field is available in the Servers tab; it maps to the selected server’s default profile localAddress to preserve configuration compatibility.
+- Authentication type (PAP/CHAP/MSCHAPv1/v2) can be selected per server.
+- A Profiles tab provides profile CRUD, rate limits, and IP Pool management. IP Pool accepts CIDR (e.g., `10.0.1.0/24`) or range (`10.0.1.10-10.0.1.200`) and mirrors to `remoteAddressPool` for legacy compatibility.
+- Billing configuration on profiles: price + currency, billing period (days), optional default due date, and grace period (days). Secrets created with a selected profile inherit the due date (default period applied if not set).
+- Secrets creation includes a Profile dropdown. Due date is computed from profile settings and can be overridden. Subscription status badges (ACTIVE/GRACE/EXPIRED) are shown based on due date and grace period.
+- Inputs include inline validation and user feedback; errors do not block other sections.
+
 ## Attribution
 Nexus Router OS is powered by AJCMC and built to provide practical, stable routing control for real‑world networks.
