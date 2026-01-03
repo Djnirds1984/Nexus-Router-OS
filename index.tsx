@@ -2656,6 +2656,17 @@ const PPPoEManager: React.FC = () => {
     }
     return { ok: false };
   };
+  const toLocalDateTimeInputValue = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const y = d.getFullYear();
+    const m = pad(d.getMonth() + 1);
+    const da = pad(d.getDate());
+    const h = pad(d.getHours());
+    const mi = pad(d.getMinutes());
+    return `${y}-${m}-${da}T${h}:${mi}`;
+  };
   // Inline PPPoE page keeps minimal helpers; profiles/secrets managed elsewhere
 
   const addSecret = () => {
@@ -2877,7 +2888,7 @@ const PPPoEManager: React.FC = () => {
             </select>
             <input
               type="datetime-local"
-              value={(newSecret.dueDate ? new Date(newSecret.dueDate).toISOString().slice(0,16) : '')}
+              value={toLocalDateTimeInputValue(newSecret.dueDate)}
               onChange={(e) => {
                 const val = e.target.value;
                 const iso = val ? new Date(val).toISOString() : '';
@@ -2944,11 +2955,21 @@ const PPPoEManager: React.FC = () => {
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Due Date</label>
                     <input
-                      type="date"
-                      value={secret.dueDate || ''}
-                      onChange={(e) => updateSecret(secret.id, { dueDate: e.target.value })}
+                      type="datetime-local"
+                      value={toLocalDateTimeInputValue(secret.dueDate || undefined)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const iso = val ? new Date(val).toISOString() : '';
+                        updateSecret(secret.id, { dueDate: iso || undefined });
+                      }}
                       className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Due (Local)</label>
+                    <div className="w-full bg-black/20 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300">
+                      {secret.dueDate ? new Date(secret.dueDate).toLocaleString() : '-'}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Password</label>
