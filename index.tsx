@@ -2608,6 +2608,18 @@ const PPPoEManager: React.FC = () => {
     saveConfig({ ...config, servers: config.servers.filter(s => s.id !== id) });
   };
 
+  const addProfile = () => {
+    const newProf: PPPoEProfile = {
+      id: Math.random().toString(36).slice(2),
+      name: 'default',
+      localAddress: '10.0.0.1',
+      remoteAddressPool: '10.0.0.100-10.0.0.200',
+      dnsServer: '8.8.8.8',
+      rateLimit: '10M/10M',
+      onlyOne: true
+    };
+    saveConfig({ ...config, profiles: [...config.profiles, newProf] });
+  };
   const isValidIPv4 = (ip: string) => {
     const parts = ip.trim().split('.');
     if (parts.length !== 4) return false;
@@ -2931,6 +2943,50 @@ const PPPoEManager: React.FC = () => {
         </div>
       )}
 
+      {activeTab === 'profiles' && (
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <button
+              onClick={addProfile}
+              className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all"
+            >
+              + Add Profile
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            {config.profiles.map(profile => (
+              <div key={profile.id} className="bg-slate-900/40 border border-slate-800 p-6 rounded-3xl backdrop-blur-md">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Name</label>
+                    <input
+                      value={profile.name}
+                      onChange={(e) => saveConfig({ ...config, profiles: config.profiles.map(p => p.id === profile.id ? { ...p, name: e.target.value } : p) })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Local Address</label>
+                    <input
+                      value={profile.localAddress}
+                      onChange={(e) => saveConfig({ ...config, profiles: config.profiles.map(p => p.id === profile.id ? { ...p, localAddress: e.target.value } : p) })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Remote Pool</label>
+                    <input
+                      value={profile.remoteAddressPool}
+                      onChange={(e) => saveConfig({ ...config, profiles: config.profiles.map(p => p.id === profile.id ? { ...p, remoteAddressPool: e.target.value } : p) })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {activeTab === 'active' && (
         <div className="bg-slate-900/40 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-md">
           <div className="overflow-x-auto">
