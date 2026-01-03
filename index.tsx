@@ -2514,7 +2514,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
 };
 
 const PPPoEManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'servers' | 'secrets' | 'active'>('servers');
+  const [activeTab, setActiveTab] = useState<'servers' | 'secrets' | 'active' | 'profiles'>('servers');
   const [config, setConfig] = useState<{
     servers: PPPoEServerConfig[];
     secrets: PPPoESecret[];
@@ -2523,12 +2523,33 @@ const PPPoEManager: React.FC = () => {
   const [activeSessions, setActiveSessions] = useState<PPPoEActiveConnection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [netdevs, setNetdevs] = useState<Array<{ name: string; customName?: string; type: 'physical' | 'bridge' }>>([]);
+  const [netdevsError, setNetdevsError] = useState<string | null>(null);
+  const [serverErrors, setServerErrors] = useState<Record<string, { interface?: string; serverIp?: string; serviceName?: string }>>({});
 
   useEffect(() => {
     fetchConfig();
     fetchActive();
     const interval = setInterval(fetchActive, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setNetdevsError(null);
+        const res = await fetch('/api/netdevs');
+        const data = await res.json();
+        const list = (data.interfaces || []).map((i: any) => ({
+          name: i.name,
+          customName: i.customName,
+          type: i.type === 'bridge' ? 'bridge' : 'physical'
+        }));
+        setNetdevs(list);
+      } catch {
+        setNetdevsError('Failed to load interfaces');
+      }
+    })();
   }, []);
 
   const fetchConfig = async () => {
@@ -2594,6 +2615,23 @@ const PPPoEManager: React.FC = () => {
     saveConfig({ ...config, servers: config.servers.filter(s => s.id !== id) });
   };
 
+  const isValidIPv4 = (ip: string) => {
+    const parts = ip.trim().split('.');
+    if (parts.length !== 4) return false;
+    return parts.every(p => /^[0-9]+$/.test(p) && Number(p) >= 0 && Number(p) <= 255);
+  };
+
+  const setServerError = (id: string, field: keyof (typeof serverErrors[string])) => (msg?: string) => {
+    setServerErrors(prev => ({ ...prev, [id]: { ...prev[id], [field]: msg || undefined } }));
+  };
+
+  const getProfileByName = (name: string) => config.profiles.find(p => p.name === name);
+  const upsertProfile = (profile: PPPoEProfile) => {
+    const exists = config.profiles.find(p => p.id === profile.id);
+    const profiles = exists ? config.profiles.map(p => p.id === profile.id ? profile : p) : [...config.profiles, profile];
+    saveConfig({ ...config, profiles });
+  };
+
   const addSecret = () => {
     const newSecret: PPPoESecret = {
       id: Math.random().toString(36).slice(2),
@@ -2651,6 +2689,12 @@ const PPPoEManager: React.FC = () => {
         >
           Active Sessions
         </button>
+        <button
+          onClick={() => setActiveTab('profiles')}
+          className={`px-6 py-3 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${activeTab === 'profiles' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          Profiles
+        </button>
       </div>
 
       {activeTab === 'servers' && (
@@ -2665,19 +2709,87 @@ const PPPoEManager: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Interface</label>
-                  <input 
-                    value={srv.interfaceName} 
-                    onChange={(e) => updateServer(srv.id, { interfaceName: e.target.value })}
-                    className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
-                  />
+                  <div className="relative">
+                    <select
+                      value={srv.interfaceName}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) {
+                          setServerError(srv.id, 'interface')('Interface is required');
+                        } else {
+                          setServerError(srv.id, 'interface')(undefined);
+                        }
+                        updateServer(srv.id, { interfaceName: val });
+                      }}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50 appearance-none"
+                    >
+                      <option value="">Select Interface</option>
+                      {netdevs.map(dev => {
+                        const isVlan = dev.name.includes('.');
+                        const label =
+                          `${dev.customName || dev.name}` +
+                          `  • ${isVlan ? 'VLAN' : (dev.type === 'bridge' ? 'Bridge' : 'Physical')}` +
+                          (dev.customName ? `  (${dev.name})` : '');
+                        return <option key={dev.name} value={dev.name}>{label}</option>;
+                      })}
+                      {netdevsError && <option value={srv.interfaceName}>{srv.interfaceName}</option>}
+                    </select>
+                    {serverErrors[srv.id]?.interface && (
+                      <div className="mt-1 text-rose-400 text-[10px] font-black uppercase tracking-widest">{serverErrors[srv.id]?.interface}</div>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Service Name</label>
                   <input 
                     value={srv.serviceName} 
-                    onChange={(e) => updateServer(srv.id, { serviceName: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val.trim()) setServerError(srv.id, 'serviceName')('Service Name is required');
+                      else setServerError(srv.id, 'serviceName')(undefined);
+                      updateServer(srv.id, { serviceName: val });
+                    }}
                     className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
                   />
+                  {serverErrors[srv.id]?.serviceName && (
+                    <div className="mt-1 text-rose-400 text-[10px] font-black uppercase tracking-widest">{serverErrors[srv.id]?.serviceName}</div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Authentication</label>
+                  <select
+                    value={srv.authentication}
+                    onChange={(e) => updateServer(srv.id, { authentication: e.target.value as PPPoEServerConfig['authentication'] })}
+                    className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50 appearance-none"
+                  >
+                    <option value="pap">PAP</option>
+                    <option value="chap">CHAP</option>
+                    <option value="mschap1">MSCHAPv1</option>
+                    <option value="mschap2">MSCHAPv2</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Server IP</label>
+                  <input
+                    value={getProfileByName(srv.defaultProfile || '')?.localAddress || ''}
+                    onChange={(e) => {
+                      const ip = e.target.value;
+                      if (!ip || !isValidIPv4(ip)) {
+                        setServerError(srv.id, 'serverIp')('Invalid IPv4 address');
+                        return;
+                      }
+                      setServerError(srv.id, 'serverIp')(undefined);
+                      const prof = getProfileByName(srv.defaultProfile || '');
+                      if (prof) {
+                        upsertProfile({ ...prof, localAddress: ip });
+                      }
+                    }}
+                    placeholder="e.g. 10.0.0.1"
+                    className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                  />
+                  {serverErrors[srv.id]?.serverIp && (
+                    <div className="mt-1 text-rose-400 text-[10px] font-black uppercase tracking-widest">{serverErrors[srv.id]?.serverIp}</div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Status</label>
@@ -2704,6 +2816,160 @@ const PPPoEManager: React.FC = () => {
         </div>
       )}
 
+      {activeTab === 'profiles' && (
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <button
+              onClick={() => {
+                const newProf: PPPoEProfile = {
+                  id: Math.random().toString(36).slice(2),
+                  name: 'default',
+                  localAddress: '10.0.0.1',
+                  remoteAddressPool: '10.0.0.100-10.0.0.200',
+                  dnsServer: '8.8.8.8',
+                  rateLimit: '10M/10M',
+                  onlyOne: true
+                };
+                saveConfig({ ...config, profiles: [...config.profiles, newProf] });
+              }}
+              className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all"
+            >
+              + Add Profile
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            {config.profiles.map(profile => (
+              <div key={profile.id} className="bg-slate-900/40 border border-slate-800 p-6 rounded-3xl backdrop-blur-md">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Name</label>
+                    <input
+                      value={profile.name}
+                      onChange={(e) => upsertProfile({ ...profile, name: e.target.value })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Local Address</label>
+                    <input
+                      value={profile.localAddress}
+                      onChange={(e) => upsertProfile({ ...profile, localAddress: e.target.value })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Remote Pool</label>
+                    <input
+                      value={profile.remoteAddressPool}
+                      onChange={(e) => upsertProfile({ ...profile, remoteAddressPool: e.target.value })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">DNS Server</label>
+                    <input
+                      value={profile.dnsServer}
+                      onChange={(e) => upsertProfile({ ...profile, dnsServer: e.target.value })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Rate Limit</label>
+                    <input
+                      value={profile.rateLimit}
+                      onChange={(e) => upsertProfile({ ...profile, rateLimit: e.target.value })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Only One Session</label>
+                    <button
+                      onClick={() => upsertProfile({ ...profile, onlyOne: !profile.onlyOne })}
+                      className={`w-full py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all border ${profile.onlyOne ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800/50 text-slate-500 border-slate-700'}`}
+                    >
+                      {profile.onlyOne ? 'Enabled' : 'Disabled'}
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quick Username</label>
+                    <input
+                      value={(config.secrets.find(s => s.profile === profile.name)?.username) || ''}
+                      onChange={(e) => {
+                        const existing = config.secrets.find(s => s.profile === profile.name);
+                        if (existing) {
+                          const updated = { ...existing, username: e.target.value };
+                          saveConfig({ ...config, secrets: config.secrets.map(s => s.id === existing.id ? updated : s) });
+                        } else {
+                          const newSecret: PPPoESecret = {
+                            id: Math.random().toString(36).slice(2),
+                            username: e.target.value,
+                            password: 'password',
+                            service: 'pppoe',
+                            callerId: 'any',
+                            profile: profile.name,
+                            localAddress: profile.localAddress,
+                            remoteAddress: profile.remoteAddressPool.split('-')[0] || '',
+                            enabled: true
+                          };
+                          saveConfig({ ...config, secrets: [...config.secrets, newSecret] });
+                        }
+                      }}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Quick Password</label>
+                    <input
+                      type="password"
+                      value={(config.secrets.find(s => s.profile === profile.name)?.password) || ''}
+                      onChange={(e) => {
+                        const existing = config.secrets.find(s => s.profile === profile.name);
+                        if (existing) {
+                          const updated = { ...existing, password: e.target.value };
+                          saveConfig({ ...config, secrets: config.secrets.map(s => s.id === existing.id ? updated : s) });
+                        }
+                      }}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Apply to Server</label>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const serverId = e.target.value;
+                        const srv = config.servers.find(s => s.id === serverId);
+                        if (srv) updateServer(srv.id, { defaultProfile: profile.name });
+                      }}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50 appearance-none"
+                    >
+                      <option value="">Select Server</option>
+                      {config.servers.map(s => (
+                        <option key={s.id} value={s.id}>{s.serviceName} • {s.interfaceName}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={() => saveConfig({ ...config, profiles: config.profiles.filter(p => p.id !== profile.id) })}
+                    className="text-rose-500 hover:text-rose-400 font-black text-xs uppercase tracking-widest px-4 py-3"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+            {config.profiles.length === 0 && (
+              <div className="text-center py-12 text-slate-600 font-bold uppercase tracking-widest text-xs">
+                No Profiles Configured
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {activeTab === 'secrets' && (
         <div className="space-y-4">
           <div className="flex justify-end">
