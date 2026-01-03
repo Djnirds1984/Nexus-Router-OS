@@ -683,7 +683,7 @@ setInterval(async () => {
       let gw = (configWan && configWan.method === 'STATIC') ? configWan.gateway : null;
 
       // 1. Try to find Gateway in Main Routing Table (Standard)
-      let gw = routes.find(r => r.dev === ifaceName && r.dst === 'default')?.gateway;
+      if (!gw) gw = routes.find(r => r.dev === ifaceName && r.dst === 'default')?.gateway;
 
       // 2. Try to find Gateway in Main Routing Table (Multipath/LoadBalancer)
       if (!gw) {
