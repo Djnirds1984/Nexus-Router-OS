@@ -27,6 +27,8 @@ function logInstall(msg) {
 
 try { fs.mkdirSync('/etc/nexus', { recursive: true }); fs.mkdirSync(stateDir, { recursive: true }); } catch (e) {}
 
+const crashLog = process.platform === 'linux' ? '/tmp/nexus-crash.log' : 'crash.log';
+
 function log(msg) {
   const entry = `[${new Date().toISOString()}] ${msg}\n`;
   console.log(msg);
@@ -35,22 +37,17 @@ function log(msg) {
 
 // Global Error Handlers to prevent crash
 process.on('uncaughtException', (err) => {
-  log(`CRITICAL ERROR: ${err.message}\n${err.stack}`);
-  // Try to keep running, but if it's bad, systemd will restart
+  const msg = `CRITICAL ERROR: ${err.message}\n${err.stack}\n`;
+  console.error(msg);
+  try { fs.appendFileSync(crashLog, msg); } catch(e) {}
+  try { fs.appendFileSync(logFile, msg); } catch(e) {}
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  log(`UNHANDLED REJECTION: ${reason}`);
-});
-
-// Global Error Handlers to prevent crash
-process.on('uncaughtException', (err) => {
-  log(`CRITICAL ERROR: ${err.message}\n${err.stack}`);
-  // Try to keep running, but if it's bad, systemd will restart
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  log(`UNHANDLED REJECTION: ${reason}`);
+  const msg = `UNHANDLED REJECTION: ${reason}\n`;
+  console.error(msg);
+  try { fs.appendFileSync(crashLog, msg); } catch(e) {}
+  try { fs.appendFileSync(logFile, msg); } catch(e) {}
 });
 
 let systemState = {
@@ -422,15 +419,19 @@ function ensureBasicConnectivity() {
 }
 
 // Initial DHCP/NAT setup on boot
-try {
-  ensureWanDhcpClients();
-  ensureMasqueradeAllWan();
-  ensureDhcpServerApplied();
-  applyFirewallRules();
-  ensureBasicConnectivity(); // Run last to ensure Admin Access is top priority
-} catch (e) {
-  log(`Startup Error: ${e.message}`);
-}
+// Move startup tasks to next tick to allow server to listen immediately
+setTimeout(() => {
+  try {
+    ensureWanDhcpClients();
+    ensureMasqueradeAllWan();
+    ensureDhcpServerApplied();
+    applyFirewallRules();
+    ensureBasicConnectivity(); // Run last to ensure Admin Access is top priority
+    log('Network stack initialized');
+  } catch (e) {
+    log(`Startup Error: ${e.message}`);
+  }
+}, 1000);
 
 
 
@@ -846,6 +847,7 @@ try {
 app.get('/api/interfaces', (req, res) => res.json(systemState.interfaces));
 app.get('/api/metrics', (req, res) => res.json(systemState.metrics));
 app.get('/api/config', (req, res) => res.json(systemState.config));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 app.get('/api/system/platform', (req, res) => res.json({ platform: process.platform }));
 
 app.get('/api/netdevs', (req, res) => {
@@ -2126,9 +2128,11 @@ function applyDhcp(dhcp) {
         try {
             execSync(`ip addr flush dev ${iface}`);
             execSync(`ip addr add ${gw}/24 dev ${iface}`);
-            execSync(`ip link set ${iface} up`);
         } catch(e) {
             log(`DHCP IP UPDATE FAILED: ${e.message}`);
+        } finally {
+            // ALWAYS ensure interface is UP, even if IP update failed
+            try { execSync(`ip link set ${iface} up`); } catch(e) {}
         }
     }
     
@@ -2260,6 +2264,41 @@ app.post('/api/wan/add', (req, res) => {
   }
 });
 
+function cleanupWanInterface(wan) {
+  if (process.platform !== 'linux') return;
+  const iface = wan.interfaceName;
+  if (!iface) return;
+
+  log(`Cleaning up WAN interface: ${iface}`);
+
+  try {
+    // 1. Stop DHCP Client
+    try { execSync(`pkill -f "dhclient.*${iface}" || true`); } catch(e) {}
+    try { execSync(`pkill -f "udhcpc.*${iface}" || true`); } catch(e) {}
+    try { execSync(`pkill -f "dhcpcd.*${iface}" || true`); } catch(e) {}
+    try { if (fs.existsSync(`/var/run/dhclient-${iface}.pid`)) fs.unlinkSync(`/var/run/dhclient-${iface}.pid`); } catch(e) {}
+    try { if (fs.existsSync(`/var/lib/nexus/dhclient-${iface}.lease`)) fs.unlinkSync(`/var/lib/nexus/dhclient-${iface}.lease`); } catch(e) {}
+    if (dhcpSessions[iface]) delete dhcpSessions[iface];
+
+    // 2. Remove Routing Rules
+    const id = (iface.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 100) + 100;
+    try {
+       const rules = execSync('ip rule show').toString().split('\n');
+       rules.forEach(r => {
+         if (r.includes(`lookup ${id}`)) {
+            const match = r.match(/from\s+([0-9./]+)/);
+            if (match) execSync(`ip rule del from ${match[1]} table ${id}`);
+         }
+       });
+    } catch(e) {}
+
+    // 3. Remove Masquerade
+    try { execSync(`iptables -t nat -D POSTROUTING -o ${iface} -j MASQUERADE || true`); } catch(e) {}
+  } catch (e) {
+    log(`Cleanup error for ${iface}: ${e.message}`);
+  }
+}
+
 app.post('/api/wan/remove', (req, res) => {
   try {
     const { id } = req.body;
@@ -2267,12 +2306,15 @@ app.post('/api/wan/remove', (req, res) => {
     
     const wan = systemState.config.wanInterfaces.find(w => w.id === id);
     if (wan) {
-        // Optional: Reset interface state? 
-        // For now, we just remove it from WAN config.
+        cleanupWanInterface(wan);
     }
 
     systemState.config.wanInterfaces = systemState.config.wanInterfaces.filter(w => w.id !== id);
     fs.writeFileSync(configPath, JSON.stringify(systemState.config));
+    
+    // Re-apply kernel routing to remove dead hops immediately
+    applyMultiWanKernel();
+    
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

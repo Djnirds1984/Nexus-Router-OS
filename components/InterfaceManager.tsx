@@ -133,6 +133,28 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
     }
   };
 
+  const handleRemoveWan = async (id: string) => {
+    if (!confirm('Are you sure you want to remove this WAN interface?')) return;
+    try {
+      const res = await fetch('/api/wan/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      if (res.ok) {
+        setConfig({
+            ...config,
+            wanInterfaces: config.wanInterfaces.filter(w => w.id !== id)
+        });
+      } else {
+        alert('Failed to remove interface');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error removing interface');
+    }
+  };
+
   return (
     <div className="space-y-8 pb-32 animate-in fade-in duration-700">
       <header className="flex justify-between items-start">
@@ -209,10 +231,18 @@ const InterfaceManager: React.FC<InterfaceManagerProps> = ({
                     </span>
                   </div>
                 </div>
-                <div className="text-right">
-                    <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Latency</div>
-                    <div className={`text-2xl font-mono font-bold tracking-tighter ${isHealthy ? 'text-emerald-400' : 'text-rose-500 opacity-20'}`}>
-                        {isHealthy ? `${wan.latency || 0} ms` : '---'}
+                <div className="text-right flex flex-col items-end gap-2">
+                    <button 
+                      onClick={() => handleRemoveWan(wan.id)}
+                      className="text-[10px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-400 border border-rose-500/20 hover:bg-rose-500/10 px-2 py-1 rounded transition-all"
+                    >
+                      Remove
+                    </button>
+                    <div>
+                        <div className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">Latency</div>
+                        <div className={`text-2xl font-mono font-bold tracking-tighter ${isHealthy ? 'text-emerald-400' : 'text-rose-500 opacity-20'}`}>
+                            {isHealthy ? `${wan.latency || 0} ms` : '---'}
+                        </div>
                     </div>
                 </div>
               </div>
