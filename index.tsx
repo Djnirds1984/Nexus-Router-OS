@@ -2524,6 +2524,7 @@ const PPPoEManager: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [newSecret, setNewSecret] = useState<{ username: string; password: string; profile: string; dueDate?: string }>({ username: '', password: '', profile: '' });
+  const [netdevs, setNetdevs] = useState<Array<{ name: string; customName?: string; type?: string }>>([]);
 
   useEffect(() => {
     fetchConfig();
@@ -2533,6 +2534,16 @@ const PPPoEManager: React.FC = () => {
   }, []);
 
   // No additional polling beyond active sessions
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/netdevs');
+        const data = await res.json();
+        const list = (data.interfaces || []).map((i: any) => ({ name: i.name, customName: i.customName, type: i.type }));
+        setNetdevs(list);
+      } catch {}
+    })();
+  }, []);
 
   const fetchConfig = async () => {
     try {
@@ -2711,11 +2722,21 @@ const PPPoEManager: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Interface</label>
-                  <input 
-                    value={srv.interfaceName} 
-                    onChange={(e) => updateServer(srv.id, { interfaceName: e.target.value })}
-                    className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50"
-                  />
+                  <div className="relative">
+                    <select
+                      value={srv.interfaceName}
+                      onChange={(e) => updateServer(srv.id, { interfaceName: e.target.value })}
+                      className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:border-blue-500/50 appearance-none"
+                    >
+                      <option value="">Select Interface</option>
+                      {netdevs.map(dev => {
+                        const isVlan = dev.name.includes('.');
+                        const label = `${dev.customName || dev.name} • ${isVlan ? 'VLAN' : (dev.type === 'bridge' ? 'Bridge' : 'Physical')}`;
+                        return <option key={dev.name} value={dev.name}>{label}</option>;
+                      })}
+                      {!netdevs.length && srv.interfaceName && <option value={srv.interfaceName}>{srv.interfaceName}</option>}
+                    </select>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Service Name</label>
