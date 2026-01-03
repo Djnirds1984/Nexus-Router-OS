@@ -2866,30 +2866,30 @@ const PPPoEManager: React.FC = () => {
               value={newSecret.profile}
               onChange={(e) => {
                 const name = e.target.value;
-                const prof = config.profiles.find(p => p.name === name);
-                const period = prof?.billingPeriodDays || 30;
-                const due = prof?.defaultDueDate || new Date(Date.now() + period * 86400000).toISOString().slice(0,10);
-                setNewSecret({ ...newSecret, profile: name, dueDate: due });
+                setNewSecret({ ...newSecret, profile: name });
               }}
               className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none appearance-none"
             >
-              <option value="">Select Profile</option>
-              {config.profiles.map(p => (
-                <option key={p.id} value={p.name}>{p.name} • {(p.price||0)} {(p.currency||'USD')} • {(p.billingPeriodDays||30)}d</option>
+              <option value="">Select Billing</option>
+              {config.profiles.filter(p => p.billingName).map(p => (
+                <option key={p.id} value={p.name}>{p.billingName} • {(p.price||0)} {(p.currency||'USD')} • {p.name}</option>
               ))}
             </select>
             <input
-              type="date"
-              value={newSecret.dueDate || ''}
-              onChange={(e) => setNewSecret({ ...newSecret, dueDate: e.target.value })}
+              type="datetime-local"
+              value={(newSecret.dueDate ? new Date(newSecret.dueDate).toISOString().slice(0,16) : '')}
+              onChange={(e) => {
+                const val = e.target.value;
+                const iso = val ? new Date(val).toISOString() : '';
+                setNewSecret({ ...newSecret, dueDate: iso || undefined });
+              }}
               className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none"
             />
             <button
               onClick={() => {
-                if (!newSecret.username || !newSecret.password || !newSecret.profile) return;
+                if (!newSecret.username || !newSecret.password || !newSecret.profile || !newSecret.dueDate) return;
                 const prof = config.profiles.find(p => p.name === newSecret.profile);
-                const period = prof?.billingPeriodDays || 30;
-                const due = newSecret.dueDate || new Date(Date.now() + period * 86400000).toISOString().slice(0,10);
+                const due = newSecret.dueDate;
                 const created: PPPoESecret = {
                   id: Math.random().toString(36).slice(2),
                   username: newSecret.username,
