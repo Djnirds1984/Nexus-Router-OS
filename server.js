@@ -960,7 +960,9 @@ function ensurePPPoEPackage() {
         if (process.platform !== 'linux') return;
         try { execSync('command -v pppoe-server'); } catch(e) {
              log('Installing PPPoE package...');
-             execSync('apt-get update && apt-get install -y pppoe'); 
+             try { execSync('apt-get update'); } catch (_) {}
+             try { execSync('apt-get install -y pppoe'); } catch (_) { try { execSync('apt-get install -y rp-pppoe'); } catch (_) {} }
+             try { execSync('apt-get install -y ppp'); } catch (_) {}
         }
     } catch (e) {
         log('Failed to install pppoe package: ' + e.message);
@@ -985,6 +987,28 @@ function applyPPPoESettings() {
         fs.writeFileSync('/etc/ppp/pap-secrets', secretsContent);
     } catch (e) { log('Error writing secrets: ' + e.message); }
     
+    try {
+        const firstEnabled = (pppoe.servers || []).find(s => s.enabled);
+        const prof = firstEnabled ? pppoe.profiles.find(p => p.name === firstEnabled.defaultProfile) : null;
+        const dns = (prof && prof.dnsServer) ? prof.dnsServer : '8.8.8.8';
+        const opts = [];
+        opts.push('auth');
+        opts.push(`ms-dns ${dns}`);
+        opts.push('lcp-echo-interval 30');
+        opts.push('lcp-echo-failure 4');
+        opts.push('mtu 1492');
+        opts.push('mru 1492');
+        opts.push('proxyarp');
+        if (firstEnabled) {
+            const mode = firstEnabled.authentication || 'chap';
+            if (mode === 'pap') { opts.push('refuse-chap'); opts.push('refuse-mschap'); opts.push('refuse-mschap-v2'); }
+            else if (mode === 'chap') { opts.push('refuse-pap'); }
+            else if (mode === 'mschap1') { opts.push('require-mschap'); }
+            else if (mode === 'mschap2') { opts.push('require-mschap-v2'); }
+        }
+        try { fs.writeFileSync('/etc/ppp/pppoe-server-options', opts.join('\n') + '\n'); } catch (e2) {}
+    } catch (e) {}
+    
     // 2. Servers
     // Kill existing servers managed by Nexus (simple approach: kill all pppoe-server instances and restart enabled ones)
     try { execSync('killall pppoe-server || true'); } catch(e) {}
@@ -1004,7 +1028,7 @@ function applyPPPoESettings() {
             
             // Basic command: pppoe-server -I eth1 -L 10.0.0.1 -R 10.0.0.2 -N 100
             // -C is Service Name
-            const cmd = `pppoe-server -I ${srv.interfaceName} -L ${localIp} -R ${remoteStart} -N 100 -C ${srv.serviceName || 'Nexus'}`;
+            const cmd = `pppoe-server -I ${srv.interfaceName} -L ${localIp} -R ${remoteStart} -N 100 -C ${srv.serviceName || 'Nexus'} -O /etc/ppp/pppoe-server-options`;
             try {
                 execSync(cmd);
                 log(`Started PPPoE Server on ${srv.interfaceName}`);
