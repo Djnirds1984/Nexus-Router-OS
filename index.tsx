@@ -3399,6 +3399,7 @@ const PPPoEManager: React.FC = () => {
   const [newSecret, setNewSecret] = useState<{ username: string; password: string; profile: string; dueDate?: string }>({ username: '', password: '', profile: '' });
   const [newBilling, setNewBilling] = useState<{ name: string; price: string; profile: string }>({ name: '', price: '', profile: '' });
   const [netdevs, setNetdevs] = useState<Array<{ name: string; customName?: string; type?: string }>>([]);
+  const [systemCurrency, setSystemCurrency] = useState<string>('USD');
 
   useEffect(() => {
     fetchConfig();
@@ -3415,6 +3416,12 @@ const PPPoEManager: React.FC = () => {
         const data = await res.json();
         const list = (data.interfaces || []).map((i: any) => ({ name: i.name, customName: i.customName, type: i.type }));
         setNetdevs(list);
+      } catch {}
+      try {
+        const r = await fetch('/api/config');
+        const cfg = await r.json();
+        const code = cfg?.billing?.currency?.code || 'USD';
+        setSystemCurrency(code);
       } catch {}
     })();
   }, []);
@@ -3704,7 +3711,7 @@ const PPPoEManager: React.FC = () => {
               onClick={() => {
                 if (!newBilling.name || !newBilling.price || !newBilling.profile) return;
                 const priceNum = Number(newBilling.price || 0);
-                const updated = config.profiles.map(p => p.name === newBilling.profile ? { ...p, billingName: newBilling.name, price: priceNum, currency: p.currency || 'USD' } : p);
+                const updated = config.profiles.map(p => p.name === newBilling.profile ? { ...p, billingName: newBilling.name, price: priceNum, currency: systemCurrency } : p);
                 setNewBilling({ name: '', price: '', profile: '' });
                 saveConfig({ ...config, profiles: updated });
               }}
@@ -3719,8 +3726,8 @@ const PPPoEManager: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                   <div className="text-xs font-black text-slate-400 uppercase tracking-widest">Billing Name</div>
                   <div className="text-sm font-bold text-slate-200">{p.billingName || '-'}</div>
-                  <div className="text-xs font-black text-slate-400 uppercase tracking-widest">Price</div>
-                  <div className="text-sm font-bold text-emerald-400">{(p.price||0)} {(p.currency||'USD')}</div>
+                <div className="text-xs font-black text-slate-400 uppercase tracking-widest">Price</div>
+                  <div className="text-sm font-bold text-emerald-400">{(p.price||0)} {systemCurrency}</div>
                   <div className="text-xs font-black text-slate-400 uppercase tracking-widest">Profile</div>
                   <div className="text-sm font-bold text-slate-200">{p.name}</div>
                 </div>
@@ -3756,7 +3763,7 @@ const PPPoEManager: React.FC = () => {
             >
               <option value="">Select Billing</option>
               {config.profiles.filter(p => p.billingName).map(p => (
-                <option key={p.id} value={p.name}>{p.billingName} • {(p.price||0)} {(p.currency||'USD')} • {p.name}</option>
+                <option key={p.id} value={p.name}>{p.billingName} • {(p.price||0)} {systemCurrency} • {p.name}</option>
               ))}
             </select>
             <input
