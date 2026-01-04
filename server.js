@@ -978,7 +978,14 @@ function applyPPPoESettings() {
     let secretsContent = '# Nexus Generated Secrets\n';
     pppoe.secrets.forEach(s => {
         if (s.enabled) {
-            secretsContent += `"${s.username}" * "${s.password}" ${s.remoteAddress || '*'} \n`;
+            let ip = (s.remoteAddress || '').trim();
+            const isV4 = (v) => /^\d{1,3}(\.\d{1,3}){3}$/.test(v);
+            if (!isV4(ip)) {
+                const prof = pppoe.profiles.find(p => p.name === s.profile);
+                const pool = String((prof && prof.remoteAddressPool) || '');
+                ip = pool.includes('-') ? pool.split('-')[0] : (pool || '*');
+            }
+            secretsContent += `"${s.username}" * "${s.password}" ${ip || '*'} \n`;
         }
     });
     
