@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 // Imports inlined to resolve module loading issues
 // WifiManager imported inline
+import CurrencySettings from './components/CurrencySettings';
 
 
 
@@ -4095,6 +4096,7 @@ const App = () => {
       {activeTab === 'settings' && (
         <div className="space-y-8">
           <SystemSettings metrics={metrics} theme={theme} setTheme={setTheme} />
+          <CurrencySettings />
           <WifiManager />
         </div>
       )}
