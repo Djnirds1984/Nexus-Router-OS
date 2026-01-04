@@ -17,10 +17,12 @@ const PPPoEManager: React.FC = () => {
   const [newSecret, setNewSecret] = useState<{ username: string; password: string; profile: string; dueDate?: string }>({ username: '', password: '', profile: '' });
   // Server IP edit buffer per-server to allow user typing without immediate persistence
   const [serverIpEdit, setServerIpEdit] = useState<Record<string, string>>({});
+  const [pppoeStatus, setPppoeStatus] = useState<any>(null);
 
   useEffect(() => {
     fetchConfig();
     fetchActive();
+    fetchStatus();
     const interval = setInterval(fetchActive, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -49,6 +51,16 @@ const PPPoEManager: React.FC = () => {
       setIsLoading(false);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch('/api/pppoe/status');
+      const data = await res.json();
+      setPppoeStatus(data);
+    } catch (e) {
+      setPppoeStatus(null);
     }
   };
 
@@ -195,6 +207,16 @@ const PPPoEManager: React.FC = () => {
            </div>
         )}
       </header>
+      {pppoeStatus && !pppoeStatus.linux && (
+        <div className="bg-amber-500/10 border border-amber-500/30 px-4 py-3 rounded-2xl text-amber-400 font-bold text-xs uppercase tracking-widest">
+          PPPoE server is available only on Linux. You are on {pppoeStatus.platform}. UI data and Active Sessions are mock; clients cannot connect here.
+        </div>
+      )}
+      {pppoeStatus && pppoeStatus.linux && !pppoeStatus.canServe && (
+        <div className="bg-rose-500/10 border border-rose-500/30 px-4 py-3 rounded-2xl text-rose-400 font-bold text-xs uppercase tracking-widest">
+          PPPoE binary not found. Install pppoe package to enable server.
+        </div>
+      )}
 
       <div className="flex gap-2 bg-slate-900/40 p-2 rounded-2xl border border-slate-800 w-fit backdrop-blur-md">
         <button

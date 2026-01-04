@@ -1074,11 +1074,12 @@ function applyPPPoESettings() {
             // We'll try to find a default profile or use reasonable defaults if not fully specified.
             const profile = pppoe.profiles.find(p => p.name === srv.defaultProfile);
             const localIp = (profile && profile.localAddress) ? profile.localAddress : '10.0.0.1';
-            const remoteIpPool = (profile && profile.remoteAddressPool) ? profile.remoteAddressPool : '10.0.0.2';
+            const poolStr = (profile && profile.remoteAddressPool) ? String(profile.remoteAddressPool) : '10.0.0.2';
+            const remoteStart = poolStr.includes('-') ? poolStr.split('-')[0] : poolStr;
             
             // Basic command: pppoe-server -I eth1 -L 10.0.0.1 -R 10.0.0.2 -N 100
             // -C is Service Name
-            const cmd = `pppoe-server -I ${srv.interfaceName} -L ${localIp} -R ${remoteIpPool} -N 100 -C ${srv.serviceName || 'Nexus'}`;
+            const cmd = `pppoe-server -I ${srv.interfaceName} -L ${localIp} -R ${remoteStart} -N 100 -C ${srv.serviceName || 'Nexus'}`;
             try {
                 execSync(cmd);
                 log(`Started PPPoE Server on ${srv.interfaceName}`);
@@ -1149,6 +1150,32 @@ app.get('/api/pppoe/active', (req, res) => {
     }
 });
 
+// PPPoE runtime status for UI
+app.get('/api/pppoe/status', (req, res) => {
+    try {
+        const cfg = systemState.config.pppoe || { servers: [], secrets: [] };
+        const linux = process.platform === 'linux';
+        let binPresent = false, running = false;
+        if (linux) {
+            try { execSync('command -v pppoe-server'); binPresent = true; } catch {}
+            try {
+                const p = execSync('pgrep -x pppoe-server || true').toString().trim();
+                running = !!p;
+            } catch {}
+        }
+        res.json({
+            platform: process.platform,
+            linux,
+            canServe: linux && binPresent,
+            serversEnabled: (cfg.servers || []).filter(s => s.enabled).length,
+            secretsEnabled: (cfg.secrets || []).filter(s => s.enabled).length,
+            binaryPresent: binPresent,
+            serverRunning: running
+        });
+    } catch (e) {
+        res.json({ platform: process.platform, linux: process.platform === 'linux', canServe: false });
+    }
+});
 app.post('/api/system/restart', (req, res) => {
   log('System restart requested via API');
   res.json({ status: 'restarting' });
