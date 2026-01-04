@@ -978,7 +978,7 @@ function applyPPPoESettings() {
     let secretsContent = '# Nexus Generated Secrets\n';
     pppoe.secrets.forEach(s => {
         if (s.enabled) {
-            secretsContent += `"${s.username}" * "${s.password}" ${s.localAddress || '*'} \n`;
+            secretsContent += `"${s.username}" * "${s.password}" ${s.remoteAddress || '*'} \n`;
         }
     });
     
