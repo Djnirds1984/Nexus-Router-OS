@@ -1037,6 +1037,20 @@ function applyPPPoESettings() {
             }
         }
     });
+    
+    try {
+        try { execSync('sysctl -w net.ipv4.ip_forward=1'); } catch (e) {}
+        const routes = JSON.parse(execSync('ip -j route show default').toString());
+        const wanIfaces = [];
+        routes.forEach(r => { if (r.dev && !wanIfaces.includes(r.dev)) wanIfaces.push(r.dev); });
+        wanIfaces.forEach(wan => {
+            try {
+                execSync(`iptables -t nat -C POSTROUTING -o ${wan} -j MASQUERADE || iptables -t nat -A POSTROUTING -o ${wan} -j MASQUERADE`);
+                execSync(`iptables -C FORWARD -i ppp+ -o ${wan} -j ACCEPT || iptables -A FORWARD -i ppp+ -o ${wan} -j ACCEPT`);
+                execSync(`iptables -C FORWARD -i ${wan} -o ppp+ -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A FORWARD -i ${wan} -o ppp+ -m state --state RELATED,ESTABLISHED -j ACCEPT`);
+            } catch (e) {}
+        });
+    } catch (e) {}
 }
 
 app.get('/api/pppoe/config', (req, res) => {
