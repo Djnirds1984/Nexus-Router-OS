@@ -34,8 +34,9 @@ interface BridgeConfig {
   id: string;
   name: string;
   interfaces: string[];
-  ipAddress: string;
-  netmask: string;
+  ipAddress?: string;
+  netmask?: string;
+  externalIpManaged?: boolean;
   dhcpEnabled: boolean;
   dhcpStart: string;
   dhcpEnd: string;
@@ -2235,12 +2236,12 @@ const Network: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'vlan' | 'bridge'>('vlan');
   const [netdevs, setNetdevs] = useState<Array<{ name: string; type: 'physical' | 'bridge'; customName?: string }>>([]);
   const [vlans, setVlans] = useState<Array<{ iface: string; parent: string; vid: number; ipAddress?: string; netmask?: string }>>([]);
-  const [bridges, setBridges] = useState<Array<{ name: string; members: string[]; ipAddress?: string; netmask?: string }>>([]);
+  const [bridges, setBridges] = useState<Array<{ name: string; members: string[]; ipAddress?: string; netmask?: string; externalIpManaged?: boolean }>>([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [newVlan, setNewVlan] = useState<{ parent?: string; vid?: string; name?: string; ipAddress?: string; netmask?: string }>({});
-  const [newBridge, setNewBridge] = useState<{ name?: string; members: string[]; ipAddress?: string; netmask?: string }>({ members: [] });
-  const [editingBridge, setEditingBridge] = useState<{ name: string; members: string[]; ipAddress?: string; netmask?: string } | null>(null);
+  const [newBridge, setNewBridge] = useState<{ name?: string; members: string[]; ipAddress?: string; netmask?: string; externalIpManaged?: boolean }>({ members: [], externalIpManaged: false });
+  const [editingBridge, setEditingBridge] = useState<{ name: string; members: string[]; ipAddress?: string; netmask?: string; externalIpManaged?: boolean } | null>(null);
   const [editingVlan, setEditingVlan] = useState<{ iface: string; ipAddress?: string; netmask?: string } | null>(null);
 
   const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
@@ -2342,7 +2343,7 @@ const Network: React.FC = () => {
         body: JSON.stringify(newBridge)
       });
       if (res.ok) {
-        setNewBridge({ members: [] });
+        setNewBridge({ members: [], externalIpManaged: false });
         await loadData();
       } else {
         alert('Failed to create bridge');
@@ -2511,13 +2512,22 @@ const Network: React.FC = () => {
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">IP Address</label>
-                <input value={newBridge.ipAddress || ''} onChange={e => setNewBridge({ ...newBridge, ipAddress: e.target.value })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none" placeholder="192.168.1.1" />
+                <input disabled={!!newBridge.externalIpManaged} value={newBridge.ipAddress || ''} onChange={e => setNewBridge({ ...newBridge, ipAddress: e.target.value })} className={`w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none ${newBridge.externalIpManaged ? 'opacity-50 cursor-not-allowed' : ''}`} placeholder="192.168.1.1" />
                 {errors.ipAddress && <div className="text-[10px] text-rose-500 font-black mt-1">{errors.ipAddress}</div>}
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Netmask</label>
-                <input value={newBridge.netmask || ''} onChange={e => setNewBridge({ ...newBridge, netmask: e.target.value })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none" placeholder="255.255.255.0" />
+                <input disabled={!!newBridge.externalIpManaged} value={newBridge.netmask || ''} onChange={e => setNewBridge({ ...newBridge, netmask: e.target.value })} className={`w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none ${newBridge.externalIpManaged ? 'opacity-50 cursor-not-allowed' : ''}`} placeholder="255.255.255.0" />
                 {errors.netmask && <div className="text-[10px] text-rose-500 font-black mt-1">{errors.netmask}</div>}
+              </div>
+              <div className="md:col-span-2">
+                <label className="flex items-center gap-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
+                  <input type="checkbox" checked={!!newBridge.externalIpManaged} onChange={e => setNewBridge({ ...newBridge, externalIpManaged: e.target.checked })} />
+                  IP managed externally
+                </label>
+                <div className="text-[10px] text-slate-500">
+                  Optional: leave IP settings empty if DHCP, PPPoE, or hotspot manages addressing on this bridge.
+                </div>
               </div>
             </div>
             <div className="mt-6">
@@ -2555,19 +2565,28 @@ const Network: React.FC = () => {
                           </select>
                         </div>
                       </td>
-                      <td className="px-3 py-2 font-mono text-blue-400">{b.ipAddress || 'N/A'}</td>
+                      <td className="px-3 py-2 font-mono text-blue-400">
+                        {b.ipAddress || 'N/A'}
+                        {b.externalIpManaged && (
+                          <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-400 border border-amber-500/20">External</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 font-mono text-slate-300">{b.netmask || 'N/A'}</td>
                       <td className="px-3 py-2">
                         {editingBridge?.name === b.name ? (
                           <div className="flex items-center gap-2">
-                            <input value={editingBridge.ipAddress || ''} onChange={e => setEditingBridge({ ...editingBridge, ipAddress: e.target.value })} className="bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none w-32" placeholder="IP" />
-                            <input value={editingBridge.netmask || ''} onChange={e => setEditingBridge({ ...editingBridge, netmask: e.target.value })} className="bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none w-32" placeholder="Netmask" />
+                            <input disabled={!!editingBridge.externalIpManaged} value={editingBridge.ipAddress || ''} onChange={e => setEditingBridge({ ...editingBridge, ipAddress: e.target.value })} className={`bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none w-32 ${editingBridge.externalIpManaged ? 'opacity-50 cursor-not-allowed' : ''}`} placeholder="IP" />
+                            <input disabled={!!editingBridge.externalIpManaged} value={editingBridge.netmask || ''} onChange={e => setEditingBridge({ ...editingBridge, netmask: e.target.value })} className={`bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none w-32 ${editingBridge.externalIpManaged ? 'opacity-50 cursor-not-allowed' : ''}`} placeholder="Netmask" />
+                            <label className="flex items-center gap-2 text-[10px] text-slate-500 uppercase tracking-widest">
+                              <input type="checkbox" checked={!!editingBridge.externalIpManaged} onChange={e => setEditingBridge({ ...editingBridge, externalIpManaged: e.target.checked })} />
+                              External IP
+                            </label>
                             <button onClick={handleUpdateBridge} className="text-emerald-500 hover:text-emerald-400">✓</button>
                             <button onClick={() => setEditingBridge(null)} className="text-rose-500 hover:text-rose-400">✕</button>
                           </div>
                         ) : (
                           <div className="flex items-center gap-3">
-                            <button onClick={() => setEditingBridge({ name: b.name, members: b.members, ipAddress: b.ipAddress, netmask: b.netmask })} className="text-[10px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-300">Edit</button>
+                            <button onClick={() => setEditingBridge({ name: b.name, members: b.members, ipAddress: b.ipAddress, netmask: b.netmask, externalIpManaged: b.externalIpManaged })} className="text-[10px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-300">Edit</button>
                             <button onClick={() => handleDeleteBridge(b.name)} className="text-[10px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-400">Delete</button>
                           </div>
                         )}
