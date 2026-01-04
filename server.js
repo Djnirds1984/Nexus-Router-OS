@@ -2390,6 +2390,191 @@ app.post('/api/wan/update', (req, res) => {
   }
 });
 
+function cidrFromNetmask(netmask) {
+  try {
+    return (netmask.split('.').map(Number).map(part => (part >>> 0).toString(2)).join('').match(/1/g) || []).length;
+  } catch (e) { return 24; }
+}
+
+app.get('/api/vlans', (req, res) => {
+  try {
+    if (process.platform !== 'linux') return res.json([]);
+    const links = JSON.parse(execSync('ip -j -d link show').toString());
+    const addrs = JSON.parse(execSync('ip -j addr show').toString());
+    const addrMap = {};
+    addrs.forEach(a => {
+      const inet = (a.addr_info || []).find(i => i.family === 'inet');
+      addrMap[a.ifname] = inet ? { ip: inet.local, prefix: inet.prefixlen } : null;
+    });
+    const list = [];
+    links.forEach(l => {
+      const kind = l.linkinfo && l.linkinfo.info_kind;
+      if (kind === 'vlan') {
+        const id = l.linkinfo && l.linkinfo.info_data && l.linkinfo.info_data.id;
+        const parent = l.link || '';
+        const ip = addrMap[l.ifname];
+        list.push({ iface: l.ifname, parent, vid: id || null, ipAddress: ip ? ip.ip : '', netmask: ip ? ip.prefix : '' });
+      }
+    });
+    res.json(list);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/vlan/create', (req, res) => {
+  try {
+    const { parent, vid, name, ipAddress, netmask } = req.body || {};
+    if (!parent || !vid) return res.status(400).json({ error: 'parent and vid required' });
+    const iface = name && String(name).trim() ? name.trim() : `${parent}.${vid}`;
+    if (process.platform === 'linux') {
+      ensurePkg('iproute2');
+      try { execSync(`ip link set ${parent} up`); } catch (e) {}
+      execSync(`ip link add link ${parent} name ${iface} type vlan id ${vid}`);
+      try { execSync(`ip link set ${iface} up`); } catch (e) {}
+      if (ipAddress && netmask) {
+        const cidr = cidrFromNetmask(netmask);
+        try { execSync(`ip addr flush dev ${iface}`); } catch (e) {}
+        execSync(`ip addr add ${ipAddress}/${cidr} dev ${iface}`);
+      }
+    }
+    res.json({ success: true, iface });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/vlan/update', (req, res) => {
+  try {
+    const { iface, ipAddress, netmask } = req.body || {};
+    if (!iface) return res.status(400).json({ error: 'iface required' });
+    if (process.platform === 'linux') {
+      if (ipAddress && netmask) {
+        const cidr = cidrFromNetmask(netmask);
+        try { execSync(`ip addr flush dev ${iface}`); } catch (e) {}
+        execSync(`ip addr add ${ipAddress}/${cidr} dev ${iface}`);
+      }
+    }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/vlan/:iface', (req, res) => {
+  try {
+    const iface = req.params.iface;
+    if (!iface) return res.status(400).json({ error: 'iface required' });
+    if (process.platform === 'linux') {
+      try { execSync(`ip link set ${iface} down`); } catch (e) {}
+      execSync(`ip link delete ${iface}`);
+    }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/bridges', (req, res) => {
+  try {
+    if (process.platform !== 'linux') return res.json([{ name: 'br0', members: ['eth0'], ipAddress: '192.168.1.1', netmask: '255.255.255.0' }]);
+    const links = JSON.parse(execSync('ip -j link show').toString());
+    const addrs = JSON.parse(execSync('ip -j addr show').toString());
+    const addrMap = {};
+    addrs.forEach(a => {
+      const inet = (a.addr_info || []).find(i => i.family === 'inet');
+      addrMap[a.ifname] = inet ? { ip: inet.local, prefix: inet.prefixlen } : null;
+    });
+    const masterMap = {};
+    links.forEach(l => { if (l.master) { masterMap[l.master] = masterMap[l.master] || []; masterMap[l.master].push(l.ifname); } });
+    const list = [];
+    links.forEach(l => {
+      const isBridge = (l.linkinfo && l.linkinfo.info_kind === 'bridge') || (l.ifname || '').startsWith('br');
+      if (isBridge) {
+        const ip = addrMap[l.ifname];
+        const netmask = ip ? ip.prefix : '';
+        list.push({ name: l.ifname, members: masterMap[l.ifname] || [], ipAddress: ip ? ip.ip : '', netmask });
+      }
+    });
+    res.json(list);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/bridge/create', (req, res) => {
+  try {
+    const { name, members, ipAddress, netmask } = req.body || {};
+    if (!name || !Array.isArray(members)) return res.status(400).json({ error: 'name and members required' });
+    if (process.platform === 'linux') {
+      ensurePkg('iproute2');
+      execSync(`ip link add name ${name} type bridge`);
+      try { execSync(`ip link set ${name} up`); } catch (e) {}
+      members.forEach(m => {
+        try { execSync(`ip link set ${m} up`); } catch (e) {}
+        try { execSync(`ip link set ${m} master ${name}`); } catch (e) {}
+      });
+      if (ipAddress && netmask) {
+        const cidr = cidrFromNetmask(netmask);
+        try { execSync(`ip addr flush dev ${name}`); } catch (e) {}
+        execSync(`ip addr add ${ipAddress}/${cidr} dev ${name}`);
+      }
+    }
+    systemState.config.bridges = (systemState.config.bridges || []).filter(b => b.name !== name).concat([{ name, members, ipAddress: ipAddress || '', netmask: netmask || '' }]);
+    try { fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2)); } catch (e) {}
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/bridge/update', (req, res) => {
+  try {
+    const { name, ipAddress, netmask } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (process.platform === 'linux') {
+      if (ipAddress && netmask) {
+        const cidr = cidrFromNetmask(netmask);
+        try { execSync(`ip addr flush dev ${name}`); } catch (e) {}
+        execSync(`ip addr add ${ipAddress}/${cidr} dev ${name}`);
+      }
+    }
+    systemState.config.bridges = (systemState.config.bridges || []).map(b => b.name === name ? { ...b, ipAddress: ipAddress || b.ipAddress, netmask: netmask || b.netmask } : b);
+    try { fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2)); } catch (e) {}
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/bridge/members', (req, res) => {
+  try {
+    const { name, members } = req.body || {};
+    if (!name || !Array.isArray(members)) return res.status(400).json({ error: 'name and members required' });
+    if (process.platform === 'linux') {
+      const links = JSON.parse(execSync('ip -j link show').toString());
+      links.forEach(l => {
+        if (l.master === name && !members.includes(l.ifname)) {
+          try { execSync(`ip link set ${l.ifname} nomaster`); } catch (e) {}
+        }
+      });
+      members.forEach(m => {
+        try { execSync(`ip link set ${m} up`); } catch (e) {}
+        try { execSync(`ip link set ${m} master ${name}`); } catch (e) {}
+      });
+    }
+    systemState.config.bridges = (systemState.config.bridges || []).map(b => b.name === name ? { ...b, members } : b);
+    try { fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2)); } catch (e) {}
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/bridge/:name', (req, res) => {
+  try {
+    const name = req.params.name;
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (process.platform === 'linux') {
+      const links = JSON.parse(execSync('ip -j link show').toString());
+      links.forEach(l => {
+        if (l.master === name) {
+          try { execSync(`ip link set ${l.ifname} nomaster`); } catch (e) {}
+        }
+      });
+      try { execSync(`ip link set ${name} down`); } catch (e) {}
+      execSync(`ip link delete ${name}`);
+    }
+    systemState.config.bridges = (systemState.config.bridges || []).filter(b => b.name !== name);
+    try { fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2)); } catch (e) {}
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.listen(3000, '0.0.0.0', () => {
   log('Nexus Agent active on :3000');
 });

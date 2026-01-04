@@ -2231,6 +2231,360 @@ const FirewallManager: React.FC<FirewallManagerProps> = ({
   );
 };
 
+const Network: React.FC = () => {
+  const [activeSubTab, setActiveSubTab] = useState<'vlan' | 'bridge'>('vlan');
+  const [netdevs, setNetdevs] = useState<Array<{ name: string; type: 'physical' | 'bridge'; customName?: string }>>([]);
+  const [vlans, setVlans] = useState<Array<{ iface: string; parent: string; vid: number; ipAddress?: string; netmask?: string }>>([]);
+  const [bridges, setBridges] = useState<Array<{ name: string; members: string[]; ipAddress?: string; netmask?: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [newVlan, setNewVlan] = useState<{ parent?: string; vid?: string; name?: string; ipAddress?: string; netmask?: string }>({});
+  const [newBridge, setNewBridge] = useState<{ name?: string; members: string[]; ipAddress?: string; netmask?: string }>({ members: [] });
+  const [editingBridge, setEditingBridge] = useState<{ name: string; members: string[]; ipAddress?: string; netmask?: string } | null>(null);
+  const [editingVlan, setEditingVlan] = useState<{ iface: string; ipAddress?: string; netmask?: string } | null>(null);
+
+  const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const nd = await fetch('/api/netdevs').then(r => r.json()).catch(() => ({ interfaces: [] }));
+      const nds = (nd.interfaces || []).map((i: any) => ({ name: i.name, type: i.type, customName: i.customName }));
+      setNetdevs(nds);
+      const v = await fetch('/api/vlans').then(r => r.json()).catch(() => ([]));
+      setVlans(Array.isArray(v) ? v : []);
+      const b = await fetch('/api/bridges').then(r => r.json()).catch(() => ([]));
+      setBridges(Array.isArray(b) ? b : []);
+    } catch (e) {} finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const validateVlanForm = () => {
+    const ne: Record<string, string> = {};
+    if (!newVlan.parent) ne.parent = 'Parent is required';
+    if (!newVlan.vid || isNaN(Number(newVlan.vid)) || Number(newVlan.vid) < 1 || Number(newVlan.vid) > 4094) ne.vid = 'Valid VLAN ID required';
+    if (newVlan.ipAddress && !ipRegex.test(newVlan.ipAddress)) ne.ipAddress = 'Valid IP required';
+    if (newVlan.netmask && !ipRegex.test(newVlan.netmask)) ne.netmask = 'Valid netmask required';
+    setErrors(ne);
+    return Object.keys(ne).length === 0;
+  };
+
+  const handleCreateVlan = async () => {
+    if (!validateVlanForm()) return;
+    try {
+      const res = await fetch('/api/vlan/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parent: newVlan.parent,
+          vid: Number(newVlan.vid),
+          name: newVlan.name,
+          ipAddress: newVlan.ipAddress,
+          netmask: newVlan.netmask
+        })
+      });
+      if (res.ok) {
+        setNewVlan({});
+        await loadData();
+      } else {
+        alert('Failed to create VLAN');
+      }
+    } catch (e) { alert('Error creating VLAN'); }
+  };
+
+  const handleUpdateVlan = async () => {
+    if (!editingVlan) return;
+    const ne: Record<string, string> = {};
+    if (editingVlan.ipAddress && !ipRegex.test(editingVlan.ipAddress)) ne.ipAddress = 'Valid IP required';
+    if (editingVlan.netmask && !ipRegex.test(editingVlan.netmask)) ne.netmask = 'Valid netmask required';
+    setErrors(ne);
+    if (Object.keys(ne).length > 0) return;
+    try {
+      const res = await fetch('/api/vlan/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingVlan)
+      });
+      if (res.ok) {
+        setEditingVlan(null);
+        await loadData();
+      } else {
+        alert('Failed to update VLAN');
+      }
+    } catch (e) { alert('Error updating VLAN'); }
+  };
+
+  const handleDeleteVlan = async (iface: string) => {
+    if (!confirm('Delete VLAN interface?')) return;
+    try {
+      const res = await fetch(`/api/vlan/${encodeURIComponent(iface)}`, { method: 'DELETE' });
+      if (res.ok) { await loadData(); } else { alert('Failed to delete VLAN'); }
+    } catch (e) { alert('Error deleting VLAN'); }
+  };
+
+  const validateBridgeForm = () => {
+    const ne: Record<string, string> = {};
+    if (!newBridge.name || !newBridge.name.trim()) ne.name = 'Name is required';
+    if (newBridge.ipAddress && !ipRegex.test(newBridge.ipAddress)) ne.ipAddress = 'Valid IP required';
+    if (newBridge.netmask && !ipRegex.test(newBridge.netmask)) ne.netmask = 'Valid netmask required';
+    if (!newBridge.members || newBridge.members.length === 0) ne.members = 'Select at least one member';
+    setErrors(ne);
+    return Object.keys(ne).length === 0;
+  };
+
+  const handleCreateBridge = async () => {
+    if (!validateBridgeForm()) return;
+    try {
+      const res = await fetch('/api/bridge/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newBridge)
+      });
+      if (res.ok) {
+        setNewBridge({ members: [] });
+        await loadData();
+      } else {
+        alert('Failed to create bridge');
+      }
+    } catch (e) { alert('Error creating bridge'); }
+  };
+
+  const handleUpdateBridge = async () => {
+    if (!editingBridge) return;
+    const ne: Record<string, string> = {};
+    if (editingBridge.ipAddress && !ipRegex.test(editingBridge.ipAddress)) ne.ipAddress = 'Valid IP required';
+    if (editingBridge.netmask && !ipRegex.test(editingBridge.netmask)) ne.netmask = 'Valid netmask required';
+    setErrors(ne);
+    if (Object.keys(ne).length > 0) return;
+    try {
+      const res = await fetch('/api/bridge/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingBridge)
+      });
+      if (res.ok) { setEditingBridge(null); await loadData(); } else { alert('Failed to update bridge'); }
+    } catch (e) { alert('Error updating bridge'); }
+  };
+
+  const handleMembersChange = async (name: string, members: string[]) => {
+    try {
+      const res = await fetch('/api/bridge/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, members })
+      });
+      if (res.ok) { await loadData(); } else { alert('Failed to update members'); }
+    } catch (e) { alert('Error updating members'); }
+  };
+
+  const handleDeleteBridge = async (name: string) => {
+    if (!confirm('Delete bridge?')) return;
+    try {
+      const res = await fetch(`/api/bridge/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      if (res.ok) { await loadData(); } else { alert('Failed to delete bridge'); }
+    } catch (e) { alert('Error deleting bridge'); }
+  };
+
+  const physicalIfaces = netdevs.filter(i => i.type === 'physical').map(i => i.name);
+
+  return (
+    <div className="space-y-8 pb-32 animate-in fade-in duration-700">
+      <header className="flex justify-between items-start">
+        <div>
+          <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Network</h1>
+          <p className="text-slate-400 mt-1 font-medium">VLAN and Bridge management</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setActiveSubTab('vlan')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSubTab === 'vlan' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}>VLAN</button>
+          <button onClick={() => setActiveSubTab('bridge')} className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSubTab === 'bridge' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}>Bridge</button>
+        </div>
+      </header>
+
+      {activeSubTab === 'vlan' && (
+        <div className="space-y-8">
+          <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800">
+            <h2 className="text-xl font-black text-white mb-6">Create VLAN</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Parent Interface</label>
+                <select value={newVlan.parent || ''} onChange={e => setNewVlan({ ...newVlan, parent: e.target.value })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none">
+                  <option value="">Select</option>
+                  {physicalIfaces.map(n => (<option key={n} value={n}>{n}</option>))}
+                </select>
+                {errors.parent && <div className="text-[10px] text-rose-500 font-black mt-1">{errors.parent}</div>}
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">VLAN ID</label>
+                <input value={newVlan.vid || ''} onChange={e => setNewVlan({ ...newVlan, vid: e.target.value })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none" placeholder="1-4094" />
+                {errors.vid && <div className="text-[10px] text-rose-500 font-black mt-1">{errors.vid}</div>}
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Name (optional)</label>
+                <input value={newVlan.name || ''} onChange={e => setNewVlan({ ...newVlan, name: e.target.value })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none" placeholder="eth0.20" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">IP Address</label>
+                <input value={newVlan.ipAddress || ''} onChange={e => setNewVlan({ ...newVlan, ipAddress: e.target.value })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none" placeholder="192.168.20.1" />
+                {errors.ipAddress && <div className="text-[10px] text-rose-500 font-black mt-1">{errors.ipAddress}</div>}
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Netmask</label>
+                <input value={newVlan.netmask || ''} onChange={e => setNewVlan({ ...newVlan, netmask: e.target.value })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none" placeholder="255.255.255.0" />
+                {errors.netmask && <div className="text-[10px] text-rose-500 font-black mt-1">{errors.netmask}</div>}
+              </div>
+            </div>
+            <div className="mt-6">
+              <button onClick={handleCreateVlan} className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-8 rounded-xl shadow-lg shadow-blue-600/20 uppercase tracking-widest text-xs">Create VLAN</button>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black text-white">VLAN Interfaces</h2>
+              <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{loading ? 'Refreshing...' : 'Live'}</div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-[10px] text-slate-500 uppercase tracking-widest">
+                    <th className="text-left px-3 py-2">Interface</th>
+                    <th className="text-left px-3 py-2">Parent</th>
+                    <th className="text-left px-3 py-2">VLAN ID</th>
+                    <th className="text-left px-3 py-2">IP</th>
+                    <th className="text-left px-3 py-2">Netmask</th>
+                    <th className="text-left px-3 py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vlans.map(v => (
+                    <tr key={v.iface} className="border-t border-slate-800/60">
+                      <td className="px-3 py-2 font-mono text-white">{v.iface}</td>
+                      <td className="px-3 py-2 font-mono text-slate-300">{v.parent}</td>
+                      <td className="px-3 py-2 font-mono text-slate-300">{v.vid}</td>
+                      <td className="px-3 py-2 font-mono text-blue-400">{v.ipAddress || 'N/A'}</td>
+                      <td className="px-3 py-2 font-mono text-slate-300">{v.netmask || 'N/A'}</td>
+                      <td className="px-3 py-2">
+                        {editingVlan?.iface === v.iface ? (
+                          <div className="flex items-center gap-2">
+                            <input value={editingVlan.ipAddress || ''} onChange={e => setEditingVlan({ ...editingVlan, ipAddress: e.target.value })} className="bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none w-32" placeholder="IP" />
+                            <input value={editingVlan.netmask || ''} onChange={e => setEditingVlan({ ...editingVlan, netmask: e.target.value })} className="bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none w-32" placeholder="Netmask" />
+                            <button onClick={handleUpdateVlan} className="text-emerald-500 hover:text-emerald-400">✓</button>
+                            <button onClick={() => setEditingVlan(null)} className="text-rose-500 hover:text-rose-400">✕</button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => setEditingVlan({ iface: v.iface, ipAddress: v.ipAddress, netmask: v.netmask })} className="text-[10px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-300">Edit</button>
+                            <button onClick={() => handleDeleteVlan(v.iface)} className="text-[10px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-400">Delete</button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {vlans.length === 0 && <tr><td className="px-3 py-4 text-slate-500 text-xs font-black uppercase" colSpan={6}>No VLANs detected</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'bridge' && (
+        <div className="space-y-8">
+          <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800">
+            <h2 className="text-xl font-black text-white mb-6">Create Bridge</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Name</label>
+                <input value={newBridge.name || ''} onChange={e => setNewBridge({ ...newBridge, name: e.target.value })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none" placeholder="br0" />
+                {errors.name && <div className="text-[10px] text-rose-500 font-black mt-1">{errors.name}</div>}
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Members</label>
+                <select multiple value={newBridge.members} onChange={e => {
+                  const opts = Array.from(e.target.selectedOptions).map(o => o.value);
+                  setNewBridge({ ...newBridge, members: opts });
+                }} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none h-32">
+                  {physicalIfaces.map(n => (<option key={n} value={n}>{n}</option>))}
+                </select>
+                {errors.members && <div className="text-[10px] text-rose-500 font-black mt-1">{errors.members}</div>}
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">IP Address</label>
+                <input value={newBridge.ipAddress || ''} onChange={e => setNewBridge({ ...newBridge, ipAddress: e.target.value })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none" placeholder="192.168.1.1" />
+                {errors.ipAddress && <div className="text-[10px] text-rose-500 font-black mt-1">{errors.ipAddress}</div>}
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Netmask</label>
+                <input value={newBridge.netmask || ''} onChange={e => setNewBridge({ ...newBridge, netmask: e.target.value })} className="w-full bg-black/40 border border-slate-800 rounded-2xl px-6 py-3 text-sm font-bold text-white outline-none" placeholder="255.255.255.0" />
+                {errors.netmask && <div className="text-[10px] text-rose-500 font-black mt-1">{errors.netmask}</div>}
+              </div>
+            </div>
+            <div className="mt-6">
+              <button onClick={handleCreateBridge} className="bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-8 rounded-xl shadow-lg shadow-blue-600/20 uppercase tracking-widest text-xs">Create Bridge</button>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/40 p-8 rounded-[2.5rem] border border-slate-800">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black text-white">Bridges</h2>
+              <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{loading ? 'Refreshing...' : 'Live'}</div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-[10px] text-slate-500 uppercase tracking-widest">
+                    <th className="text-left px-3 py-2">Name</th>
+                    <th className="text-left px-3 py-2">Members</th>
+                    <th className="text-left px-3 py-2">IP</th>
+                    <th className="text-left px-3 py-2">Netmask</th>
+                    <th className="text-left px-3 py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bridges.map(b => (
+                    <tr key={b.name} className="border-t border-slate-800/60">
+                      <td className="px-3 py-2 font-mono text-white">{b.name}</td>
+                      <td className="px-3 py-2 text-slate-300">
+                        <div className="flex items-center gap-2">
+                          <select multiple value={b.members} onChange={e => {
+                            const members = Array.from(e.target.selectedOptions).map(o => o.value);
+                            handleMembersChange(b.name, members);
+                          }} className="bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none min-w-[200px] h-24">
+                            {physicalIfaces.map(n => (<option key={n} value={n}>{n}</option>))}
+                          </select>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-blue-400">{b.ipAddress || 'N/A'}</td>
+                      <td className="px-3 py-2 font-mono text-slate-300">{b.netmask || 'N/A'}</td>
+                      <td className="px-3 py-2">
+                        {editingBridge?.name === b.name ? (
+                          <div className="flex items-center gap-2">
+                            <input value={editingBridge.ipAddress || ''} onChange={e => setEditingBridge({ ...editingBridge, ipAddress: e.target.value })} className="bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none w-32" placeholder="IP" />
+                            <input value={editingBridge.netmask || ''} onChange={e => setEditingBridge({ ...editingBridge, netmask: e.target.value })} className="bg-slate-950 text-white px-2 py-1 rounded text-xs border border-blue-500 outline-none w-32" placeholder="Netmask" />
+                            <button onClick={handleUpdateBridge} className="text-emerald-500 hover:text-emerald-400">✓</button>
+                            <button onClick={() => setEditingBridge(null)} className="text-rose-500 hover:text-rose-400">✕</button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => setEditingBridge({ name: b.name, members: b.members, ipAddress: b.ipAddress, netmask: b.netmask })} className="text-[10px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-300">Edit</button>
+                            <button onClick={() => handleDeleteBridge(b.name)} className="text-[10px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-400">Delete</button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {bridges.length === 0 && <tr><td className="px-3 py-4 text-slate-500 text-xs font-black uppercase" colSpan={5}>No bridges detected</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 type DataplicityStatus = {
   installed: boolean;
   running: boolean;
@@ -2437,6 +2791,7 @@ const Layout = ({ children, activeTab, setActiveTab, isLive, onLogout, theme }: 
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'interfaces', label: 'Interfaces', icon: '🔌' },
     { id: 'wan', label: 'Multi-WAN', icon: '🌐' },
+    { id: 'network', label: 'Network', icon: '🧩' },
     { id: 'pppoe', label: 'PPPoE', icon: '📡' },
     { id: 'firewall', label: 'Firewall', icon: '🛡️' },
     { id: 'devices', label: 'Devices', icon: '💻' },
@@ -3728,6 +4083,7 @@ const App = () => {
       {activeTab === 'dashboard' && <Dashboard interfaces={interfaces} metrics={metrics} />}
       {activeTab === 'interfaces' && <Interfaces />}
       {activeTab === 'wan' && <InterfaceManager interfaces={interfaces} config={currentConfig} appliedConfig={appliedConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
+      {activeTab === 'network' && <Network />}
       {activeTab === 'pppoe' && <PPPoEManager />}
       {activeTab === 'firewall' && <FirewallManager config={currentConfig} setConfig={setCurrentConfig} onApply={handleApplyConfig} isApplying={isApplying} />}
       {activeTab === 'devices' && <DeviceList />}
