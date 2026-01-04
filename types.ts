@@ -34,8 +34,9 @@ export interface BridgeConfig {
   id: string;
   name: string; // e.g. br0
   interfaces: string[]; // member interfaces
-  ipAddress: string;
-  netmask: string;
+  ipAddress?: string;
+  netmask?: string;
+  externalIpManaged?: boolean;
   dhcpEnabled: boolean;
   dhcpStart: string;
   dhcpEnd: string;

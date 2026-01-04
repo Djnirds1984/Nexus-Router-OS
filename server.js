@@ -2469,7 +2469,16 @@ app.delete('/api/vlan/:iface', (req, res) => {
 
 app.get('/api/bridges', (req, res) => {
   try {
-    if (process.platform !== 'linux') return res.json([{ name: 'br0', members: ['eth0'], ipAddress: '192.168.1.1', netmask: '255.255.255.0' }]);
+    if (process.platform !== 'linux') {
+      const list = (systemState.config.bridges || []).map(b => ({
+        name: b.name,
+        members: b.members || [],
+        ipAddress: b.ipAddress || '',
+        netmask: b.netmask || '',
+        externalIpManaged: !!b.externalIpManaged
+      }));
+      return res.json(list);
+    }
     const links = JSON.parse(execSync('ip -j link show').toString());
     const addrs = JSON.parse(execSync('ip -j addr show').toString());
     const addrMap = {};
@@ -2485,7 +2494,8 @@ app.get('/api/bridges', (req, res) => {
       if (isBridge) {
         const ip = addrMap[l.ifname];
         const netmask = ip ? ip.prefix : '';
-        list.push({ name: l.ifname, members: masterMap[l.ifname] || [], ipAddress: ip ? ip.ip : '', netmask });
+        const cfg = (systemState.config.bridges || []).find(b => b.name === l.ifname) || {};
+        list.push({ name: l.ifname, members: masterMap[l.ifname] || [], ipAddress: ip ? ip.ip : '', netmask, externalIpManaged: !!cfg.externalIpManaged });
       }
     });
     res.json(list);
@@ -2494,23 +2504,34 @@ app.get('/api/bridges', (req, res) => {
 
 app.post('/api/bridge/create', (req, res) => {
   try {
-    const { name, members, ipAddress, netmask } = req.body || {};
+    const { name, members, ipAddress, netmask, externalIpManaged } = req.body || {};
     if (!name || !Array.isArray(members)) return res.status(400).json({ error: 'name and members required' });
     if (process.platform === 'linux') {
       ensurePkg('iproute2');
+      const added = [];
       execSync(`ip link add name ${name} type bridge`);
       try { execSync(`ip link set ${name} up`); } catch (e) {}
-      members.forEach(m => {
-        try { execSync(`ip link set ${m} up`); } catch (e) {}
-        try { execSync(`ip link set ${m} master ${name}`); } catch (e) {}
-      });
-      if (ipAddress && netmask) {
-        const cidr = cidrFromNetmask(netmask);
-        try { execSync(`ip addr flush dev ${name}`); } catch (e) {}
-        execSync(`ip addr add ${ipAddress}/${cidr} dev ${name}`);
+      try {
+        for (const m of members) {
+          try { execSync(`ip link set ${m} up`); } catch (e) {}
+          execSync(`ip link set ${m} master ${name}`);
+          added.push(m);
+        }
+        if (ipAddress && netmask && !externalIpManaged) {
+          const cidr = cidrFromNetmask(netmask);
+          try { execSync(`ip addr flush dev ${name}`); } catch (e) {}
+          execSync(`ip addr add ${ipAddress}/${cidr} dev ${name}`);
+        }
+      } catch (err) {
+        try {
+          added.forEach(m => { try { execSync(`ip link set ${m} nomaster`); } catch (e) {} });
+          try { execSync(`ip link set ${name} down`); } catch (e) {}
+          execSync(`ip link delete ${name}`);
+        } catch (e2) {}
+        return res.status(500).json({ error: String(err.message || err) });
       }
     }
-    systemState.config.bridges = (systemState.config.bridges || []).filter(b => b.name !== name).concat([{ name, members, ipAddress: ipAddress || '', netmask: netmask || '' }]);
+    systemState.config.bridges = (systemState.config.bridges || []).filter(b => b.name !== name).concat([{ name, members, ipAddress: ipAddress || '', netmask: netmask || '', externalIpManaged: !!externalIpManaged }]);
     try { fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2)); } catch (e) {}
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2518,16 +2539,28 @@ app.post('/api/bridge/create', (req, res) => {
 
 app.post('/api/bridge/update', (req, res) => {
   try {
-    const { name, ipAddress, netmask } = req.body || {};
+    const { name, ipAddress, netmask, externalIpManaged } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name required' });
     if (process.platform === 'linux') {
-      if (ipAddress && netmask) {
-        const cidr = cidrFromNetmask(netmask);
-        try { execSync(`ip addr flush dev ${name}`); } catch (e) {}
-        execSync(`ip addr add ${ipAddress}/${cidr} dev ${name}`);
+      if (ipAddress && netmask && !externalIpManaged) {
+        const currentAddrs = JSON.parse(execSync('ip -j addr show').toString());
+        const cur = currentAddrs.find(a => a.ifname === name) || {};
+        const inet = (cur.addr_info || []).find(i => i.family === 'inet');
+        const prevIp = inet ? inet.local : '';
+        const prevPrefix = inet ? inet.prefixlen : '';
+        try {
+          const cidr = cidrFromNetmask(netmask);
+          try { execSync(`ip addr flush dev ${name}`); } catch (e) {}
+          execSync(`ip addr add ${ipAddress}/${cidr} dev ${name}`);
+        } catch (err) {
+          if (prevIp && prevPrefix) {
+            try { execSync(`ip addr add ${prevIp}/${prevPrefix} dev ${name}`); } catch (e) {}
+          }
+          return res.status(500).json({ error: String(err.message || err) });
+        }
       }
     }
-    systemState.config.bridges = (systemState.config.bridges || []).map(b => b.name === name ? { ...b, ipAddress: ipAddress || b.ipAddress, netmask: netmask || b.netmask } : b);
+    systemState.config.bridges = (systemState.config.bridges || []).map(b => b.name === name ? { ...b, ipAddress: ipAddress ?? b.ipAddress, netmask: netmask ?? b.netmask, externalIpManaged: externalIpManaged ?? b.externalIpManaged } : b);
     try { fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2)); } catch (e) {}
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2539,15 +2572,31 @@ app.post('/api/bridge/members', (req, res) => {
     if (!name || !Array.isArray(members)) return res.status(400).json({ error: 'name and members required' });
     if (process.platform === 'linux') {
       const links = JSON.parse(execSync('ip -j link show').toString());
-      links.forEach(l => {
-        if (l.master === name && !members.includes(l.ifname)) {
-          try { execSync(`ip link set ${l.ifname} nomaster`); } catch (e) {}
-        }
-      });
-      members.forEach(m => {
-        try { execSync(`ip link set ${m} up`); } catch (e) {}
-        try { execSync(`ip link set ${m} master ${name}`); } catch (e) {}
-      });
+      const prev = links.filter(l => l.master === name).map(l => l.ifname);
+      try {
+        links.forEach(l => {
+          if (l.master === name && !members.includes(l.ifname)) {
+            try { execSync(`ip link set ${l.ifname} nomaster`); } catch (e) {}
+          }
+        });
+        members.forEach(m => {
+          try { execSync(`ip link set ${m} up`); } catch (e) {}
+          execSync(`ip link set ${m} master ${name}`);
+        });
+      } catch (err) {
+        try {
+          const curLinks = JSON.parse(execSync('ip -j link show').toString());
+          curLinks.forEach(l => {
+            if (l.master === name) {
+              try { execSync(`ip link set ${l.ifname} nomaster`); } catch (e) {}
+            }
+          });
+          prev.forEach(m => {
+            try { execSync(`ip link set ${m} master ${name}`); } catch (e) {}
+          });
+        } catch (e2) {}
+        return res.status(500).json({ error: String(err.message || err) });
+      }
     }
     systemState.config.bridges = (systemState.config.bridges || []).map(b => b.name === name ? { ...b, members } : b);
     try { fs.writeFileSync(configPath, JSON.stringify(systemState.config, null, 2)); } catch (e) {}
