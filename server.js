@@ -124,7 +124,9 @@ function applyMultiWanKernel() {
   if (process.platform !== 'linux') return;
   log(`>>> ORCHESTRATING KERNEL: ${systemState.config.mode}`);
   try {
-    const healthyWans = systemState.interfaces.filter(i => i.internetHealth === 'HEALTHY');
+    const managedSet = new Set((systemState.config.wanInterfaces || []).map(w => w.interfaceName));
+    const healthyWans = systemState.interfaces
+      .filter(i => i.internetHealth === 'HEALTHY' && managedSet.has(i.interfaceName));
     if (healthyWans.length === 0) return;
 
     if (systemState.config.mode === 'LOAD_BALANCER') {
