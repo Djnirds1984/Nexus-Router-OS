@@ -81,6 +81,16 @@ function resolveRealInterface(name) {
   } catch (e) { return name; }
 }
 
+function isPppoeReservedInterface(iface) {
+  try {
+    const real = resolveRealInterface(iface);
+    const cfg = systemState.config || {};
+    const srvHit = ((cfg.pppoe || {}).servers || []).some(s => s.enabled && resolveRealInterface(s.interfaceName) === real);
+    const wanHit = ((cfg.wanInterfaces || [])).some(w => ((w.method || '') + '').toUpperCase() === 'PPPOE' && resolveRealInterface(w.interfaceName) === real);
+    return srvHit || wanHit;
+  } catch (e) { return false; }
+}
+
 // Start DHCP clients on WAN ports that lack IPv4 and ensure NAT
 function ensureWanDhcpClients() {
   try {
@@ -106,6 +116,8 @@ function ensureWanDhcpClients() {
       .forEach(l => {
         const iface = l.ifname;
         if (iface === lan) return;
+        try { execSync(`ip link set ${iface} up`); } catch (e) {}
+        if (isPppoeReservedInterface(iface)) return;
         const hasIPv4 = !!addrMap[iface];
         const isUp = (l.operstate || '') === 'UP';
         let hasMac = true, hasCarrier = true;
@@ -418,10 +430,23 @@ function ensureBasicConnectivity() {
   } catch (e) { log(`ensureBasicConnectivity error: ${e.message}`); }
 }
 
+function ensureAdminUpForPhysicalPorts() {
+  try {
+    if (process.platform !== 'linux') return;
+    const links = JSON.parse(execSync('ip -j link show').toString());
+    links.forEach(l => {
+      const n = String(l.ifname || '');
+      if (n === 'lo' || n.startsWith('veth') || n.startsWith('br')) return;
+      try { execSync(`ip link set ${n} up`); } catch (e) {}
+    });
+  } catch (e) {}
+}
+
 // Initial DHCP/NAT setup on boot
 // Move startup tasks to next tick to allow server to listen immediately
 setTimeout(() => {
   try {
+    ensureAdminUpForPhysicalPorts();
     ensureWanDhcpClients();
     ensureMasqueradeAllWan();
     ensureDhcpServerApplied();
@@ -705,7 +730,7 @@ setInterval(async () => {
 
       // Reduce cache to 5s for stability (was 2s)
       // Exclude LAN from WAN health checks
-      if (isLan) {
+      if (isLan || isPppoeReservedInterface(ifaceName)) {
         health = { ok: true, latency: 0 };
       } else if (!hc || (Date.now() - hc.ts) > 5000) {
         health = await checkInternetHealth(ifaceName, ipAddr, false);
@@ -2299,6 +2324,7 @@ app.post('/api/apply', (req, res) => {
     fs.writeFileSync(configPath, JSON.stringify(systemState.config));
     fs.writeFileSync(backupPath, JSON.stringify(systemState.config));
     ensureBasicConnectivity();
+    ensureAdminUpForPhysicalPorts();
     applyDhcp(systemState.config.dhcp);
     (systemState.config.wanInterfaces || []).forEach(applyWanInterfaceConfig);
     applyMultiWanKernel();
