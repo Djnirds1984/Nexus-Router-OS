@@ -613,21 +613,9 @@ function applyMultiWanKernel() {
   if (process.platform !== 'linux') return;
   log(`>>> ORCHESTRATING KERNEL: ${systemState.config.mode}`);
   try {
-    const lanIface = (systemState.config.dhcp && systemState.config.dhcp.interfaceName) || '';
-    
-    // Filter healthy WANs, explicitly excluding LAN interface
-    let healthyWans = systemState.interfaces.filter(i => i.internetHealth === 'HEALTHY' && i.interfaceName !== lanIface);
-    
-    if (healthyWans.length === 0) {
-      log('SMART LB: All WANs offline. Failing back to all available WANs to ensure connectivity.');
-      // Fallback: Use any UP interface with a gateway, but still exclude LAN
-      healthyWans = systemState.interfaces.filter(i => 
-        i.status === 'UP' && 
-        i.gateway && 
-        i.gateway !== 'Detecting...' && 
-        i.interfaceName !== lanIface
-      );
-    }
+    const managedSet = new Set((systemState.config.wanInterfaces || []).map(w => w.interfaceName));
+    const healthyWans = systemState.interfaces
+      .filter(i => i.internetHealth === 'HEALTHY' && managedSet.has(i.interfaceName));
     if (healthyWans.length === 0) return;
 
     if (systemState.config.mode === 'LOAD_BALANCER') {
