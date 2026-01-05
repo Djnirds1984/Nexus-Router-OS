@@ -450,6 +450,8 @@ setTimeout(() => {
     ensureWanDhcpClients();
     ensureMasqueradeAllWan();
     ensureDhcpServerApplied();
+    ensurePPPoEPackage();
+    applyPPPoESettings();
     applyFirewallRules();
     ensureBasicConnectivity(); // Run last to ensure Admin Access is top priority
     log('Network stack initialized');
@@ -1110,6 +1112,9 @@ function applyPPPoESettings() {
     
     pppoe.servers.forEach(srv => {
         if (srv.enabled) {
+            // Ensure interface is administratively up
+            const realIface = resolveRealInterface(srv.interfaceName);
+            try { execSync(`ip link set ${realIface} up`); } catch (e) {}
             // pppoe-server -I <interface> -L <local_ip> -R <remote_ip_start> -N <max_sessions>
             // We need to map profiles to actual pppd options. 
             // For simplicity in this version, we will use basic arguments.
@@ -1117,18 +1122,28 @@ function applyPPPoESettings() {
             // Note: pppoe-server usually requires -L (Local IP) and -R (Remote IP start).
             // We'll try to find a default profile or use reasonable defaults if not fully specified.
             const profile = pppoe.profiles.find(p => p.name === srv.defaultProfile);
-            const localIp = (profile && profile.localAddress) ? profile.localAddress : '10.0.0.1';
-            const poolStr = (profile && profile.remoteAddressPool) ? String(profile.remoteAddressPool) : '10.0.0.2';
+            let localIp = (profile && profile.localAddress) ? profile.localAddress : '';
+            let poolStr = (profile && profile.remoteAddressPool) ? String(profile.remoteAddressPool) : '';
+            if (!localIp) {
+                const firstSecret = (pppoe.secrets || []).find(s => s.enabled && s.profile === (profile ? profile.name : s.profile));
+                if (firstSecret && firstSecret.localAddress) localIp = firstSecret.localAddress;
+            }
+            if (!poolStr) {
+                const firstSecret = (pppoe.secrets || []).find(s => s.enabled && s.profile === (profile ? profile.name : s.profile));
+                if (firstSecret && firstSecret.remoteAddress) poolStr = String(firstSecret.remoteAddress);
+            }
+            if (!localIp) localIp = '172.15.0.1';
+            if (!poolStr) poolStr = '172.15.0.2';
             const remoteStart = poolStr.includes('-') ? poolStr.split('-')[0] : poolStr;
             
             // Basic command: pppoe-server -I eth1 -L 10.0.0.1 -R 10.0.0.2 -N 100
             // -C is Service Name
-            const cmd = `pppoe-server -I ${srv.interfaceName} -L ${localIp} -R ${remoteStart} -N 100 -C ${srv.serviceName || 'Nexus'} -O /etc/ppp/pppoe-server-options`;
+            const cmd = `pppoe-server -I ${realIface} -L ${localIp} -R ${remoteStart} -N 100 -C ${srv.serviceName || 'Nexus'} -O /etc/ppp/pppoe-server-options`;
             try {
                 execSync(cmd);
-                log(`Started PPPoE Server on ${srv.interfaceName}`);
+                log(`Started PPPoE Server on ${realIface}`);
             } catch (e) {
-                log(`Failed to start PPPoE Server on ${srv.interfaceName}: ${e.message}`);
+                log(`Failed to start PPPoE Server on ${realIface}: ${e.message}`);
             }
         }
     });
@@ -2327,6 +2342,8 @@ app.post('/api/apply', (req, res) => {
     ensureAdminUpForPhysicalPorts();
     applyDhcp(systemState.config.dhcp);
     (systemState.config.wanInterfaces || []).forEach(applyWanInterfaceConfig);
+    ensurePPPoEPackage();
+    applyPPPoESettings();
     applyMultiWanKernel();
     ensureWanDhcpClients();
     ensureMasqueradeAllWan();
