@@ -1059,6 +1059,7 @@ function ensurePPPoEPackage() {
              try { execSync('apt-get install -y pppoe'); } catch (_) { try { execSync('apt-get install -y rp-pppoe'); } catch (_) {} }
              try { execSync('apt-get install -y ppp'); } catch (_) {}
         }
+        try { fs.mkdirSync('/etc/ppp', { recursive: true }); } catch (_) {}
     } catch (e) {
         log('Failed to install pppoe package: ' + e.message);
     }
@@ -1085,6 +1086,7 @@ function applyPPPoESettings() {
     });
     
     try {
+        try { fs.mkdirSync('/etc/ppp', { recursive: true }); } catch (_) {}
         fs.writeFileSync('/etc/ppp/chap-secrets', secretsContent);
         fs.writeFileSync('/etc/ppp/pap-secrets', secretsContent);
     } catch (e) { log('Error writing secrets: ' + e.message); }
@@ -1108,6 +1110,7 @@ function applyPPPoESettings() {
             else if (mode === 'mschap1') { opts.push('require-mschap'); }
             else if (mode === 'mschap2') { opts.push('require-mschap-v2'); }
         }
+        try { fs.mkdirSync('/etc/ppp', { recursive: true }); } catch (_) {}
         try { fs.writeFileSync('/etc/ppp/pppoe-server-options', opts.join('\n') + '\n'); } catch (e2) {}
     } catch (e) {}
     
@@ -1148,7 +1151,17 @@ function applyPPPoESettings() {
                 execSync(cmd);
                 log(`Started PPPoE Server on ${realIface}`);
             } catch (e) {
-                log(`Failed to start PPPoE Server on ${realIface}: ${e.message}`);
+                try {
+                    if (!fs.existsSync('/etc/ppp/pppoe-server-options')) {
+                        const fallback = ['auth','ms-dns 8.8.8.8','mtu 1492','mru 1492','lcp-echo-interval 30','lcp-echo-failure 4','proxyarp'].join('\n') + '\n';
+                        try { fs.mkdirSync('/etc/ppp', { recursive: true }); } catch (_) {}
+                        fs.writeFileSync('/etc/ppp/pppoe-server-options', fallback);
+                    }
+                    execSync(cmd);
+                    log(`Started PPPoE Server (retry) on ${realIface}`);
+                } catch (e2) {
+                    log(`Failed to start PPPoE Server on ${realIface}: ${e2.message}`);
+                }
             }
         }
     });
