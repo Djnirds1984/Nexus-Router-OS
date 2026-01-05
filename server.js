@@ -1066,8 +1066,35 @@ function ensurePPPoEPackage() {
 }
 
 function applyPPPoESettings() {
-    if (process.platform !== 'linux') return;
-    const pppoe = systemState.config.pppoe || { servers: [], secrets: [], profiles: [] };
+  if (process.platform !== 'linux') return;
+  const pppoe = systemState.config.pppoe || { servers: [], secrets: [], profiles: [] };
+  const isIPv4 = (v) => /^\d{1,3}(\.\d{1,3}){3}$/.test(String(v || '').trim());
+  const normalizePool = (val) => {
+    const v = String(val || '').trim();
+    if (!v) return '';
+    if (v.includes('/')) {
+      try {
+        const [base, prefixStr] = v.split('/');
+        const prefix = Number(prefixStr);
+        if (!isIPv4(base) || isNaN(prefix) || prefix < 0 || prefix > 32) return '';
+        const ipToInt = (ip) => ip.split('.').reduce((acc, n) => (acc << 8) + Number(n), 0) >>> 0;
+        const intToIp = (n) => [24,16,8,0].map(s => ((n >>> s) & 255)).join('.');
+        const baseInt = ipToInt(base);
+        const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+        const network = baseInt & mask;
+        const hostCount = (1 << (32 - prefix)) - 1;
+        const start = intToIp(network + 1);
+        const end = intToIp(network + hostCount - 1);
+        return `${start}-${end}`;
+      } catch { return ''; }
+    }
+    if (v.includes('-')) {
+      const [s, e] = v.split('-');
+      if (isIPv4(s) && isIPv4(e)) return `${s}-${e}`;
+      return '';
+    }
+    return isIPv4(v) ? v : '';
+  };
     
     // 1. Secrets (CHAP/PAP)
     // Format: "username" * "password" *
@@ -1091,11 +1118,11 @@ function applyPPPoESettings() {
         fs.writeFileSync('/etc/ppp/pap-secrets', secretsContent);
     } catch (e) { log('Error writing secrets: ' + e.message); }
     
-    try {
-        const firstEnabled = (pppoe.servers || []).find(s => s.enabled);
-        const prof = firstEnabled ? pppoe.profiles.find(p => p.name === firstEnabled.defaultProfile) : null;
-        const dns = (prof && prof.dnsServer) ? prof.dnsServer : '8.8.8.8';
-        const opts = [];
+  try {
+    const firstEnabled = (pppoe.servers || []).find(s => s.enabled);
+    const prof = firstEnabled ? pppoe.profiles.find(p => p.name === firstEnabled.defaultProfile) : null;
+    const dns = (prof && prof.dnsServer) ? prof.dnsServer : '8.8.8.8';
+    const opts = [];
         opts.push('auth');
         opts.push(`ms-dns ${dns}`);
         opts.push('lcp-echo-interval 30');
@@ -1110,61 +1137,63 @@ function applyPPPoESettings() {
             else if (mode === 'mschap1') { opts.push('require-mschap'); }
             else if (mode === 'mschap2') { opts.push('require-mschap-v2'); }
         }
-        try { fs.mkdirSync('/etc/ppp', { recursive: true }); } catch (_) {}
-        try { fs.writeFileSync('/etc/ppp/pppoe-server-options', opts.join('\n') + '\n'); } catch (e2) {}
-    } catch (e) {}
-    
-    // 2. Servers
-    // Kill existing servers managed by Nexus (simple approach: kill all pppoe-server instances and restart enabled ones)
-    try { execSync('killall pppoe-server || true'); } catch(e) {}
-    
-    pppoe.servers.forEach(srv => {
-        if (srv.enabled) {
-            // Ensure interface is administratively up
-            const realIface = resolveRealInterface(srv.interfaceName);
-            try { execSync(`ip link set ${realIface} up`); } catch (e) {}
+    try { fs.mkdirSync('/etc/ppp', { recursive: true }); } catch (_) {}
+    try { fs.writeFileSync('/etc/ppp/pppoe-server-options', opts.join('\n') + '\n'); } catch (e2) {}
+  } catch (e) {}
+
+  // 2. Servers
+  // Kill existing servers managed by Nexus (simple approach: kill all pppoe-server instances and restart enabled ones)
+  try { execSync('killall pppoe-server || true'); } catch(e) {}
+  
+  pppoe.servers.forEach(srv => {
+    if (srv.enabled) {
+      // Ensure interface is administratively up
+      const realIface = resolveRealInterface(srv.interfaceName);
+      try { execSync(`ip link set ${realIface} up`); } catch (e) {}
             // pppoe-server -I <interface> -L <local_ip> -R <remote_ip_start> -N <max_sessions>
             // We need to map profiles to actual pppd options. 
             // For simplicity in this version, we will use basic arguments.
             
             // Note: pppoe-server usually requires -L (Local IP) and -R (Remote IP start).
             // We'll try to find a default profile or use reasonable defaults if not fully specified.
-            const profile = pppoe.profiles.find(p => p.name === srv.defaultProfile);
-            let localIp = (profile && profile.localAddress) ? profile.localAddress : '';
-            let poolStr = (profile && profile.remoteAddressPool) ? String(profile.remoteAddressPool) : '';
-            if (!localIp) {
-                const firstSecret = (pppoe.secrets || []).find(s => s.enabled && s.profile === (profile ? profile.name : s.profile));
-                if (firstSecret && firstSecret.localAddress) localIp = firstSecret.localAddress;
-            }
-            if (!poolStr) {
-                const firstSecret = (pppoe.secrets || []).find(s => s.enabled && s.profile === (profile ? profile.name : s.profile));
-                if (firstSecret && firstSecret.remoteAddress) poolStr = String(firstSecret.remoteAddress);
-            }
-            if (!localIp) localIp = '172.15.0.1';
-            if (!poolStr) poolStr = '172.15.0.2';
-            const remoteStart = poolStr.includes('-') ? poolStr.split('-')[0] : poolStr;
+      const profile = pppoe.profiles.find(p => p.name === srv.defaultProfile);
+      let localIp = (profile && profile.localAddress) ? String(profile.localAddress).trim() : '';
+      let poolStr = (profile && (profile.ipPool || profile.remoteAddressPool)) ? String(profile.ipPool || profile.remoteAddressPool).trim() : '';
+      poolStr = normalizePool(poolStr);
+      if (!isIPv4(localIp)) localIp = '';
+      if (!localIp) {
+        const firstSecret = (pppoe.secrets || []).find(s => s.enabled && s.profile === (profile ? profile.name : s.profile));
+        if (firstSecret && firstSecret.localAddress) localIp = firstSecret.localAddress;
+      }
+      if (!poolStr || (!poolStr.includes('-') && !isIPv4(poolStr))) {
+        const firstSecret = (pppoe.secrets || []).find(s => s.enabled && s.profile === (profile ? profile.name : s.profile));
+        if (firstSecret && firstSecret.remoteAddress) poolStr = normalizePool(String(firstSecret.remoteAddress));
+      }
+      if (!isIPv4(localIp)) localIp = '172.15.0.1';
+      if (!poolStr) poolStr = '172.15.0.2-172.15.0.254';
+      const remoteStart = poolStr.includes('-') ? poolStr.split('-')[0] : poolStr;
             
             // Basic command: pppoe-server -I eth1 -L 10.0.0.1 -R 10.0.0.2 -N 100
             // -C is Service Name
-            const cmd = `pppoe-server -I ${realIface} -L ${localIp} -R ${remoteStart} -N 100 -C ${srv.serviceName || 'Nexus'} -O /etc/ppp/pppoe-server-options`;
-            try {
-                execSync(cmd);
-                log(`Started PPPoE Server on ${realIface}`);
-            } catch (e) {
-                try {
-                    if (!fs.existsSync('/etc/ppp/pppoe-server-options')) {
-                        const fallback = ['auth','ms-dns 8.8.8.8','mtu 1492','mru 1492','lcp-echo-interval 30','lcp-echo-failure 4','proxyarp'].join('\n') + '\n';
-                        try { fs.mkdirSync('/etc/ppp', { recursive: true }); } catch (_) {}
-                        fs.writeFileSync('/etc/ppp/pppoe-server-options', fallback);
-                    }
-                    execSync(cmd);
-                    log(`Started PPPoE Server (retry) on ${realIface}`);
-                } catch (e2) {
-                    log(`Failed to start PPPoE Server on ${realIface}: ${e2.message}`);
-                }
-            }
+      const cmd = `pppoe-server -I ${realIface} -L ${localIp} -R ${remoteStart} -N 100 -C ${srv.serviceName || 'Nexus'} -O /etc/ppp/pppoe-server-options`;
+      try {
+        execSync(cmd);
+        log(`Started PPPoE Server on ${realIface}`);
+      } catch (e) {
+        try {
+          if (!fs.existsSync('/etc/ppp/pppoe-server-options')) {
+            const fallback = ['auth','ms-dns 8.8.8.8','mtu 1492','mru 1492','lcp-echo-interval 30','lcp-echo-failure 4','proxyarp'].join('\n') + '\n';
+            try { fs.mkdirSync('/etc/ppp', { recursive: true }); } catch (_) {}
+            fs.writeFileSync('/etc/ppp/pppoe-server-options', fallback);
+          }
+          execSync(cmd);
+          log(`Started PPPoE Server (retry) on ${realIface}`);
+        } catch (e2) {
+          log(`Failed to start PPPoE Server on ${realIface}: ${e2.message}`);
         }
-    });
+      }
+    }
+  });
     
     try {
         try { execSync('sysctl -w net.ipv4.ip_forward=1'); } catch (e) {}
