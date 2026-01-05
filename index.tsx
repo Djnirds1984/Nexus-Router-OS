@@ -3406,7 +3406,7 @@ const Dashboard = ({ interfaces, metrics }: { interfaces: WanInterface[], metric
 };
 
 const PPPoEManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'servers' | 'secrets' | 'active' | 'profiles' | 'billing'>('servers');
+  const [activeTab, setActiveTab] = useState<'servers' | 'secrets' | 'active' | 'profiles' | 'billing' | 'logs'>('servers');
   const [config, setConfig] = useState<{
     servers: PPPoEServerConfig[];
     secrets: PPPoESecret[];
@@ -3419,6 +3419,8 @@ const PPPoEManager: React.FC = () => {
   const [newBilling, setNewBilling] = useState<{ name: string; price: string; profile: string }>({ name: '', price: '', profile: '' });
   const [netdevs, setNetdevs] = useState<Array<{ name: string; customName?: string; type?: string }>>([]);
   const [systemCurrency, setSystemCurrency] = useState<string>('USD');
+  const [logs, setLogs] = useState<string[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => {
     fetchConfig();
@@ -3445,6 +3447,23 @@ const PPPoEManager: React.FC = () => {
     })();
   }, []);
 
+  useEffect(() => {
+    let t: any;
+    if (activeTab === 'logs') {
+      const load = async () => {
+        try {
+          setLogsLoading(true);
+          const res = await fetch('/api/pppoe/logs');
+          const data = await res.json();
+          setLogs(data.lines || []);
+        } catch {}
+        finally { setLogsLoading(false); }
+      };
+      load();
+      t = setInterval(load, 3000);
+    }
+    return () => { if (t) clearInterval(t); };
+  }, [activeTab]);
   const fetchConfig = async () => {
     try {
       const res = await fetch('/api/pppoe/config');
@@ -3630,6 +3649,12 @@ const PPPoEManager: React.FC = () => {
           className={`px-6 py-3 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${activeTab === 'profiles' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
         >
           Profiles
+        </button>
+        <button
+          onClick={() => setActiveTab('logs')}
+          className={`px-6 py-3 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${activeTab === 'logs' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          Logs
         </button>
         <button
           onClick={() => setActiveTab('billing')}
@@ -4028,6 +4053,24 @@ const PPPoEManager: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'logs' && (
+        <div className="bg-slate-900/40 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-md">
+          <div className="p-4 flex justify-between items-center border-b border-slate-800/50">
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">PPPoE Logs</div>
+            <div className={`text-[10px] font-black uppercase tracking-widest ${logsLoading ? 'text-blue-400' : 'text-slate-600'}`}>{logsLoading ? 'Fetching...' : 'Idle'}</div>
+          </div>
+          <div className="p-4 font-mono text-xs text-slate-300 h-96 overflow-y-auto custom-scrollbar">
+            {logs.length === 0 ? (
+              <div className="text-slate-600">No PPPoE log entries</div>
+            ) : (
+              logs.slice(-500).map((l, idx) => (
+                <div key={idx} className="whitespace-pre">{l}</div>
+              ))
+            )}
           </div>
         </div>
       )}

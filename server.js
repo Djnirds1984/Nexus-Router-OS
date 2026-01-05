@@ -286,6 +286,8 @@ function ensureMasqueradeAllWan() {
           execSync(`iptables -C FORWARD -i ${lan} -o ${wan} -j ACCEPT || iptables -A FORWARD -i ${lan} -o ${wan} -j ACCEPT`);
           execSync(`iptables -C FORWARD -i ${wan} -o ${lan} -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A FORWARD -i ${wan} -o ${lan} -m state --state RELATED,ESTABLISHED -j ACCEPT`);
         }
+        execSync(`iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -i ppp+ -o ${wan} -j TCPMSS --clamp-mss-to-pmtu || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -i ppp+ -o ${wan} -j TCPMSS --clamp-mss-to-pmtu`);
+        execSync(`iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -i ${wan} -o ppp+ -j TCPMSS --clamp-mss-to-pmtu || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -i ${wan} -o ppp+ -j TCPMSS --clamp-mss-to-pmtu`);
       } catch (e) {}
     });
   } catch (e) { log(`ensureMasqueradeAllWan error: ${e.message}`); }
@@ -1164,6 +1166,8 @@ function applyPPPoESettings() {
                 execSync(`iptables -t nat -C POSTROUTING -o ${wan} -j MASQUERADE || iptables -t nat -A POSTROUTING -o ${wan} -j MASQUERADE`);
                 execSync(`iptables -C FORWARD -i ppp+ -o ${wan} -j ACCEPT || iptables -A FORWARD -i ppp+ -o ${wan} -j ACCEPT`);
                 execSync(`iptables -C FORWARD -i ${wan} -o ppp+ -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A FORWARD -i ${wan} -o ppp+ -m state --state RELATED,ESTABLISHED -j ACCEPT`);
+                execSync(`iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -i ppp+ -o ${wan} -j TCPMSS --clamp-mss-to-pmtu || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -i ppp+ -o ${wan} -j TCPMSS --clamp-mss-to-pmtu`);
+                execSync(`iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -i ${wan} -o ppp+ -j TCPMSS --clamp-mss-to-pmtu || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -i ${wan} -o ppp+ -j TCPMSS --clamp-mss-to-pmtu`);
             } catch (e) {}
         });
     } catch (e) {}
