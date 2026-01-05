@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PPPoEServerConfig, PPPoESecret, PPPoEProfile, PPPoEActiveConnection } from '../types';
 
 const PPPoEManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'servers' | 'secrets' | 'active' | 'profiles'>('servers');
+  const [activeTab, setActiveTab] = useState<'servers' | 'secrets' | 'active' | 'profiles' | 'logs'>('servers');
   const [config, setConfig] = useState<{
     servers: PPPoEServerConfig[];
     secrets: PPPoESecret[];
@@ -18,6 +18,8 @@ const PPPoEManager: React.FC = () => {
   // Server IP edit buffer per-server to allow user typing without immediate persistence
   const [serverIpEdit, setServerIpEdit] = useState<Record<string, string>>({});
   const [pppoeStatus, setPppoeStatus] = useState<any>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => {
     fetchConfig();
@@ -31,6 +33,23 @@ const PPPoEManager: React.FC = () => {
     fetchNetdevs();
   }, []);
 
+  useEffect(() => {
+    let t: any;
+    if (activeTab === 'logs') {
+      const load = async () => {
+        try {
+          setLogsLoading(true);
+          const res = await fetch('/api/pppoe/logs');
+          const data = await res.json();
+          setLogs(data.lines || []);
+        } catch {}
+        finally { setLogsLoading(false); }
+      };
+      load();
+      t = setInterval(load, 3000);
+    }
+    return () => { if (t) clearInterval(t); };
+  }, [activeTab]);
   const fetchConfig = async () => {
     try {
       const res = await fetch('/api/pppoe/config');
@@ -242,6 +261,12 @@ const PPPoEManager: React.FC = () => {
           className={`px-6 py-3 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${activeTab === 'profiles' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
         >
           Profiles
+        </button>
+        <button
+          onClick={() => setActiveTab('logs')}
+          className={`px-6 py-3 rounded-xl text-xs font-black transition-all uppercase tracking-widest ${activeTab === 'logs' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          Logs
         </button>
       </div>
 
@@ -728,6 +753,24 @@ const PPPoEManager: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'logs' && (
+        <div className="bg-slate-900/40 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-md">
+          <div className="p-4 flex justify-between items-center border-b border-slate-800/50">
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">PPPoE Logs</div>
+            <div className={`text-[10px] font-black uppercase tracking-widest ${logsLoading ? 'text-blue-400' : 'text-slate-600'}`}>{logsLoading ? 'Fetching...' : 'Idle'}</div>
+          </div>
+          <div className="p-4 font-mono text-xs text-slate-300 h-96 overflow-y-auto custom-scrollbar">
+            {logs.length === 0 ? (
+              <div className="text-slate-600">No PPPoE log entries</div>
+            ) : (
+              logs.slice(-500).map((l, idx) => (
+                <div key={idx} className="whitespace-pre">{l}</div>
+              ))
+            )}
           </div>
         </div>
       )}

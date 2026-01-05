@@ -275,7 +275,10 @@ function ensureMasqueradeAllWan() {
     lan = resolveRealInterface(lan);
     const routes = JSON.parse(execSync('ip -j route show default').toString());
     const wanIfaces = [];
-    routes.forEach(r => { if (r.dev && !wanIfaces.includes(r.dev)) wanIfaces.push(r.dev); });
+    routes.forEach(r => {
+      if (r.dev && !wanIfaces.includes(r.dev)) wanIfaces.push(r.dev);
+      if (Array.isArray(r.nexthops)) r.nexthops.forEach(h => { if (h.dev && !wanIfaces.includes(h.dev)) wanIfaces.push(h.dev); });
+    });
     wanIfaces.forEach(wan => {
       try {
         execSync(`iptables -t nat -C POSTROUTING -o ${wan} -j MASQUERADE || iptables -t nat -A POSTROUTING -o ${wan} -j MASQUERADE`);
@@ -1152,7 +1155,10 @@ function applyPPPoESettings() {
         try { execSync('sysctl -w net.ipv4.ip_forward=1'); } catch (e) {}
         const routes = JSON.parse(execSync('ip -j route show default').toString());
         const wanIfaces = [];
-        routes.forEach(r => { if (r.dev && !wanIfaces.includes(r.dev)) wanIfaces.push(r.dev); });
+        routes.forEach(r => {
+            if (r.dev && !wanIfaces.includes(r.dev)) wanIfaces.push(r.dev);
+            if (Array.isArray(r.nexthops)) r.nexthops.forEach(h => { if (h.dev && !wanIfaces.includes(h.dev)) wanIfaces.push(h.dev); });
+        });
         wanIfaces.forEach(wan => {
             try {
                 execSync(`iptables -t nat -C POSTROUTING -o ${wan} -j MASQUERADE || iptables -t nat -A POSTROUTING -o ${wan} -j MASQUERADE`);
@@ -1196,30 +1202,38 @@ app.post('/api/pppoe/config', (req, res) => {
 
 app.get('/api/pppoe/active', (req, res) => {
     if (process.platform !== 'linux') {
-        // Mock data for Windows dev
         return res.json([
             { id: '1', username: 'test_user', interface: 'ppp0', remoteAddress: '10.0.0.50', uptime: '10m', callerId: '00:11:22:33:44:55' }
         ]);
     }
     
-    // Parse /proc/net/dev or ppp logs to find active sessions
-    // Or use `ip addr show` to find ppp interfaces
     try {
         const interfaces = execSync('ip -j addr show').toString();
         const parsed = JSON.parse(interfaces);
         const pppIfaces = parsed.filter(i => i.ifname.startsWith('ppp'));
-        
-        const active = pppIfaces.map((i, idx) => ({
+        let userMap = {};
+        try {
+            const syslog = fs.existsSync('/var/log/syslog') ? fs.readFileSync('/var/log/syslog', 'utf8') : '';
+            const lines = syslog ? syslog.split('\n').slice(-2000) : [];
+            lines.forEach(l => {
+                const ifaceMatch = l.match(/ppp(\d+)/);
+                const nameMatch = l.match(/name\s+([^\s]+)/i) || l.match(/CHAP authentication succeeded for\s+([^\s]+)/i);
+                if (ifaceMatch && nameMatch) {
+                    userMap[`ppp${ifaceMatch[1]}`] = nameMatch[1];
+                }
+            });
+        } catch (e) {}
+        const active = pppIfaces.map((i) => ({
             id: i.ifname,
-            username: 'unknown', // Hard to get without pppd logs parsing
+            username: userMap[i.ifname] || 'unknown',
             interface: i.ifname,
-            remoteAddress: i.addr_info[0]?.local || 'N/A',
+            remoteAddress: (i.addr_info || []).find(a => a.family === 'inet')?.local || 'N/A',
             uptime: 'N/A',
             callerId: 'N/A'
         }));
         res.json(active);
     } catch (e) {
-        res.json([]);
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -1248,6 +1262,23 @@ app.get('/api/pppoe/status', (req, res) => {
     } catch (e) {
         res.json({ platform: process.platform, linux: process.platform === 'linux', canServe: false });
     }
+});
+
+app.get('/api/pppoe/logs', (req, res) => {
+  try {
+    if (process.platform !== 'linux') return res.json({ lines: [] });
+    let lines = [];
+    if (fs.existsSync('/var/log/syslog')) {
+      const content = fs.readFileSync('/var/log/syslog', 'utf8');
+      lines = content.split('\n').filter(l => /pppd|pppoe-server/i.test(l)).slice(-500);
+    } else {
+      try {
+        const j = execSync('journalctl --no-pager -n 500 | cat').toString();
+        lines = j.split('\n').filter(l => /pppd|pppoe-server/i.test(l));
+      } catch (e) {}
+    }
+    res.json({ lines });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/system/restart', (req, res) => {
   log('System restart requested via API');
